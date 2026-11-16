@@ -1,0 +1,27 @@
+server:
+  port: 8082
+  shutdown: graceful
+spring:
+  application:
+    name: device-service
+  datasource:
+    url: ${DEVICE_DB_URL:jdbc:mysql://localhost:3306/device_db?connectionTimeZone=UTC}
+    username: ${DEVICE_DB_USER:device_app}
+    password: ${DEVICE_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    enabled: true
+    clean-disabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db
+      probes:
+        enabled: true

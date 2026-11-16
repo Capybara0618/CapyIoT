@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+**/node_modules
+**/target
+**/dist
+**/test-results
+**/playwright-report
+**/__pycache__
+**/*.pyc
+**/*.log
+CapyIoT-Blueprint
+docs
+**/design-references
