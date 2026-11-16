@@ -20,11 +20,15 @@ import {
   type Evidence,
 } from '../alarms'
 import PageHeader from '../components/PageHeader.vue'
+import { workStatuses, workStream, type WorkCreated, type WorkOrder } from '../workorders'
 
 const route = useRoute()
 const router = useRouter()
 const page = ref<Page<Alarm>>({ items: [], total: 0, page: 1, size: 10 })
 const detail = ref<AlarmDetail>()
+const linkedOrder = ref<WorkOrder | null>()
+const creatingOrder = ref(false)
+const workError = ref('')
 const summary = ref<AlarmSummary>()
 const rules = ref<AlarmRules>()
 const buildings = ref<Locations['buildings']>([])
@@ -89,8 +93,44 @@ async function loadDetail(id = selected.value) {
     if (version !== detailVersion) return
     detail.value = row
     detailError.value = ''
+    void loadLinkedOrder(id, version)
   } catch (failure) {
     if (version === detailVersion) detailError.value = (failure as Error).message
+  }
+}
+
+async function loadLinkedOrder(id: string, version = detailVersion) {
+  try {
+    const order = await request<WorkOrder | null>(`/workorders/by-alarm/${encodeURIComponent(id)}`)
+    if (version === detailVersion && selected.value === id) {
+      linkedOrder.value = order
+      workError.value = ''
+    }
+  } catch (failure) {
+    if (version === detailVersion && selected.value === id)
+      workError.value = (failure as Error).message
+  }
+}
+
+async function createWorkOrder() {
+  const alarm = detail.value?.alarm
+  if (!alarm || creatingOrder.value) return
+  creatingOrder.value = true
+  workError.value = ''
+  try {
+    const result = await request<WorkCreated>('/workorders', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': `alarm:${alarm.id}` },
+      body: JSON.stringify({ sourceAlarmId: alarm.id }),
+    })
+    if (selected.value === String(alarm.id)) {
+      linkedOrder.value = result.order
+      await router.push({ path: '/workorders', query: { id: result.order.id } })
+    }
+  } catch (failure) {
+    workError.value = (failure as Error).message
+  } finally {
+    creatingOrder.value = false
   }
 }
 
@@ -103,6 +143,9 @@ function refresh() {
   }, 300)
 }
 const live = useLiveUpdates(refresh, '/api/v1/alarms/stream')
+useLiveUpdates(() => {
+  if (selected.value && detail.value) void loadLinkedOrder(selected.value)
+}, workStream)
 watch(
   () => [
     route.query.severity,
@@ -123,6 +166,8 @@ watch(
   selected,
   () => {
     detail.value = undefined
+    linkedOrder.value = undefined
+    workError.value = ''
     detailError.value = ''
     tab.value = 'children'
     expanded.value = ''
@@ -350,6 +395,19 @@ function evidenceLabel(item: Evidence) {
               >
             </div>
             <div class="alarm-action-row">
+              <RouterLink
+                v-if="linkedOrder"
+                class="text-link"
+                :to="{ path: '/workorders', query: { id: linkedOrder.id } }"
+                >查看工单 {{ linkedOrder.orderNo }} ·
+                {{ workStatuses[linkedOrder.status] }}</RouterLink
+              >
+              <ElButton
+                v-else-if="linkedOrder === null && !detail.alarm.parentAlarmId"
+                :loading="creatingOrder"
+                @click="createWorkOrder"
+                >创建工单</ElButton
+              >
               <ElButton
                 v-if="detail.alarm.status === 'OPEN' && !detail.alarm.parentAlarmId"
                 type="primary"
@@ -371,6 +429,10 @@ function evidenceLabel(item: Evidence) {
                 查看主告警
               </button>
             </div>
+            <p v-if="workError" class="work-note" role="alert">
+              {{ workError }}
+              <button class="text-link" @click="loadLinkedOrder(selected)">重试</button>
+            </p>
           </div>
           <div class="alarm-root" :class="detail.alarm.relationKind.toLowerCase()">
             <Network :size="20" />

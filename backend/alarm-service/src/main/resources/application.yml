@@ -6,6 +6,15 @@ spring:
     name: alarm-service
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        delivery.timeout.ms: 12000
+        request.timeout.ms: 5000
     consumer:
       enable-auto-commit: false
       auto-offset-reset: earliest
@@ -17,7 +26,7 @@ spring:
   task:
     scheduling:
       pool:
-        size: 2
+        size: 3
   datasource:
     url: ${ALARM_DB_URL:jdbc:mysql://localhost:3306/alarm_db?connectionTimeZone=UTC}
     username: ${ALARM_DB_USER:alarm_app}

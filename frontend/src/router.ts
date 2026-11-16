@@ -21,6 +21,7 @@ const featurePages = {
   '/dashboard': () => import('./pages/DashboardPage.vue'),
   '/topology': () => import('./pages/TopologyPage.vue'),
   '/alarms': () => import('./pages/AlarmsPage.vue'),
+  '/workorders': () => import('./pages/WorkOrdersPage.vue'),
 }
 
 export const pages = [

@@ -57,12 +57,15 @@ class AlarmQueries {
     private final ObjectMapper json;
     private final AlarmRules rules;
     private final TopologyProjection topology;
+    private final AlarmOutbox outbox;
 
-    AlarmQueries(JdbcTemplate jdbc, ObjectMapper json, AlarmRules rules, TopologyProjection topology) {
+    AlarmQueries(JdbcTemplate jdbc, ObjectMapper json, AlarmRules rules, TopologyProjection topology,
+            AlarmOutbox outbox) {
         this.jdbc = jdbc;
         this.json = json;
         this.rules = rules;
         this.topology = topology;
+        this.outbox = outbox;
     }
 
     @Transactional(readOnly = true)
@@ -138,6 +141,7 @@ class AlarmQueries {
                         version=version+1 WHERE id=?
                     """, actor, id);
             rules.incrementRevision(campus);
+            outbox.publish(campus, java.util.Set.of(id), Instant.now(), UUID.randomUUID().toString());
         }
         return find(campus, id);
     }

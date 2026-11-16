@@ -9,6 +9,8 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -27,13 +29,14 @@ class AlarmRules {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final TopologyProjection topology;
+    private final AlarmOutbox outbox;
     private final long windowSeconds;
     private final long cooldownSeconds;
     private final int minimumDownstream;
     private final double temperatureLimit;
     private final double temperatureRecovery;
 
-    AlarmRules(JdbcTemplate jdbc, ObjectMapper json, TopologyProjection topology,
+    AlarmRules(JdbcTemplate jdbc, ObjectMapper json, TopologyProjection topology, AlarmOutbox outbox,
             @Value("${capyiot.alarm-topology-window-seconds:60}") long windowSeconds,
             @Value("${capyiot.alarm-flap-cooldown-seconds:60}") long cooldownSeconds,
             @Value("${capyiot.alarm-minimum-downstream:2}") int minimumDownstream,
@@ -45,6 +48,7 @@ class AlarmRules {
         this.jdbc = jdbc;
         this.json = json;
         this.topology = topology;
+        this.outbox = outbox;
         this.windowSeconds = windowSeconds;
         this.cooldownSeconds = cooldownSeconds;
         this.minimumDownstream = minimumDownstream;
@@ -82,17 +86,17 @@ class AlarmRules {
                 ON DUPLICATE KEY UPDATE version=incoming.version
                 """, campus, event.deviceId(), state.stateVersion());
 
-        boolean changed = false;
+        Set<Long> changed = new LinkedHashSet<>();
         if ("HEARTBEAT_TIMEOUT".equals(state.reason()) && state.enabled()) {
-            open(event, node, OFFLINE, "WARNING", state.upstreamNodeId());
-            if (state.upstreamNodeId() != null) correlate(event, state.upstreamNodeId());
-            changed = true;
+            changed.add(open(event, node, OFFLINE, "WARNING", state.upstreamNodeId()));
+            if (state.upstreamNodeId() != null) correlate(event, state.upstreamNodeId(), changed);
         } else if ("ONLINE".equals(state.connectivityStatus())) {
-            changed = recover(event, node.id(), OFFLINE);
+            recover(event, node.id(), OFFLINE, changed);
         }
 
         if ("DEVICE_RECOVERED".equals(state.reason())) {
-            changed = recover(event, node.id(), NETWORK) | recover(event, node.id(), FAULT) | changed;
+            recover(event, node.id(), NETWORK, changed);
+            recover(event, node.id(), FAULT, changed);
         } else if (state.enabled() && "DEVICE_FAULT".equals(state.reason())) {
             JsonNode evidence = state.evidence();
             String fault = evidence == null ? "" : evidence.path("faultCode").asText();
@@ -101,34 +105,34 @@ class AlarmRules {
                 case TEMPERATURE -> "SENSOR".equals(node.type()) ? TEMPERATURE : FAULT;
                 default -> FAULT;
             };
-            open(event, node, type, type.equals(NETWORK) ? "CRITICAL" : "WARNING", null);
-            if (type.equals(NETWORK)) correlate(event, node.id());
-            changed = true;
+            changed.add(open(event, node, type, type.equals(NETWORK) ? "CRITICAL" : "WARNING", null));
+            if (type.equals(NETWORK)) correlate(event, node.id(), changed);
         } else if (state.enabled() && "ABNORMAL".equals(state.healthStatus())
                 && "NORMAL".equals(state.previousHealthStatus())
                 && !"SENSOR_READING".equals(state.reason())) {
-            open(event, node, FAULT, "WARNING", null);
-            changed = true;
+            changed.add(open(event, node, FAULT, "WARNING", null));
         }
 
         if (state.enabled() && "SENSOR".equals(node.type()) && "SENSOR_READING".equals(state.reason())
                 && state.evidence() != null && state.evidence().path("temperature").isNumber()) {
             double temperature = state.evidence().path("temperature").asDouble();
             if (temperature >= temperatureLimit) {
-                open(event, node, TEMPERATURE, "WARNING", null);
-                changed = true;
+                changed.add(open(event, node, TEMPERATURE, "WARNING", null));
             } else if (temperature <= temperatureRecovery) {
-                changed = recover(event, node.id(), TEMPERATURE) || changed;
+                recover(event, node.id(), TEMPERATURE, changed);
             }
         }
-        if (changed) incrementRevision(campus);
+        if (!changed.isEmpty()) {
+            incrementRevision(campus);
+            outbox.publish(campus, changed, event.occurredAt(), event.traceId());
+        }
     }
 
     void incrementRevision(String campus) {
         jdbc.update("UPDATE topology_checkpoint SET alarm_revision=alarm_revision+1 WHERE campus_id=?", campus);
     }
 
-    private void open(DeviceSignal event, TopologyEvent.Node node, String type, String severity, String upstream) {
+    private long open(DeviceSignal event, TopologyEvent.Node node, String type, String severity, String upstream) {
         String campus = event.campusId();
         Instant time = event.occurredAt();
         Active active = active(campus, node.id(), type);
@@ -161,19 +165,21 @@ class AlarmRules {
         }
         evidence(id, event, evidence);
         link(id, node.id(), node.name(), "AFFECTED", time);
+        return id;
     }
 
-    private boolean recover(DeviceSignal event, String deviceId, String type) {
+    private void recover(DeviceSignal event, String deviceId, String type, Set<Long> changed) {
         var alarm = active(event.campusId(), deviceId, type);
-        if (alarm == null) return false;
+        if (alarm == null) return;
         recoverRow(alarm.id(), event);
+        changed.add(alarm.id());
         if (alarm.parent() != null) {
             long remaining = jdbc.queryForObject("SELECT COUNT(*) FROM alarm WHERE parent_alarm_id=? AND active_marker=1",
                     Long.class, alarm.parent());
             if (remaining == 0) recoverRow(alarm.parent(), event);
             else jdbc.update("UPDATE alarm SET version=version+1 WHERE id=?", alarm.parent());
+            changed.add(alarm.parent());
         }
-        return true;
     }
 
     private void recoverRow(long id, DeviceSignal event) {
@@ -184,7 +190,7 @@ class AlarmRules {
         evidence(id, event, "RECOVERY");
     }
 
-    private void correlate(DeviceSignal event, String upstream) {
+    private void correlate(DeviceSignal event, String upstream, Set<Long> changed) {
         String campus = event.campusId();
         Instant time = event.occurredAt().truncatedTo(ChronoUnit.MILLIS);
         var root = topology.node(campus, upstream);
@@ -218,6 +224,7 @@ class AlarmRules {
         long id = existing == null ? create(campus, root, GROUP, severity, relation, upstream, firstSeen) : existing.id();
         if (explicitNear && explicit.parent() == null) {
             attach(id, new Child(explicit.id(), root.id(), root.name(), explicit.incidentAt()), "ROOT");
+            changed.add(explicit.id());
             // Copy the precise switch trigger reference onto the root for review.
             jdbc.update("""
                     INSERT IGNORE INTO alarm_evidence(alarm_id,event_id,evidence_type,created_at)
@@ -225,12 +232,16 @@ class AlarmRules {
                     WHERE alarm_id=? AND evidence_type='RULE_TRIGGER'
                     """, id, explicit.id());
         }
-        for (Child child : children) attach(id, child, "AFFECTED");
+        for (Child child : children) {
+            attach(id, child, "AFFECTED");
+            changed.add(child.id());
+        }
         link(id, root.id(), root.name(), "ROOT", time);
         jdbc.update("""
                 UPDATE alarm SET relation_kind=?,severity=?,last_seen_at=GREATEST(last_seen_at,?),version=version+1 WHERE id=?
                 """, relation, severity, at(time), id);
         evidence(id, event, relation.equals("CONFIRMED_UPSTREAM") ? "TOPOLOGY_CONFIRMED" : "TOPOLOGY_CLUSTER");
+        changed.add(id);
     }
 
     private record Child(long id, String deviceId, String name, Instant incidentAt) {}

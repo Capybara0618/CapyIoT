@@ -5,6 +5,7 @@ import 'element-plus/dist/index.css'
 import './styles.css'
 import './business.css'
 import './governance.css'
+import './workflow.css'
 
 const app = createApp(App).use(router)
 void router.isReady().then(() => app.mount('#app'))

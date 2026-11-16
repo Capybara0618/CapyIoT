@@ -55,7 +55,9 @@ export function useLiveUpdates(onChange: () => void, path = '/api/v1/stream') {
                 frame
                   .split('\n')
                   .some((line) =>
-                    /^event:\s*(events\.changed|device\.state\.changed|alarm\.updated)$/.test(line),
+                    /^event:\s*(events\.changed|device\.state\.changed|alarm\.updated|workorder\.updated)$/.test(
+                      line,
+                    ),
                   )
               )
                 onChange()

@@ -159,8 +159,13 @@ services:
     environment:
       WORKFLOW_DB_URL: jdbc:mysql://mysql:3306/workflow_db?connectionTimeZone=UTC
       WORKFLOW_DB_PASSWORD: ${WORKFLOW_DB_PASSWORD:?Missing workflow password}
+      JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
+      ALARM_SERVICE_URL: http://alarm-service:8083
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
       mysql: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      alarm-service: { condition: service_healthy }
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:8084/actuator/health/readiness | grep UP']
       interval: 10s
@@ -175,6 +180,7 @@ services:
     environment:
       DEVICE_SERVICE_URL: http://device-service:8082
       ALARM_SERVICE_URL: http://alarm-service:8083
+      WORKFLOW_SERVICE_URL: http://workflow-service:8084
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
       DEMO_ADMIN_PASSWORD_HASH: ${DEMO_ADMIN_PASSWORD_HASH:?Missing demo admin hash}
       DEMO_OPERATOR_PASSWORD_HASH: ${DEMO_OPERATOR_PASSWORD_HASH:?Missing demo operator hash}
@@ -182,6 +188,7 @@ services:
     depends_on:
       device-service: { condition: service_healthy }
       alarm-service: { condition: service_healthy }
+      workflow-service: { condition: service_healthy }
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:9090/actuator/health/readiness | grep UP']
       interval: 10s

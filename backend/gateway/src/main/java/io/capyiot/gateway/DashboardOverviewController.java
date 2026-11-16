@@ -16,22 +16,27 @@ import reactor.core.publisher.Mono;
 
 @RestController
 class DashboardOverviewController {
-    record Overview(JsonNode devices, JsonNode alarms) {}
+    record Overview(JsonNode devices, JsonNode alarms, JsonNode workorders) {}
 
     private final WebClient devices;
     private final WebClient alarms;
+    private final WebClient workflow;
 
     DashboardOverviewController(WebClient.Builder builder,
             @Value("${capyiot.services.device-url}") String deviceUrl,
-            @Value("${capyiot.services.alarm-url}") String alarmUrl) {
+            @Value("${capyiot.services.alarm-url}") String alarmUrl,
+            @Value("${capyiot.services.workflow-url}") String workflowUrl) {
         devices = builder.clone().baseUrl(deviceUrl).build();
         alarms = builder.clone().baseUrl(alarmUrl).build();
+        workflow = builder.clone().baseUrl(workflowUrl).build();
     }
 
     @GetMapping("/api/v1/dashboard/overview")
     Mono<ApiResponse<Overview>> overview(@AuthenticationPrincipal Jwt jwt) {
-        return Mono.zip(get(devices, "/api/v1/devices/summary", jwt), get(alarms, "/api/v1/alarms/summary", jwt))
-                .map(parts -> ApiResponse.ok(new Overview(parts.getT1(), parts.getT2()), UUID.randomUUID().toString()));
+        return Mono.zip(get(devices, "/api/v1/devices/summary", jwt), get(alarms, "/api/v1/alarms/summary", jwt),
+                get(workflow, "/api/v1/workorders/summary", jwt))
+                .map(parts -> ApiResponse.ok(new Overview(parts.getT1(), parts.getT2(), parts.getT3()),
+                        UUID.randomUUID().toString()));
     }
 
     private Mono<JsonNode> get(WebClient service, String path, Jwt jwt) {

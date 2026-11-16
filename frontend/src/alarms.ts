@@ -1,4 +1,5 @@
 import type { Device, Page } from './domain'
+import type { WorkSummary } from './workorders'
 
 export interface Topology {
   version: number
@@ -18,6 +19,7 @@ export interface AlarmSummary {
 export interface Overview {
   devices: { total: number; online: number; offline: number; abnormal: number }
   alarms: AlarmSummary
+  workorders: WorkSummary
 }
 
 export interface Alarm {

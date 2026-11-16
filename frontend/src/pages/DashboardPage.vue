@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { BellRing, CircleCheck, CircleX, HardDrive, Network, Route } from 'lucide-vue-next'
+import { BellRing, CircleCheck, ClipboardList, HardDrive, Network, Route } from 'lucide-vue-next'
 import { request } from '../api'
 import { alarmTitle, relations, severityLabels, type Alarm, type Overview } from '../alarms'
 import { formatTime, type Page } from '../domain'
 import { useNetworkData } from '../networkData'
+import { useLiveUpdates } from '../live'
+import { workStream } from '../workorders'
 import PageHeader from '../components/PageHeader.vue'
 import TopologyGraph from '../components/TopologyGraph.vue'
 
@@ -14,7 +16,15 @@ const overview = ref<Overview>()
 const recent = ref<Alarm[]>([])
 const fetchError = ref('')
 const { topology, markers, error, deviceLive, alarmLive, load } = useNetworkData()
-const ready = computed(() => deviceLive.value === 'connected' && alarmLive.value === 'connected')
+const workflowLive = useLiveUpdates(() => {
+  void refresh()
+}, workStream)
+const ready = computed(
+  () =>
+    deviceLive.value === 'connected' &&
+    alarmLive.value === 'connected' &&
+    workflowLive.value === 'connected',
+)
 const metrics = computed(() => [
   {
     name: '设备总数',
@@ -31,18 +41,18 @@ const metrics = computed(() => [
     to: '/devices?connectivity=ONLINE',
   },
   {
-    name: '离线设备',
-    value: overview.value?.devices.offline,
-    tone: 'red',
-    icon: CircleX,
-    to: '/devices?connectivity=OFFLINE',
-  },
-  {
     name: '活跃告警',
     value: overview.value?.alarms.active,
     tone: 'amber',
     icon: BellRing,
     to: '/alarms',
+  },
+  {
+    name: '待处理工单',
+    value: overview.value?.workorders.pending,
+    tone: 'cyan',
+    icon: ClipboardList,
+    to: '/workorders',
   },
 ])
 

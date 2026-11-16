@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { Alarm, AlarmDetail, Overview } from '../src/alarms'
 import type { Page as Results } from '../src/domain'
+import type { WorkCreated, WorkDetail, WorkOrder } from '../src/workorders'
 
 const run = promisify(execFile)
 const config = Object.fromEntries(
@@ -37,10 +38,18 @@ async function screenshot(page: Page, name: string) {
   }
 }
 
-test('real MQTT demo groups confirmed and suspected outages, preserves temperature evidence and recovers', async ({
+async function action(page: Page, label: string, remark?: string) {
+  await page.locator('.work-actions').getByRole('button', { name: label, exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  if (remark) await dialog.getByLabel('处置说明').fill(remark)
+  await dialog.getByRole('button', { name: '确认操作', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+}
+
+test('real MQTT demo groups outages, opens one work order and closes after verified recovery', async ({
   page,
 }) => {
-  test.setTimeout(155000)
+  test.setTimeout(175000)
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/login')
   await page.getByLabel('账号', { exact: true }).fill('operator')
@@ -139,6 +148,39 @@ test('real MQTT demo groups confirmed and suspected outages, preserves temperatu
     await expect(detail).toContainText('上游故障证据')
     await screenshot(page, 'alarm-evidence.png')
 
+    const related = detail.getByRole('link', { name: /查看工单 WO-/ })
+    await expect(related).toBeVisible()
+    const original = await api<WorkOrder>(page, `/workorders/by-alarm/${confirmed!.id}`)
+    expect(original.createdBy).toBe('system')
+    const token = await page.evaluate(() => sessionStorage.getItem('capyiot.token'))
+    const headers = { Authorization: `Bearer ${token}`, 'Idempotency-Key': `e2e:${confirmed!.id}` }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await page.request.post('/api/v1/workorders', {
+        headers,
+        data: { sourceAlarmId: confirmed!.id },
+      })
+      expect(response.status()).toBe(200)
+      const { data } = (await response.json()) as { data: WorkCreated }
+      expect(data.created).toBe(false)
+      expect(data.order.id).toBe(original.id)
+    }
+    const illegal = await page.request.post(`/api/v1/workorders/${original.id}/transitions`, {
+      headers,
+      data: { expectedVersion: original.version, action: 'CLOSE' },
+    })
+    expect(illegal.status()).toBe(409)
+    expect((await illegal.json()).code).toBe('WORKORDER_ILLEGAL_TRANSITION')
+
+    await related.click()
+    await expect(page).toHaveURL(new RegExp(`/workorders\\?id=${original.id}$`))
+    const work = page.getByRole('complementary', { name: '工单详情' })
+    await expect(work).toContainText('待指派')
+    await action(page, '领取工单')
+    await action(page, '开始处理')
+    await action(page, '添加处置记录', '已检查交换机端口和下游链路')
+    await action(page, '完成处理', '已完成网络排查，等待设备恢复')
+    await expect(work).toContainText('待验证')
+
     const failure = await scenario
     if (failure) throw failure
     await expect
@@ -152,7 +194,27 @@ test('real MQTT demo groups confirmed and suspected outages, preserves temperatu
     await expect
       .poll(async () => (await api<AlarmDetail>(page, `/alarms/${temperature!.id}`)).alarm.status)
       .toBe('RECOVERED')
-    await expect(detail.locator('.alarm-labels')).toContainText('已恢复')
+    await expect(work).toContainText('来源告警已恢复')
+    await action(page, '通过恢复验证', '告警已恢复，受影响设备恢复上报')
+    await action(page, '关闭工单')
+    await expect(work.locator('.alarm-labels')).toContainText('已关闭')
+    await page.reload()
+    await expect(work.locator('.alarm-labels')).toContainText('已关闭')
+    await expect(work.locator('.work-timeline')).toContainText('已检查交换机端口和下游链路')
+    await expect(work.locator('.work-timeline')).toContainText('通过恢复验证')
+    const completed = await api<WorkDetail>(page, `/workorders/${original.id}`)
+    expect(completed.order.status).toBe('CLOSED')
+    expect(completed.timeline.items.filter((entry) => entry.action === 'CREATE')).toHaveLength(1)
+    await screenshot(page, 'workorder-closed.png')
+
+    await page.goto(`/alarms?id=${temperature!.id}`)
+    const manual = page.getByRole('complementary', { name: '告警详情' })
+    await manual.getByRole('button', { name: '创建工单', exact: true }).click()
+    await expect(work).toContainText(temperature!.alarmNo)
+    const independentOrder = await api<WorkOrder>(page, `/workorders/by-alarm/${temperature!.id}`)
+    expect(independentOrder.createdBy).toBe('operator')
+    await work.getByRole('link', { name: temperature!.alarmNo, exact: true }).click()
+    await expect(manual.getByRole('link', { name: /查看工单 WO-/ })).toBeVisible()
   } finally {
     await scenario
   }

@@ -41,6 +41,7 @@ class AlarmSecurity {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/api/v1/alarms/outbox/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").hasAnyRole("ADMIN", "OPERATOR")
                         .requestMatchers(HttpMethod.POST, "/api/v1/alarms/*/acknowledge").hasAnyRole("ADMIN", "OPERATOR")
                         .anyRequest().denyAll())
