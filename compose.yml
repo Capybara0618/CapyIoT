@@ -93,6 +93,10 @@ services:
     build:
       <<: *java-build
       args: { SERVICE: device-ingestion }
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MQTT_URL: tcp://emqx:1883
+      DEVICE_JWT_SECRET: ${DEVICE_JWT_SECRET:?Run python scripts/init_env.py}
     depends_on:
       kafka: { condition: service_healthy }
       emqx: { condition: service_healthy }
@@ -110,9 +114,14 @@ services:
     environment:
       DEVICE_DB_URL: jdbc:mysql://mysql:3306/device_db?connectionTimeZone=UTC
       DEVICE_DB_PASSWORD: ${DEVICE_DB_PASSWORD:?Missing device password}
+      JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
+      DEVICE_JWT_SECRET: ${DEVICE_JWT_SECRET:?Run python scripts/init_env.py}
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
       mysql: { condition: service_healthy }
       redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:8082/actuator/health/readiness | grep UP']
       interval: 10s
@@ -180,6 +189,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks: [internal]
+
+  simulator:
+    profiles: [simulation]
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    environment:
+      API_BASE_URL: http://gateway:8080
+      MQTT_URL: tcp://emqx:1883
+      DEVICE_FILE: /data/devices.json
+    volumes:
+      - ./var/demo-devices.json:/data/devices.json:ro
+    depends_on:
+      gateway: { condition: service_healthy }
+      device-ingestion: { condition: service_healthy }
     networks: [internal]
 
   prometheus:

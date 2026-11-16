@@ -26,6 +26,8 @@ jobs:
       - run: chmod +x backend/mvnw
       - run: ./mvnw -B -ntp verify
         working-directory: backend
+      - run: ./mvnw -B -ntp -f ../simulator/pom.xml verify
+        working-directory: backend
 
   frontend:
     runs-on: ubuntu-latest
@@ -59,6 +61,9 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose up -d --build --wait --wait-timeout 300
       - run: python3 scripts/smoke.py --check-databases
+      - run: python3 scripts/demo_devices.py
+      - run: docker compose --profile simulation build simulator
+      - run: docker compose --profile simulation run --rm --no-deps -T simulator --rounds 2 --interval-ms 1000 --duplicate-first true
       - run: npm ci && npx playwright install --with-deps chromium && npm run test:e2e
         working-directory: frontend
       - if: failure()

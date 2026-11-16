@@ -59,7 +59,7 @@ class SecurityConfiguration {
                 .logout(ServerHttpSecurity.LogoutSpec::disable)
                 .securityContextRepository(NoOpServerSecurityContextRepository.getInstance())
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/api/v1/auth/login", "/actuator/health", "/actuator/health/**", "/actuator/prometheus").permitAll()
+                        .pathMatchers("/api/v1/auth/login", "/api/v1/device-sessions", "/actuator/health", "/actuator/health/**", "/actuator/prometheus").permitAll()
                         .pathMatchers("/actuator/**").denyAll()
                         .anyExchange().authenticated())
                 .exceptionHandling(errors -> errors

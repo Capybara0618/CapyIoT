@@ -12,6 +12,7 @@
 **/playwright-report/
 **/__pycache__/
 *.pyc
+var/
 .idea/
 .vscode/
 .DS_Store
