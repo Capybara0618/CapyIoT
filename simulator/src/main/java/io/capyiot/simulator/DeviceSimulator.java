@@ -9,6 +9,9 @@ import java.nio.file.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
@@ -56,17 +59,29 @@ public class DeviceSimulator {
             }
         }
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-        var mqtt = new MqttClient(broker, "capyiot-sim-" + UUID.randomUUID(), new MemoryPersistence());
+        var workers = Executors.newScheduledThreadPool(6, Thread.ofPlatform().daemon().name("sim-mqtt-", 0).factory());
+        var mqtt = new MqttClient(broker, "capyiot-sim-" + UUID.randomUUID(), new MemoryPersistence(), workers);
         var settings = new MqttConnectOptions();
-        settings.setCleanSession(true); settings.setAutomaticReconnect(true); settings.setConnectionTimeout(10);
+        settings.setCleanSession(true);
+        settings.setConnectionTimeout(10);
         mqtt.setTimeToWait(15000);
-        mqtt.connect(settings);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try { if (mqtt.isConnected()) mqtt.disconnect(); mqtt.close(); }
-            catch (MqttException ignored) { /* The process is already stopping. */ }
-        }));
+        var stopping = new AtomicBoolean();
+        Runnable cleanup = () -> { if (stopping.compareAndSet(false, true)) close(mqtt, workers); };
+        var shutdown = new Thread(cleanup, "sim-mqtt-shutdown");
+        Runtime.getRuntime().addShutdownHook(shutdown);
         try {
+            mqtt.connect(settings);
             for (long round = 0; rounds == 0 || round < rounds; round++) {
+                if (!mqtt.isConnected()) {
+                    try {
+                        mqtt.connect(settings);
+                    } catch (MqttException unavailable) {
+                        if (rounds != 0 && round + 1 == rounds) throw unavailable;
+                        System.err.println("MQTT unavailable; will reconnect on the next round");
+                        Thread.sleep(interval);
+                        continue;
+                    }
+                }
                 for (Device device : devices) {
                     boolean paused = alarmDemo && round > 0 && round < recoverAt
                             && List.of(prefix + "-1-CAM", prefix + "-1-ACS", prefix + "-2-CAM", prefix + "-2-ACS")
@@ -92,9 +107,41 @@ public class DeviceSimulator {
                 System.out.println("Heartbeat round " + (round + 1) + " completed for " + devices.size() + " simulated devices");
                 if (rounds == 0 || round + 1 < rounds) Thread.sleep(interval);
             }
+            if (devices.stream().anyMatch(device -> device.pending != null)) {
+                throw new IllegalStateException("Simulator ended before all pending messages were acknowledged");
+            }
         } finally {
-            if (mqtt.isConnected()) mqtt.disconnect();
-            mqtt.close();
+            try {
+                Runtime.getRuntime().removeShutdownHook(shutdown);
+            } catch (IllegalStateException stoppingJvm) {
+                // The shutdown hook and normal completion share the same cleanup.
+            }
+            cleanup.run();
+        }
+    }
+
+    private static void close(MqttClient mqtt, ScheduledExecutorService workers) {
+        // Synchronous publishes already awaited the broker. Paho's ordinary disconnect waits without a deadline.
+        Thread closer = Thread.ofVirtual().start(() -> {
+            try {
+                try {
+                    if (mqtt.isConnected()) mqtt.disconnectForcibly(0, 2000, true);
+                } finally {
+                    mqtt.close(true);
+                }
+            } catch (MqttException error) {
+                System.err.println("MQTT shutdown failed with reason " + error.getReasonCode());
+            }
+        });
+        try {
+            if (!closer.join(Duration.ofSeconds(5))) {
+                closer.interrupt();
+                System.err.println("MQTT shutdown exceeded five seconds; stopping its workers");
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        } finally {
+            workers.shutdownNow();
         }
     }
 
