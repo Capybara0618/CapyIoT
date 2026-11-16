@@ -2,6 +2,8 @@ package io.capyiot.device;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,6 +36,7 @@ import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
@@ -76,6 +79,7 @@ class DevicePipelineTest {
     @Autowired KafkaTemplate<String, String> kafka;
     @Autowired StringRedisTemplate redis;
     @Autowired DeviceStateProjection projection;
+    @MockitoSpyBean DeviceNotifications notifications;
 
     @Test
     void openApiExportsTheActualDeviceAndEventSchemas() throws Exception {
@@ -188,6 +192,8 @@ class DevicePipelineTest {
             }
         } finally { docker.unpauseContainerCmd(REDIS.getContainerId()).exec(); }
         await().atMost(Duration.ofSeconds(35)).untilAsserted(() -> assertThat(redis.opsForHash().get("device:state:" + id, "status")).isEqualTo("ONLINE"));
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> verify(notifications, atLeastOnce())
+                .changed("CAMPUS-A", id, event.traceId(), false));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM device_event WHERE event_id=?", Long.class, event.eventId())).isEqualTo(1);
     }
 

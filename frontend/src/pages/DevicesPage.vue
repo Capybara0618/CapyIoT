@@ -162,8 +162,9 @@ async function loadDetail(id: string, quiet = false) {
 }
 
 function queueRefresh() {
-  clearTimeout(refreshTimer)
+  if (refreshTimer !== undefined) return
   refreshTimer = setTimeout(() => {
+    refreshTimer = undefined
     void load()
     if (detailOpen.value && detail.value) void loadDetail(detail.value.id, true)
   }, 300)
@@ -176,7 +177,7 @@ watch(
     for (const key of ['keyword', 'type', 'buildingId', 'connectivity', 'health'] as const)
       filters[key] = String(query[key] ?? '')
     filters.page = Number(query.page ?? 1)
-    filters.size = Number(query.size ?? 10)
+    filters.size = Number(query.size ?? 8)
     void load()
     if (query.id) void loadDetail(String(query.id))
     else {

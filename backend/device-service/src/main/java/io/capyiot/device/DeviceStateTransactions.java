@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 class DeviceStateTransactions {
     record Snapshot(String deviceId, String connectivity, String health, long sessionEpoch,
             long seq, Instant heartbeat, long version) {}
-    record Result(Snapshot snapshot, boolean created, boolean stateChanged) {}
+    record Result(Snapshot snapshot, boolean stateChanged) {}
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
 
@@ -36,7 +36,7 @@ class DeviceStateTransactions {
         var existing = jdbc.queryForList("SELECT envelope_hash FROM device_event WHERE event_id=?", String.class, event.eventId());
         if (!existing.isEmpty()) {
             if (!fingerprint.equals(existing.getFirst())) throw DeviceProblem.badRequest("eventId 与已有事件内容冲突");
-            return new Result(before, false, false);
+            return new Result(before, false);
         }
         String status = "PROCESSED";
         if (!Boolean.TRUE.equals(device.get("enabled"))) status = "IGNORED_DISABLED";
@@ -53,7 +53,7 @@ class DeviceStateTransactions {
                 event.seq(), Timestamp.from(event.occurredAt()), Timestamp.from(event.receivedAt()), event.traceId(),
                 status, serialize(event.payload()), fingerprint, partition, offset);
         jdbc.update("INSERT INTO inbox_event(consumer_group,event_id) VALUES ('device-state-group',?)", event.eventId());
-        if (!status.equals("PROCESSED")) return new Result(before, true, false);
+        if (!status.equals("PROCESSED")) return new Result(before, false);
 
         String connectivity = before.connectivity();
         Instant heartbeat = before.heartbeat();
@@ -92,7 +92,7 @@ class DeviceStateTransactions {
                     VALUES ('DEVICE',?,'DEVICE_STATE_CHANGED',?,?,?,?)
                     """, event.deviceId(), id, DeviceEvent.STATUS_TOPIC, event.deviceId(), body);
         }
-        return new Result(after, true, changed);
+        return new Result(after, changed);
     }
 
     Snapshot snapshot(String deviceId) {

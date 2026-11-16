@@ -63,7 +63,8 @@ class DeviceKafka {
             }
             // A failed Redis write leaves the Kafka offset uncommitted. Redelivery repairs from MySQL.
             projection.apply(result.snapshot());
-            if (result.created()) notifications.changed(event.campusId(), event.deviceId(), event.traceId(), result.stateChanged());
+            // Redelivery can be the first successful Redis projection after an infrastructure failure.
+            notifications.changed(event.campusId(), event.deviceId(), event.traceId(), result.stateChanged());
         }
         acknowledgment.acknowledge();
     }

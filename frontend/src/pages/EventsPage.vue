@@ -108,13 +108,15 @@ async function sync() {
     error.value = (cause as Error).message
   } finally {
     syncing = false
+    if (pending && current !== version) scheduleSync()
   }
 }
 
 function scheduleSync() {
   pending = true
-  clearTimeout(timer)
+  if (timer !== undefined) return
   timer = setTimeout(() => {
+    timer = undefined
     void sync()
   }, 250)
 }
