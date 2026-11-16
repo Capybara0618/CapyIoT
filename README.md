@@ -38,7 +38,7 @@ cd backend
 
 Windows 使用 `mvnw.cmd verify`。后端模块为 Gateway、设备接入、设备管理、告警治理、工单协同及共享契约。MySQL 中三个独立业务库由各自服务的 Flyway 管理，本地共用一个 MySQL 实例。
 
-前端需要 Node.js 22.12+，CI 使用 Node.js 24。
+前端需要 Node.js 24，CI 与容器构建使用相同主版本。
 
 ```sh
 cd frontend
