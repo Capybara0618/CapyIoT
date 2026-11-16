@@ -4,6 +4,34 @@ server:
 spring:
   application:
     name: device-service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 3s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 30000
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 50
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      type: batch
+      ack-mode: manual_immediate
+      concurrency: 2
+  task:
+    scheduling:
+      pool:
+        size: 2
   datasource:
     url: ${DEVICE_DB_URL:jdbc:mysql://localhost:3306/device_db?connectionTimeZone=UTC}
     username: ${DEVICE_DB_USER:device_app}
@@ -25,3 +53,11 @@ management:
           include: readinessState,db
       probes:
         enabled: true
+capyiot:
+  user-jwt-secret: ${JWT_SECRET}
+  device-jwt-secret: ${DEVICE_JWT_SECRET}
+springdoc:
+  api-docs:
+    path: /api/v1/openapi
+    version: OPENAPI_3_1
+  paths-to-match: /api/v1/**

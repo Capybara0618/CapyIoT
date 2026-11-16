@@ -12,6 +12,8 @@ import {
 import { logout, session } from './session'
 import PlaceholderPage from './pages/PlaceholderPage.vue'
 import LoginPage from './pages/LoginPage.vue'
+import DevicesPage from './pages/DevicesPage.vue'
+import EventsPage from './pages/EventsPage.vue'
 
 export const pages = [
   {
@@ -77,7 +79,16 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/dashboard' },
     { path: '/login', component: LoginPage, meta: { title: '登录', theme: 'dark' } },
-    ...pages.map((page) => ({ path: page.path, component: PlaceholderPage, meta: page })),
+    ...pages.map((page) => ({
+      path: page.path,
+      component:
+        page.path === '/devices'
+          ? DevicesPage
+          : page.path === '/events'
+            ? EventsPage
+            : PlaceholderPage,
+      meta: page,
+    })),
     { path: '/:pathMatch(.*)*', redirect: '/dashboard' },
   ],
 })

@@ -15,6 +15,10 @@ class GatewayRoutes {
                 .route("device-health", route -> route.path("/api/v1/health")
                         .filters(filters -> filters.setPath("/internal/health"))
                         .uri(deviceUrl))
+                .route("device-stream", route -> route.path("/api/v1/stream").metadata("response-timeout", -1).uri(deviceUrl))
+                .route("device-api", route -> route.path("/api/v1/devices/**", "/api/v1/devices", "/api/v1/locations/**", "/api/v1/locations",
+                                "/api/v1/topology/**", "/api/v1/device-sessions", "/api/v1/events/**", "/api/v1/events", "/api/v1/openapi")
+                        .uri(deviceUrl))
                 .build();
     }
 }
