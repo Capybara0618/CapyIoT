@@ -1,0 +1,25 @@
+# Local configuration
+.env
+.env.*
+!.env.example
+*.log
+
+# Build output
+**/target/
+**/node_modules/
+**/dist/
+**/test-results/
+**/playwright-report/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Private local planning and references
+CapyIoT-Blueprint/
+*Blueprint*.zip
+AGENTS.md
+docs/
+**/design-references/
+PROGRESS.md
+benchmarks/results/
