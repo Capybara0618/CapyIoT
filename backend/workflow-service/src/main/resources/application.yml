@@ -1,0 +1,27 @@
+server:
+  port: 8084
+  shutdown: graceful
+spring:
+  application:
+    name: workflow-service
+  datasource:
+    url: ${WORKFLOW_DB_URL:jdbc:mysql://localhost:3306/workflow_db?connectionTimeZone=UTC}
+    username: ${WORKFLOW_DB_USER:workflow_app}
+    password: ${WORKFLOW_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    enabled: true
+    clean-disabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db
+      probes:
+        enabled: true

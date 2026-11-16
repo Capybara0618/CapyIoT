@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: capyiot-java
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - gateway:9090
+          - device-ingestion:8081
+          - device-service:8082
+          - alarm-service:8083
+          - workflow-service:8084

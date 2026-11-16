@@ -1,0 +1,27 @@
+server:
+  port: 8083
+  shutdown: graceful
+spring:
+  application:
+    name: alarm-service
+  datasource:
+    url: ${ALARM_DB_URL:jdbc:mysql://localhost:3306/alarm_db?connectionTimeZone=UTC}
+    username: ${ALARM_DB_USER:alarm_app}
+    password: ${ALARM_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    enabled: true
+    clean-disabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db
+      probes:
+        enabled: true
