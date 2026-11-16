@@ -58,7 +58,7 @@ def main() -> None:
                 "docker", "compose", "exec", "-T", "mysql", "sh", "-c",
                 f'MYSQL_PWD="${owner.upper()}_DB_PASSWORD" mysql -u{owner}_app -N -e "{sql}"',
             ], check=True, capture_output=True, text=True)
-            expected = "3" if owner == "device" else "1"
+            expected = {"device": "5", "alarm": "2", "workflow": "1"}[owner]
             assert result.stdout.strip() == expected, f"{owner} migration missing"
             other = "alarm" if owner == "device" else "device"
             denied = subprocess.run([

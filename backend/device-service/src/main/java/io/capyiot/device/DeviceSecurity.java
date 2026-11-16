@@ -46,7 +46,8 @@ class DeviceSecurity {
                 .formLogin(form -> form.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/**", "/actuator/prometheus", "/internal/health", "/api/v1/device-sessions").permitAll()
+                        .requestMatchers("/actuator/health/**", "/actuator/prometheus", "/internal/health",
+                                "/internal/topology", "/api/v1/device-sessions").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/**").hasAnyRole("ADMIN", "OPERATOR")
                         .requestMatchers("/api/v1/**").hasRole("ADMIN")
                         .anyRequest().denyAll())

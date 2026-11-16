@@ -56,6 +56,7 @@ management:
 capyiot:
   user-jwt-secret: ${JWT_SECRET}
   device-jwt-secret: ${DEVICE_JWT_SECRET}
+  topology-sync-token: ${TOPOLOGY_SYNC_TOKEN:}
 springdoc:
   api-docs:
     path: /api/v1/openapi

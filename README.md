@@ -2,7 +2,7 @@
 
 云原生智慧园区物联设备接入与分布式告警治理平台，个人开源项目。
 
-当前版本已打通设备注册、MQTT 接入、Kafka 消费、MySQL 状态持久化、Redis 状态投影和浏览器实时事件查询。设备资产中心与实时事件中心使用真实数据，其余页面显示接入进度。
+当前版本已打通设备注册、MQTT 接入、Kafka 消费、心跳离线巡检和拓扑关联告警。驾驶舱、设备资产、实时事件、网络拓扑和告警治理使用真实数据。
 
 ## 本地启动
 
@@ -43,13 +43,28 @@ docker compose --profile simulation stop simulator
 docker compose --profile simulation run --rm --no-deps simulator --rounds 2 --interval-ms 1000 --start-seq 0 --duplicate-first true
 ```
 
-有限轮次示例会额外重复发送首轮的相同 eventId，可在事件中心验证去重。执行前停止已有模拟器，避免两次运行竞争设备会话。当前已实现心跳上线、异常与显式恢复处理，心跳超时离线巡检及告警、工单闭环将在后续版本实现。
+有限轮次示例会额外重复发送首轮的相同 eventId，可在事件中心验证去重。执行前停止已有模拟器，避免两次运行竞争设备会话。上报心跳的设备连续 30 秒未收到新心跳时，5 秒巡检会将其切换为离线；新心跳恢复连接状态，健康异常需要单独恢复。
 
 注册和编辑仅平台管理员可操作，运维账号可查询。设备注册返回一次性设备凭据，数据库保存 PBKDF2 哈希。演示脚本将模拟器凭据写入本地 `var/demo-devices.json`，重复运行复用已有设备。保留此文件与数据库数据卷的对应关系，凭据遗失时可用 `--prefix NEWDEMO` 注册另一组设备。`.env`、`var/` 均被 Git 和 Docker 构建上下文排除。
 
 设备通过 `POST /api/v1/device-sessions` 以设备 ID、凭据和 sessionId 获取带服务端会话代次的令牌，然后向 `capyiot/{campusId}/devices/{deviceId}/events` 发布 QoS 1 消息。消息包含 eventId、eventType、schemaVersion、campusId、deviceId、sessionId、seq、occurredAt、payload 和 sessionToken。模拟器提供完整调用示例。
 
 接入服务校验身份与消息结构，Kafka 确认后手动确认 MQTT 消息。Device Service 按设备处理事件，拒绝状态回退并幂等落库，再更新 Redis；Redis 故障时保留消费重试。消息令牌在标准化时移除，非法消息以摘要和原因进入隔离主题。OpenAPI JSON 位于 `/api/v1/openapi`，使用登录接口返回的 Bearer 令牌访问，覆盖设备、空间、拓扑和事件接口。
+
+## 拓扑告警演示
+
+完成演示设备注册和模拟器镜像构建后，运行以下有限场景。它先发送心跳，再触发故障，最后恢复。
+
+```sh
+docker compose --profile simulation stop simulator
+docker compose --profile simulation run --rm --no-deps simulator --scenario alarm-demo
+```
+
+- 1 号楼交换机主动报告故障，同时两台下游设备停止心跳。超时后告警中心显示已确认的上游故障及子告警。
+- 2 号楼仅有两台直属下游停止心跳，形成疑似上游故障。拓扑以橙色虚线标识疑似链路，以红色实线标识已确认链路。
+- 3 号楼传感器保持在线，温度越限产生独立告警。约一分钟后，模拟器恢复心跳、上报交换机恢复与正常温度。持续观察数据时可启动常规模拟器。
+
+在告警详情可查看子告警、受影响设备和原始证据，并跳转到拓扑或 MQTT 事件。操作员和管理员均可确认活跃主告警。默认拓扑窗口 60 秒，疑似门槛为 2 台直属下游；温度告警在 35℃ 触发、降至 33℃ 恢复。告警 OpenAPI 在 `/api/v1/alarms/openapi`，使用相同的 Bearer 令牌访问。工单流转随下一阶段接入。
 
 ## 开发与验证
 

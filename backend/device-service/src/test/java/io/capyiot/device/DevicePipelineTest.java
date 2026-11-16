@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import io.capyiot.contract.DeviceEvent;
 import io.capyiot.contract.DeviceMessage;
+import io.capyiot.contract.TopologyEvent;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -47,7 +48,7 @@ import org.testcontainers.kafka.KafkaContainer;
 
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "capyiot.offline-sweep-ms=3600000")
 @Import(DevicePipelineTest.Topics.class)
 class DevicePipelineTest {
     private static final byte[] KEY = "test-only-device-key-at-least-32-bytes".getBytes(StandardCharsets.UTF_8);
@@ -71,6 +72,7 @@ class DevicePipelineTest {
         @Bean NewTopic raw() { return TopicBuilder.name(DeviceEvent.TOPIC).partitions(8).replicas(1).build(); }
         @Bean NewTopic status() { return TopicBuilder.name(DeviceEvent.STATUS_TOPIC).partitions(8).replicas(1).build(); }
         @Bean NewTopic rejected() { return TopicBuilder.name(DeviceEvent.REJECTED_TOPIC).partitions(1).replicas(1).build(); }
+        @Bean NewTopic topologyChanges() { return TopicBuilder.name(TopologyEvent.TOPIC).partitions(8).replicas(1).build(); }
     }
 
     @Autowired TestRestTemplate rest;
@@ -79,7 +81,85 @@ class DevicePipelineTest {
     @Autowired KafkaTemplate<String, String> kafka;
     @Autowired StringRedisTemplate redis;
     @Autowired DeviceStateProjection projection;
+    @Autowired DeviceStateTransactions states;
+    @Autowired OfflineSweep sweep;
+    @Autowired net.javacrumbs.shedlock.core.LockProvider sweepLock;
     @MockitoSpyBean DeviceNotifications notifications;
+
+    @Test
+    void offlineSweepRejectsStaleCandidatesAndExpiresOnceThenHeartbeatsRecover() throws Exception {
+        var registered = register("CAMERA", null);
+        String id = registered.path("device").path("id").asText();
+        session(registered, "sweep-session", 200);
+        DeviceEvent heartbeat = event(id, 1, "sweep-session", 1, DeviceMessage.Type.HEARTBEAT);
+        send(heartbeat);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+                assertThat(redis.opsForHash().get("device:state:" + id, "status")).isEqualTo("ONLINE"));
+        var before = states.snapshot(id);
+        Instant expiredAt = before.heartbeat().plusSeconds(31);
+        assertThat(states.expire(id, before.version() - 1, expiredAt, 30000).changed()).isFalse();
+        sweep.sweep(before.heartbeat().plusSeconds(29));
+        assertThat(states.snapshot(id).connectivity()).isEqualTo("ONLINE");
+        redis.delete("device:state:" + id);
+        sweep.sweep(expiredAt); // Lost Hash is repaired from MySQL.
+        assertThat(redis.opsForHash().get("device:state:" + id, "status")).isEqualTo("ONLINE");
+        sweep.sweep(expiredAt);
+        sweep.sweep(expiredAt);
+        assertThat(states.snapshot(id).version()).isEqualTo(before.version() + 1);
+        assertThat(states.snapshot(id).connectivity()).isEqualTo("OFFLINE");
+        assertThat(redis.opsForZSet().score("device:offline:deadline", id)).isNull();
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM device_state_history WHERE device_id=? AND reason='HEARTBEAT_TIMEOUT'
+                """, Long.class, id)).isEqualTo(1);
+        send(event(id, 1, "sweep-session", 2, DeviceMessage.Type.HEARTBEAT));
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+                assertThat(redis.opsForHash().get("device:state:" + id, "status")).isEqualTo("ONLINE"));
+    }
+
+    @Test
+    void twoJdbcShedLockProvidersCannotOwnTheSweepTogether() {
+        var anotherReplica = new net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider(
+                net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider.Configuration.builder()
+                        .withJdbcTemplate(jdbc).usingDbTime().build());
+        var config = new net.javacrumbs.shedlock.core.LockConfiguration(
+                Instant.now(), "device-offline-sweep", Duration.ofSeconds(30), Duration.ZERO);
+        var lock = sweepLock.lock(config).orElseThrow();
+        try {
+            assertThat(anotherReplica.lock(config)).isEmpty();
+        } finally {
+            lock.unlock();
+        }
+        var second = anotherReplica.lock(config);
+        assertThat(second).isPresent();
+        second.orElseThrow().unlock();
+    }
+
+    @Test
+    void pendingPredecessorBlocksSameOutboxStreamButNotOtherDevices() {
+        String first = UUID.randomUUID().toString(), second = UUID.randomUUID().toString();
+        String independent = UUID.randomUUID().toString();
+        String sameKey = UUID.randomUUID().toString();
+        String sql = """
+                INSERT INTO outbox_event(aggregate_type,aggregate_id,event_type,event_id,topic,message_key,
+                    payload_json,next_retry_at)
+                VALUES ('DEVICE',?,'DEVICE_STATE_CHANGED',?,?,?,'{}',TIMESTAMPADD(SECOND,?,CURRENT_TIMESTAMP(3)))
+                """;
+        jdbc.update(sql, sameKey, first, DeviceEvent.STATUS_TOPIC, sameKey, 90);
+        jdbc.update(sql, sameKey, second, DeviceEvent.STATUS_TOPIC, sameKey, 0);
+        jdbc.update(sql, independent, independent, DeviceEvent.STATUS_TOPIC, independent, 0);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+                assertThat(outboxStatus(independent)).isEqualTo("SENT"));
+        assertThat(outboxStatus(second)).isEqualTo("PENDING");
+        jdbc.update("UPDATE outbox_event SET next_retry_at=CURRENT_TIMESTAMP(3) WHERE event_id=?", first);
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+            assertThat(outboxStatus(first)).isEqualTo("SENT");
+            assertThat(outboxStatus(second)).isEqualTo("SENT");
+        });
+    }
+
+    private String outboxStatus(String eventId) {
+        return jdbc.queryForObject("SELECT status FROM outbox_event WHERE event_id=?", String.class, eventId);
+    }
 
     @Test
     void openApiExportsTheActualDeviceAndEventSchemas() throws Exception {

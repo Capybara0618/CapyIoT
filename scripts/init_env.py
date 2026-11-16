@@ -29,6 +29,7 @@ def main() -> None:
         "GRAFANA_ADMIN_PASSWORD": secrets.token_urlsafe(24),
         "EMQX_NODE_COOKIE": secrets.token_hex(24),
         "DEVICE_JWT_SECRET": base64.b64encode(secrets.token_bytes(48)).decode(),
+        "TOPOLOGY_SYNC_TOKEN": secrets.token_urlsafe(32),
     }
     try:
         with destination.open("x", encoding="utf-8", newline="\n") as config:

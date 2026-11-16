@@ -4,6 +4,20 @@ server:
 spring:
   application:
     name: alarm-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 50
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
+  task:
+    scheduling:
+      pool:
+        size: 2
   datasource:
     url: ${ALARM_DB_URL:jdbc:mysql://localhost:3306/alarm_db?connectionTimeZone=UTC}
     username: ${ALARM_DB_USER:alarm_app}
@@ -25,3 +39,12 @@ management:
           include: readinessState,db
       probes:
         enabled: true
+capyiot:
+  user-jwt-secret: ${JWT_SECRET}
+  device-service-url: ${DEVICE_SERVICE_URL:http://localhost:8082}
+  topology-sync-token: ${TOPOLOGY_SYNC_TOKEN:}
+springdoc:
+  api-docs:
+    path: /api/v1/alarms/openapi
+    version: OPENAPI_3_1
+  paths-to-match: /api/v1/**

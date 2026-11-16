@@ -16,13 +16,16 @@ class DeviceAssets {
     private final JdbcTemplate jdbc;
     private final DeviceMapper mapper;
     private final DeviceQueries queries;
+    private final DeviceTopology topology;
     private final PasswordEncoder passwords;
     private final SecureRandom random = new SecureRandom();
 
-    DeviceAssets(JdbcTemplate jdbc, DeviceMapper mapper, DeviceQueries queries, PasswordEncoder passwords) {
+    DeviceAssets(JdbcTemplate jdbc, DeviceMapper mapper, DeviceQueries queries, DeviceTopology topology,
+            PasswordEncoder passwords) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.queries = queries;
+        this.topology = topology;
         this.passwords = passwords;
     }
 
@@ -51,7 +54,7 @@ class DeviceAssets {
         mapper.insert(asset);
         jdbc.update("INSERT INTO device_state_snapshot(device_id) VALUES (?)", asset.id);
         setParent(campusId, asset.id, emptyToNull(request.upstreamNodeId()));
-        jdbc.update("UPDATE campus SET topology_version=topology_version+1 WHERE id=?", campusId);
+        topology.publishChange(campusId, asset.id);
         return new Registration(queries.find(campusId, asset.id), credential);
     }
 
@@ -67,7 +70,7 @@ class DeviceAssets {
                 emptyToNull(request.areaId()), Timestamp.from(Instant.now()), id, campusId, request.expectedVersion());
         if (updated != 1) throw DeviceProblem.conflict("设备已被修改，请刷新后重试");
         setParent(campusId, id, emptyToNull(request.upstreamNodeId()));
-        jdbc.update("UPDATE campus SET topology_version=topology_version+1 WHERE id=?", campusId);
+        topology.publishChange(campusId, id);
         return queries.find(campusId, id);
     }
 
@@ -104,12 +107,13 @@ class DeviceAssets {
 
     @Transactional(readOnly = true)
     public Map<String, Object> topology(String campusId, String buildingId) {
-        Long version = jdbc.queryForObject("SELECT topology_version FROM campus WHERE id=?", Long.class, campusId);
+        var versions = jdbc.queryForList("SELECT topology_version FROM campus WHERE id=?", Long.class, campusId);
+        if (versions.isEmpty()) throw DeviceProblem.notFound("园区不存在");
         var nodes = queries.list(campusId, null, buildingId, null, null, null, 1, 100);
         var edges = jdbc.queryForList("SELECT id,upstream_device_id source,downstream_device_id target,version FROM network_link WHERE campus_id=? ORDER BY id", campusId);
         var ids = new HashSet<>(nodes.items().stream().map(DeviceView::id).toList());
         edges.removeIf(edge -> !ids.contains(edge.get("source")) || !ids.contains(edge.get("target")));
-        return Map.of("version", version == null ? 0 : version, "nodes", nodes.items(), "edges", edges,
+        return Map.of("version", versions.getFirst(), "nodes", nodes.items(), "edges", edges,
                 "totalNodes", nodes.total(), "truncated", nodes.total() > nodes.items().size());
     }
 
@@ -119,8 +123,9 @@ class DeviceAssets {
         if (version != request.expectedVersion()) throw DeviceProblem.conflict("拓扑已更新，请重新获取快照");
         queries.find(campusId, request.downstreamDeviceId());
         setParent(campusId, request.downstreamDeviceId(), request.upstreamDeviceId());
-        jdbc.update("UPDATE campus SET topology_version=topology_version+1 WHERE id=?", campusId);
-        return Map.of("version", version + 1);
+        jdbc.update("UPDATE device SET version=version+1,updated_at=CURRENT_TIMESTAMP(3) WHERE id=?",
+                request.downstreamDeviceId());
+        return Map.of("version", topology.publishChange(campusId, request.downstreamDeviceId()));
     }
 
     private long lockCampus(String campusId) {
