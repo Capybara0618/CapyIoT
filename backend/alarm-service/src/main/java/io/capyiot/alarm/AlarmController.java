@@ -3,6 +3,8 @@ package io.capyiot.alarm;
 import static io.capyiot.alarm.AlarmQueries.response;
 
 import io.capyiot.contract.ApiResponse;
+import io.capyiot.contract.AlarmEvent;
+import io.capyiot.outbox.OutboxRelay;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import java.io.IOException;
 import java.util.List;
@@ -24,8 +26,10 @@ class AlarmController {
     private final AlarmQueries queries;
     private final AlarmNotifications notifications;
     private final AlarmQueries.Rules rules;
+    private final AlarmOutbox sources;
+    private final OutboxRelay relay;
 
-    AlarmController(AlarmQueries queries, AlarmNotifications notifications,
+    AlarmController(AlarmQueries queries, AlarmNotifications notifications, AlarmOutbox sources, OutboxRelay relay,
             @Value("${capyiot.alarm-topology-window-seconds:60}") long window,
             @Value("${capyiot.alarm-flap-cooldown-seconds:60}") long cooldown,
             @Value("${capyiot.alarm-minimum-downstream:2}") int minimum,
@@ -33,6 +37,8 @@ class AlarmController {
             @Value("${capyiot.alarm-temperature-recovery:33}") double recovery) {
         this.queries = queries;
         this.notifications = notifications;
+        this.sources = sources;
+        this.relay = relay;
         this.rules = new AlarmQueries.Rules(window, minimum, cooldown, limit, recovery);
     }
 
@@ -70,6 +76,25 @@ class AlarmController {
 
     @GetMapping("/alarm-rules")
     ApiResponse<AlarmQueries.Rules> rules() { return response(rules); }
+
+    @GetMapping("/alarms/{id}/workflow-source")
+    ApiResponse<AlarmEvent.Source> source(@AuthenticationPrincipal Jwt jwt, @PathVariable long id) {
+        return response(sources.source(campus(jwt), id));
+    }
+
+    @GetMapping("/alarms/outbox/dead")
+    ApiResponse<List<OutboxRelay.Dead>> dead(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "0") long after) {
+        return response(relay.dead(campus(jwt), after, 50));
+    }
+
+    @PostMapping("/alarms/outbox/{id}/retry")
+    ApiResponse<Boolean> retry(@AuthenticationPrincipal Jwt jwt, @PathVariable long id) {
+        if (!relay.retry(campus(jwt), id, jwt.getSubject())) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "待补发事件不存在");
+        }
+        return response(true);
+    }
 
     @GetMapping(value = "/alarms/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     SseEmitter stream(@AuthenticationPrincipal Jwt jwt) throws IOException {

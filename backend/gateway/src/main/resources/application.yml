@@ -15,6 +15,7 @@ capyiot:
   services:
     device-url: ${DEVICE_SERVICE_URL:http://localhost:8082}
     alarm-url: ${ALARM_SERVICE_URL:http://localhost:8083}
+    workflow-url: ${WORKFLOW_SERVICE_URL:http://localhost:8084}
   auth:
     jwt-secret: ${JWT_SECRET}
     campus-id: CAMPUS-A
