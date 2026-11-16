@@ -16,7 +16,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-@SpringBootTest(properties = {"spring.kafka.listener.auto-startup=false", "capyiot.outbox-enabled=false"})
+@SpringBootTest(properties = {"spring.kafka.listener.auto-startup=false", "capyiot.outbox-enabled=false", "capyiot.sweep-enabled=false"})
 class DatabaseMigrationTest {
     @Container
     @ServiceConnection
@@ -37,7 +37,7 @@ class DatabaseMigrationTest {
     void flywayCreatesTheOwnedSchemaAndPreventsDuplicateOutboxEvents() {
         assertThat(jdbc.queryForObject("SELECT DATABASE()", String.class)).isEqualTo("device_db");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class))
-                .isEqualTo(3);
+                .isEqualTo(5);
         String insert = """
                 INSERT INTO outbox_event (aggregate_type, aggregate_id, event_type, event_id, topic, message_key, payload_json)
                 VALUES ('DEVICE', 'device-1', 'DEVICE_UPDATED', 'event-1', 'iot.device.status.v1', 'device-1', '{}')

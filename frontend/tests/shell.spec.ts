@@ -57,7 +57,7 @@ test('eight routes use the specified themes and fit three desktop widths', async
       await expect(page).toHaveURL(new RegExp(`${path}$`))
       await expect(page.getByRole('heading', { name: title })).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      if (!['/devices', '/events'].includes(path)) {
+      if (['/workorders', '/scenarios', '/observability'].includes(path)) {
         await expect(page.getByText('业务功能待接入', { exact: true })).toBeVisible()
       }
       expect(
@@ -66,7 +66,10 @@ test('eight routes use the specified themes and fit three desktop widths', async
       if (['/devices', '/events'].includes(path)) {
         await expect(page.locator('.table-panel')).toHaveAttribute('aria-busy', 'false')
       }
-      if (process.env.CAPYIOT_SCREENSHOT_DIR && ['/devices', '/events'].includes(path)) {
+      if (
+        process.env.CAPYIOT_SCREENSHOT_DIR &&
+        ['/dashboard', '/devices', '/topology', '/events', '/alarms'].includes(path)
+      ) {
         await page.screenshot({
           path: resolve(process.env.CAPYIOT_SCREENSHOT_DIR, `${path.slice(1)}-${width}.png`),
           fullPage: true,

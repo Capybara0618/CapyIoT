@@ -1,6 +1,6 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-export function useLiveUpdates(onChange: () => void) {
+export function useLiveUpdates(onChange: () => void, path = '/api/v1/stream') {
   const status = ref<'connecting' | 'connected' | 'disconnected'>('connecting')
   let controller: AbortController | undefined
   let idleTimer: ReturnType<typeof setTimeout> | undefined
@@ -20,7 +20,7 @@ export function useLiveUpdates(onChange: () => void) {
       }
       try {
         keepAlive()
-        const response = await fetch('/api/v1/stream', {
+        const response = await fetch(path, {
           headers: { Authorization: `Bearer ${sessionStorage.getItem('capyiot.token') ?? ''}` },
           signal: connection.signal,
         })
@@ -54,7 +54,9 @@ export function useLiveUpdates(onChange: () => void) {
               if (
                 frame
                   .split('\n')
-                  .some((line) => /^event:\s*(events.changed|device.state.changed)/.test(line))
+                  .some((line) =>
+                    /^event:\s*(events\.changed|device\.state\.changed|alarm\.updated)$/.test(line),
+                  )
               )
                 onChange()
               boundary = buffer.indexOf('\n\n')

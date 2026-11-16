@@ -529,7 +529,14 @@ onBeforeUnmount(() => {
               <dt>会话版本 / 序号</dt>
               <dd>{{ detail.sessionEpoch }} / {{ detail.seq < 0 ? '尚未上报' : detail.seq }}</dd>
             </dl>
-            <ElButton v-if="admin" @click="openForm(detail)">编辑设备配置</ElButton></ElTabPane
+            <div class="alarm-action-row">
+              <RouterLink
+                class="text-link"
+                :to="{ path: '/topology', query: { nodeId: detail.id } }"
+                >定位拓扑</RouterLink
+              >
+              <ElButton v-if="admin" @click="openForm(detail)">编辑设备配置</ElButton>
+            </div></ElTabPane
           ><ElTabPane label="最近事件"
             ><div v-if="!history.length" class="drawer-status">尚无设备事件</div>
             <ol v-else class="event-timeline">

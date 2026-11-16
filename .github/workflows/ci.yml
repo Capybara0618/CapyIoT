@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feat/**', 'fix/**']
+    branches: [main, 'feat/**', 'fix/**', 'codex/**']
   pull_request:
 
 permissions:
@@ -64,6 +64,7 @@ jobs:
       - run: python3 scripts/demo_devices.py
       - run: docker compose --profile simulation build simulator
       - run: docker compose --profile simulation run --rm --no-deps -T simulator --rounds 2 --interval-ms 1000 --duplicate-first true
+        timeout-minutes: 2
       - run: npm ci && npx playwright install --with-deps chromium && npm run test:e2e
         working-directory: frontend
       - if: failure()

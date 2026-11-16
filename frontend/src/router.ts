@@ -15,6 +15,14 @@ import LoginPage from './pages/LoginPage.vue'
 import DevicesPage from './pages/DevicesPage.vue'
 import EventsPage from './pages/EventsPage.vue'
 
+const featurePages = {
+  '/devices': DevicesPage,
+  '/events': EventsPage,
+  '/dashboard': () => import('./pages/DashboardPage.vue'),
+  '/topology': () => import('./pages/TopologyPage.vue'),
+  '/alarms': () => import('./pages/AlarmsPage.vue'),
+}
+
 export const pages = [
   {
     path: '/dashboard',
@@ -81,12 +89,7 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { title: '登录', theme: 'dark' } },
     ...pages.map((page) => ({
       path: page.path,
-      component:
-        page.path === '/devices'
-          ? DevicesPage
-          : page.path === '/events'
-            ? EventsPage
-            : PlaceholderPage,
+      component: featurePages[page.path as keyof typeof featurePages] ?? PlaceholderPage,
       meta: page,
     })),
     { path: '/:pathMatch(.*)*', redirect: '/dashboard' },

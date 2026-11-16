@@ -9,13 +9,16 @@ import java.nio.file.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 public class DeviceSimulator {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static class Device {
-        final String id, campusId, secret, type, sessionId;
+        final String id, campusId, secret, type, sessionId, code;
         long seq;
         String token;
         Instant expires;
@@ -23,6 +26,7 @@ public class DeviceSimulator {
         Device(JsonNode config, long startSeq) {
             id = config.path("deviceId").asText(); campusId = config.path("campusId").asText();
             secret = config.path("secret").asText(); type = config.path("type").asText();
+            code = config.path("deviceCode").asText();
             sessionId = UUID.randomUUID().toString(); seq = startSeq;
             if (id.isBlank() || campusId.isBlank() || secret.isBlank()) throw new IllegalArgumentException("Device configuration is incomplete");
         }
@@ -37,26 +41,57 @@ public class DeviceSimulator {
         long interval = Long.parseLong(options.getOrDefault("interval-ms", "10000"));
         long rounds = Long.parseLong(options.getOrDefault("rounds", "0"));
         boolean duplicate = Boolean.parseBoolean(options.getOrDefault("duplicate-first", "false"));
+        boolean alarmDemo = "alarm-demo".equals(options.get("scenario"));
+        if (options.containsKey("scenario") && !alarmDemo) throw new IllegalArgumentException("Unknown simulator scenario");
+        String prefix = options.getOrDefault("prefix", "DEMO");
+        // Run a warmup, a fault long enough for the server timeout, and two recovery rounds.
+        long recoverAt = alarmDemo ? Math.max(2, 40000 / Math.max(interval, 1) + 2) : 0;
+        if (alarmDemo) rounds = recoverAt + 2;
         if (start < 0 || start > 9007199254740991L || interval < 1 || rounds < 0) throw new IllegalArgumentException("Invalid sequence, interval or rounds");
         var devices = new ArrayList<Device>();
         JsonNode configuration = JSON.readTree(Files.readString(Path.of(file)));
         if (!configuration.isArray() || configuration.isEmpty()) throw new IllegalArgumentException("Device configuration must be a nonempty JSON array");
         configuration.forEach(config -> devices.add(new Device(config, start)));
+        if (alarmDemo) {
+            var codes = devices.stream().map(device -> device.code).collect(java.util.stream.Collectors.toSet());
+            for (String required : List.of("-1-SW", "-1-CAM", "-1-ACS", "-2-CAM", "-2-ACS", "-3-SEN")) {
+                if (!codes.contains(prefix + required)) throw new IllegalArgumentException("Demo devices are not registered for " + prefix);
+            }
+        }
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-        var mqtt = new MqttClient(broker, "capyiot-sim-" + UUID.randomUUID(), new MemoryPersistence());
+        var workers = Executors.newScheduledThreadPool(6, Thread.ofPlatform().daemon().name("sim-mqtt-", 0).factory());
+        var mqtt = new MqttClient(broker, "capyiot-sim-" + UUID.randomUUID(), new MemoryPersistence(), workers);
         var settings = new MqttConnectOptions();
-        settings.setCleanSession(true); settings.setAutomaticReconnect(true); settings.setConnectionTimeout(10);
+        settings.setCleanSession(true);
+        settings.setConnectionTimeout(10);
         mqtt.setTimeToWait(15000);
-        mqtt.connect(settings);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try { if (mqtt.isConnected()) mqtt.disconnect(); mqtt.close(); }
-            catch (MqttException ignored) { /* The process is already stopping. */ }
-        }));
+        var stopping = new AtomicBoolean();
+        Runnable cleanup = () -> { if (stopping.compareAndSet(false, true)) close(mqtt, workers); };
+        var shutdown = new Thread(cleanup, "sim-mqtt-shutdown");
+        Runtime.getRuntime().addShutdownHook(shutdown);
         try {
+            mqtt.connect(settings);
             for (long round = 0; rounds == 0 || round < rounds; round++) {
+                if (!mqtt.isConnected()) {
+                    try {
+                        mqtt.connect(settings);
+                    } catch (MqttException unavailable) {
+                        if (rounds != 0 && round + 1 == rounds) throw unavailable;
+                        System.err.println("MQTT unavailable; will reconnect on the next round");
+                        Thread.sleep(interval);
+                        continue;
+                    }
+                }
                 for (Device device : devices) {
+                    boolean paused = alarmDemo && round > 0 && round < recoverAt
+                            && List.of(prefix + "-1-CAM", prefix + "-1-ACS", prefix + "-2-CAM", prefix + "-2-ACS")
+                                    .contains(device.code);
+                    if (paused) continue;
                     if (device.token == null || device.expires.isBefore(Instant.now().plusSeconds(60))) openSession(http, api, device);
-                    if (device.pending == null) device.pending = heartbeat(device);
+                    if (device.pending == null) {
+                        device.pending = heartbeat(device);
+                        if (alarmDemo) applyDemoSignal(device.pending, device.code, prefix, round, recoverAt);
+                    }
                     device.pending.put("sessionToken", device.token);
                     byte[] body = JSON.writeValueAsBytes(device.pending);
                     String topic = "capyiot/" + device.campusId + "/devices/" + device.id + "/events";
@@ -72,9 +107,41 @@ public class DeviceSimulator {
                 System.out.println("Heartbeat round " + (round + 1) + " completed for " + devices.size() + " simulated devices");
                 if (rounds == 0 || round + 1 < rounds) Thread.sleep(interval);
             }
+            if (devices.stream().anyMatch(device -> device.pending != null)) {
+                throw new IllegalStateException("Simulator ended before all pending messages were acknowledged");
+            }
         } finally {
-            if (mqtt.isConnected()) mqtt.disconnect();
-            mqtt.close();
+            try {
+                Runtime.getRuntime().removeShutdownHook(shutdown);
+            } catch (IllegalStateException stoppingJvm) {
+                // The shutdown hook and normal completion share the same cleanup.
+            }
+            cleanup.run();
+        }
+    }
+
+    private static void close(MqttClient mqtt, ScheduledExecutorService workers) {
+        // Synchronous publishes already awaited the broker. Paho's ordinary disconnect waits without a deadline.
+        Thread closer = Thread.ofVirtual().start(() -> {
+            try {
+                try {
+                    if (mqtt.isConnected()) mqtt.disconnectForcibly(0, 2000, true);
+                } finally {
+                    mqtt.close(true);
+                }
+            } catch (MqttException error) {
+                System.err.println("MQTT shutdown failed with reason " + error.getReasonCode());
+            }
+        });
+        try {
+            if (!closer.join(Duration.ofSeconds(5))) {
+                closer.interrupt();
+                System.err.println("MQTT shutdown exceeded five seconds; stopping its workers");
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        } finally {
+            workers.shutdownNow();
         }
     }
 
@@ -101,12 +168,28 @@ public class DeviceSimulator {
 
     private static Map<String, String> options(String[] args) {
         if (args.length % 2 != 0) throw new IllegalArgumentException("Arguments use --name value pairs");
-        var allowed = Set.of("api-url", "mqtt-url", "devices", "start-seq", "interval-ms", "rounds", "duplicate-first");
+        var allowed = Set.of("api-url", "mqtt-url", "devices", "start-seq", "interval-ms", "rounds",
+                "duplicate-first", "scenario", "prefix");
         var options = new HashMap<String, String>();
         for (int i = 0; i < args.length; i += 2) {
             if (!args[i].startsWith("--") || !allowed.contains(args[i].substring(2))) throw new IllegalArgumentException("Unknown simulator argument");
             options.put(args[i].substring(2), args[i + 1]);
         }
         return options;
+    }
+
+    private static void applyDemoSignal(ObjectNode message, String code, String prefix, long round, long recoverAt) {
+        var payload = (ObjectNode) message.path("payload");
+        if (code.equals(prefix + "-1-SW")) {
+            if (round == 1) {
+                message.put("eventType", "DEVICE_FAULT");
+                payload.put("healthStatus", "ABNORMAL").put("faultCode", "NETWORK_UPSTREAM_FAILURE");
+            } else if (round == recoverAt) {
+                message.put("eventType", "DEVICE_RECOVERED");
+            }
+        } else if (code.equals(prefix + "-3-SEN") && (round == 1 || round == recoverAt)) {
+            message.put("eventType", "SENSOR_READING");
+            payload.put("temperature", round == 1 ? 41 : 25);
+        }
     }
 }

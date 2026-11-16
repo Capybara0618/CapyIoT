@@ -116,6 +116,7 @@ services:
       DEVICE_DB_PASSWORD: ${DEVICE_DB_PASSWORD:?Missing device password}
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
       DEVICE_JWT_SECRET: ${DEVICE_JWT_SECRET:?Run python scripts/init_env.py}
+      TOPOLOGY_SYNC_TOKEN: ${TOPOLOGY_SYNC_TOKEN:?Run python scripts/init_env.py}
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
@@ -136,8 +137,14 @@ services:
     environment:
       ALARM_DB_URL: jdbc:mysql://mysql:3306/alarm_db?connectionTimeZone=UTC
       ALARM_DB_PASSWORD: ${ALARM_DB_PASSWORD:?Missing alarm password}
+      JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
+      TOPOLOGY_SYNC_TOKEN: ${TOPOLOGY_SYNC_TOKEN:?Run python scripts/init_env.py}
+      DEVICE_SERVICE_URL: http://device-service:8082
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
       mysql: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      device-service: { condition: service_healthy }
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:8083/actuator/health/readiness | grep UP']
       interval: 10s
@@ -167,12 +174,14 @@ services:
       args: { SERVICE: gateway }
     environment:
       DEVICE_SERVICE_URL: http://device-service:8082
+      ALARM_SERVICE_URL: http://alarm-service:8083
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
       DEMO_ADMIN_PASSWORD_HASH: ${DEMO_ADMIN_PASSWORD_HASH:?Missing demo admin hash}
       DEMO_OPERATOR_PASSWORD_HASH: ${DEMO_OPERATOR_PASSWORD_HASH:?Missing demo operator hash}
     ports: ['127.0.0.1:8080:8080']
     depends_on:
       device-service: { condition: service_healthy }
+      alarm-service: { condition: service_healthy }
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:9090/actuator/health/readiness | grep UP']
       interval: 10s

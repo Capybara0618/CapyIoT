@@ -34,7 +34,17 @@ class DeviceOutbox {
     void publish() {
         for (int i = 0; i < 20; i++) {
             Map<String, Object> event = transactions.execute(status -> {
-                var rows = jdbc.queryForList("SELECT * FROM outbox_event WHERE status IN ('PENDING','RETRY') AND next_retry_at<=CURRENT_TIMESTAMP(3) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED");
+                // A leased or retrying predecessor must finish before another replica sends a later state.
+                var rows = jdbc.queryForList("""
+                        SELECT candidate.* FROM outbox_event candidate
+                        WHERE candidate.status IN ('PENDING','RETRY') AND candidate.next_retry_at<=CURRENT_TIMESTAMP(3)
+                          AND NOT EXISTS (
+                            SELECT 1 FROM outbox_event predecessor
+                            WHERE predecessor.topic=candidate.topic AND predecessor.message_key=candidate.message_key
+                              AND predecessor.status IN ('PENDING','RETRY') AND predecessor.id<candidate.id
+                          )
+                        ORDER BY candidate.id LIMIT 1 FOR UPDATE SKIP LOCKED
+                        """);
                 if (rows.isEmpty()) return null;
                 var row = rows.getFirst();
                 jdbc.update("UPDATE outbox_event SET next_retry_at=? WHERE id=?", Timestamp.from(Instant.now().plusSeconds(30)), row.get("id"));
