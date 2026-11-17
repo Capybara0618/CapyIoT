@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Alarm, AlarmDetail } from '../src/alarms'
-import type { EventPage, Page as ApiPage } from '../src/domain'
+import type { Device, EventPage, Page as ApiPage } from '../src/domain'
 import type { Catalogue, ScenarioDetail, ScenarioRun } from '../src/scenarios'
 import type { WorkOrder } from '../src/workorders'
 
@@ -72,6 +72,43 @@ async function workAction(page: Page, label: string, remark?: string) {
   if (remark) await dialog.getByLabel('处置说明').fill(remark)
   await dialog.getByRole('button', { name: '确认操作', exact: true }).click()
   await expect(dialog).toBeHidden()
+}
+
+async function detachedDevice(page: Page) {
+  const code = `FLAP-${Date.now().toString(36).toUpperCase()}`
+  const response = await page.request.post('/api/v1/devices', {
+    headers: await headers(page),
+    data: {
+      deviceCode: code,
+      type: 'CAMERA',
+      name: '抖动验收设备',
+      buildingId: 'BLD-2',
+      floorId: 'FL-2-1',
+    },
+  })
+  expect(response.status()).toBe(200)
+  const { data } = (await response.json()) as { data: { device: Device; deviceSecret: string } }
+  const file = resolve('../var/demo-devices.json')
+  const original = readFileSync(file)
+  const temporary = `${file}.e2e`
+  function replaceConfig(content: string | Buffer) {
+    writeFileSync(temporary, content)
+    renameSync(temporary, file)
+  }
+  // An unlinked device isolates the flap rule from the preceding network scenario's correlation window.
+  replaceConfig(
+    JSON.stringify([
+      ...JSON.parse(original.toString('utf8')),
+      {
+        deviceId: data.device.id,
+        deviceCode: code,
+        campusId: data.device.campusId,
+        type: data.device.type,
+        secret: data.deviceSecret,
+      },
+    ]),
+  )
+  return { code, restoreConfig: () => replaceConfig(original) }
 }
 
 test('browser starts confirmed network incident and closes its work order after recovery', async ({
@@ -207,25 +244,28 @@ test('two real heartbeat timeouts reuse the offline alarm within the flap window
 }) => {
   test.setTimeout(130000)
   await login(page, 'admin')
-  const run = await start(page, '设备状态抖动', 'DEMO-2-CAM', 90)
-  const path = `/scenario-runs/${run.id}`
-  async function offlineAlarm() {
-    const list = await api<ApiPage<Alarm>>(
-      page,
-      '/alarms?status=OPEN&alarmType=DEVICE_OFFLINE&size=100',
-    )
-    return list.items.find((item) => item.deviceId === run.targetIds[0])
-  }
+  const fixture = await detachedDevice(page)
+  let path: string | undefined
   try {
+    await page.reload()
+    const run = await start(page, '设备状态抖动', fixture.code, 90)
+    path = `/scenario-runs/${run.id}`
     await expect(page.locator('.scenario-log')).toContainText('已观察到第一次离线', {
       timeout: 55000,
     })
     let first: Alarm | undefined
     await expect
-      .poll(async () => {
-        first = await offlineAlarm()
-        return first?.id
-      })
+      .poll(
+        async () => {
+          const alarms = await api<ApiPage<Alarm>>(
+            page,
+            '/alarms?alarmType=DEVICE_OFFLINE&size=100',
+          )
+          first = alarms.items.find((item) => item.deviceId === run.targetIds[0])
+          return first?.id
+        },
+        { timeout: 12000 },
+      )
       .toBeTruthy()
     await expect(page.locator('.scenario-log')).toContainText('已观察到第二次离线', {
       timeout: 55000,
@@ -242,6 +282,16 @@ test('two real heartbeat timeouts reuse the offline alarm within the flap window
     expect(detail.run.endMode).toBeNull()
     await saveImage(page, 'scenario-flapping-recovered.png')
   } finally {
-    await page.request.post(`/api/v1${path}/recover`, { headers: await headers(page) })
+    try {
+      if (path) {
+        const runPath = path
+        await page.request.post(`/api/v1${runPath}/recover`, { headers: await headers(page) })
+        await expect
+          .poll(async () => (await api<ScenarioDetail>(page, runPath)).run.endedAt)
+          .toBeTruthy()
+      }
+    } finally {
+      fixture.restoreConfig()
+    }
   }
 })
