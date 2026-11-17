@@ -14,6 +14,7 @@ import {
 } from 'element-plus'
 import { Pause, Play, RefreshCw, Search, Copy, RotateCcw } from 'lucide-vue-next'
 import { request } from '../api'
+import { alarmTitle, type Alarm } from '../alarms'
 import { eventStatuses, eventTypes, formatTime, type DeviceEvent, type EventPage } from '../domain'
 import { useLiveUpdates } from '../live'
 import PageHeader from '../components/PageHeader.vue'
@@ -29,11 +30,17 @@ const error = ref('')
 const paused = ref(false)
 const detail = ref<DeviceEvent | null>(null)
 const detailOpen = ref(false)
+const detailLoading = ref(false)
+const detailError = ref('')
+const detailAlarms = ref<Alarm[]>([])
+const detailAlarmLoading = ref(false)
+const detailAlarmError = ref('')
 const cursor = ref<string | null>(null)
 const filters = reactive({
   deviceId: '',
   eventType: '',
   status: '',
+  scenarioRunId: '',
   from: '',
   to: '',
   page: 1,
@@ -41,6 +48,8 @@ const filters = reactive({
 })
 const historical = computed(() => filters.page > 1 || !!filters.to)
 let version = 0
+let drawerVersion = 0
+let alarmVersion = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 let syncing = false
 let pending = false
@@ -122,21 +131,62 @@ function scheduleSync() {
 }
 const live = useLiveUpdates(scheduleSync)
 
+async function loadDetailAlarms(id: string) {
+  const current = ++alarmVersion
+  detailAlarmLoading.value = true
+  detailAlarmError.value = ''
+  try {
+    const alarms = await request<Alarm[]>(`/alarms/by-event/${encodeURIComponent(id)}`)
+    if (current === alarmVersion && route.query.id === id) detailAlarms.value = alarms
+  } catch (failure) {
+    if (current === alarmVersion && route.query.id === id)
+      detailAlarmError.value = (failure as Error).message
+  } finally {
+    if (current === alarmVersion && route.query.id === id) detailAlarmLoading.value = false
+  }
+}
+useLiveUpdates(() => {
+  if (detailOpen.value && typeof route.query.id === 'string') void loadDetailAlarms(route.query.id)
+}, '/api/v1/alarms/stream')
+
+async function loadDetail(id: string) {
+  const current = ++drawerVersion
+  detailOpen.value = true
+  detailLoading.value = true
+  detailError.value = ''
+  detail.value = null
+  detailAlarms.value = []
+  alarmVersion++
+  try {
+    const event = await request<DeviceEvent>(`/events/${encodeURIComponent(id)}`)
+    if (stopped || current !== drawerVersion) return
+    detail.value = event
+    void loadDetailAlarms(id)
+  } catch (failure) {
+    if (current === drawerVersion) detailError.value = (failure as Error).message
+  } finally {
+    if (current === drawerVersion) detailLoading.value = false
+  }
+}
+
 watch(
   () => route.query,
   (query) => {
-    for (const key of ['deviceId', 'eventType', 'status', 'from', 'to'] as const)
+    for (const key of ['deviceId', 'eventType', 'status', 'from', 'to', 'scenarioRunId'] as const)
       filters[key] = String(query[key] ?? '')
     filters.page = Number(query.page ?? 1)
     void load()
-    if (query.id) {
-      void request<DeviceEvent>(`/events/${encodeURIComponent(String(query.id))}`)
-        .then((event) => {
-          detail.value = event
-          detailOpen.value = true
-        })
-        .catch((cause: Error) => ElMessage.error(cause.message))
-    } else detailOpen.value = false
+  },
+  { immediate: true },
+)
+watch(
+  () => route.query.id,
+  (id) => {
+    if (typeof id === 'string') void loadDetail(id)
+    else {
+      drawerVersion++
+      detailOpen.value = false
+    }
   },
   { immediate: true },
 )
@@ -149,7 +199,19 @@ async function search(page = 1) {
   await load()
 }
 function reset() {
-  Object.assign(filters, { deviceId: '', eventType: '', status: '', from: '', to: '', page: 1 })
+  Object.assign(filters, {
+    deviceId: '',
+    eventType: '',
+    status: '',
+    from: '',
+    to: '',
+    scenarioRunId: '',
+    page: 1,
+  })
+  void search()
+}
+function clearScenarioFilter() {
+  filters.scenarioRunId = ''
   void search()
 }
 function togglePause() {
@@ -177,6 +239,8 @@ async function copy(value: string) {
 onBeforeUnmount(() => {
   stopped = true
   version++
+  drawerVersion++
+  alarmVersion++
   clearTimeout(timer)
 })
 </script>
@@ -195,6 +259,15 @@ onBeforeUnmount(() => {
         }}</span
       ></PageHeader
     >
+    <div v-if="filters.scenarioRunId" class="scenario-event-filter">
+      <RouterLink
+        class="text-link"
+        :to="{ path: '/scenarios', query: { runId: filters.scenarioRunId } }"
+        >场景记录</RouterLink
+      >
+      <span class="mono">{{ filters.scenarioRunId }}</span>
+      <ElButton link type="primary" @click="clearScenarioFilter">清除场景筛选</ElButton>
+    </div>
     <form class="filter-toolbar events-filters" @submit.prevent="search()">
       <label
         >设备 ID<ElInput v-model="filters.deviceId" placeholder="按设备 ID 筛选" clearable
@@ -324,6 +397,17 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <ElDrawer v-model="detailOpen" title="事件详情" size="min(560px, 94vw)" @closed="closeDetail">
+      <p v-if="detailLoading" class="drawer-status" role="status">正在读取事件详情…</p>
+      <p v-else-if="detailError" class="request-error" role="alert">
+        {{ detailError }}
+        <ElButton
+          v-if="typeof route.query.id === 'string'"
+          link
+          type="primary"
+          @click="loadDetail(route.query.id)"
+          >重试</ElButton
+        >
+      </p>
       <template v-if="detail"
         ><div class="detail-identity">
           <div>
@@ -358,10 +442,37 @@ onBeforeUnmount(() => {
             /></ElButton>
           </dd>
           <dt>设备 ID</dt>
-          <dd class="mono">{{ detail.deviceId }}</dd>
+          <dd class="mono">
+            <RouterLink
+              class="text-link"
+              :to="{ path: '/devices', query: { id: detail.deviceId } }"
+              >{{ detail.deviceId }}</RouterLink
+            >
+          </dd>
           <dt>会话版本 / 序号</dt>
           <dd>{{ detail.sessionEpoch }} / {{ detail.seq }}</dd>
         </dl>
+        <div v-if="typeof detail.payload.scenarioRunId === 'string'" class="alarm-action-row">
+          <RouterLink
+            class="text-link"
+            :to="{ path: '/scenarios', query: { runId: detail.payload.scenarioRunId } }"
+            >查看场景记录 →</RouterLink
+          >
+        </div>
+        <h3 class="detail-section-title">关联告警</h3>
+        <p v-if="detailAlarmLoading" class="drawer-status">正在查询告警证据…</p>
+        <p v-else-if="detailAlarmError" class="drawer-status">
+          {{ detailAlarmError }}
+          <ElButton link type="primary" @click="loadDetailAlarms(detail.eventId)">重试</ElButton>
+        </p>
+        <p v-else-if="!detailAlarms.length" class="drawer-status">暂无关联告警</p>
+        <ul v-else class="drawer-alarm-links">
+          <li v-for="alarm in detailAlarms" :key="alarm.id">
+            <RouterLink class="text-link" :to="{ path: '/alarms', query: { id: alarm.id } }"
+              >{{ alarm.alarmNo }} · {{ alarmTitle(alarm) }}</RouterLink
+            >
+          </li>
+        </ul>
         <h3 class="detail-section-title">事件数据</h3>
         <pre class="json-view">{{ JSON.stringify(detail.payload, null, 2) }}</pre>
       </template>

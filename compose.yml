@@ -119,6 +119,10 @@ services:
       TOPOLOGY_SYNC_TOKEN: ${TOPOLOGY_SYNC_TOKEN:?Run python scripts/init_env.py}
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCENARIO_DEVICE_FILE: /demo/demo-devices.json
+      MQTT_URL: tcp://emqx:1883
+    volumes:
+      - ./var:/demo:ro
     depends_on:
       mysql: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -179,6 +183,7 @@ services:
       args: { SERVICE: gateway }
     environment:
       DEVICE_SERVICE_URL: http://device-service:8082
+      INGESTION_SERVICE_URL: http://device-ingestion:8081
       ALARM_SERVICE_URL: http://alarm-service:8083
       WORKFLOW_SERVICE_URL: http://workflow-service:8084
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}

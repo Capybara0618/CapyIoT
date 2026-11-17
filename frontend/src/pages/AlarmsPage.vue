@@ -544,6 +544,12 @@ function evidenceLabel(item: Evidence) {
                     :to="{ path: '/events', query: { id: item.causeEventId } }"
                     >打开原始 MQTT 事件</RouterLink
                   >
+                  <RouterLink
+                    v-if="typeof item.payload?.scenarioRunId === 'string'"
+                    class="text-link alarm-scenario-link"
+                    :to="{ path: '/scenarios', query: { runId: item.payload.scenarioRunId } }"
+                    >查看场景记录</RouterLink
+                  >
                   <pre class="json-view">{{ JSON.stringify(item.payload, null, 2) }}</pre>
                 </div>
               </li>

@@ -31,7 +31,7 @@ spring:
   task:
     scheduling:
       pool:
-        size: 2
+        size: 3
   datasource:
     url: ${DEVICE_DB_URL:jdbc:mysql://localhost:3306/device_db?connectionTimeZone=UTC}
     username: ${DEVICE_DB_USER:device_app}
@@ -57,6 +57,8 @@ capyiot:
   user-jwt-secret: ${JWT_SECRET}
   device-jwt-secret: ${DEVICE_JWT_SECRET}
   topology-sync-token: ${TOPOLOGY_SYNC_TOKEN:}
+  scenario-device-file: ${SCENARIO_DEVICE_FILE:}
+  scenario-mqtt-url: ${MQTT_URL:tcp://localhost:1883}
 springdoc:
   api-docs:
     path: /api/v1/openapi

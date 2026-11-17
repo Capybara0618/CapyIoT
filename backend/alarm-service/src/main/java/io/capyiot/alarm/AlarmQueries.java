@@ -112,6 +112,25 @@ class AlarmQueries {
                 new ImpactMarker(rs.getString(1), rs.getLong(2), rs.getString(3), rs.getString(4)));
     }
 
+    List<Alarm> forEvent(String campus, String eventId) {
+        return jdbc.query(SELECT + """
+                WHERE a.campus_id=? AND a.id IN (
+                    SELECT COALESCE(child.parent_alarm_id,child.id)
+                    FROM raw_event r JOIN alarm_evidence e ON e.event_id=r.event_id
+                    JOIN alarm child ON child.id=e.alarm_id
+                    WHERE r.campus_id=? AND r.cause_event_id=?
+                ) ORDER BY a.last_seen_at DESC,a.id DESC LIMIT 10
+                """, VIEW, campus, campus, eventId);
+    }
+
+    List<Alarm> forDevice(String campus, String deviceId) {
+        return jdbc.query(SELECT + """
+                WHERE a.campus_id=? AND a.parent_alarm_id IS NULL AND
+                    (a.device_id=? OR EXISTS (SELECT 1 FROM alarm_device_link l WHERE l.alarm_id=a.id AND l.device_id=?))
+                ORDER BY a.active_marker DESC,a.last_seen_at DESC,a.id DESC LIMIT 8
+                """, VIEW, campus, deviceId, deviceId);
+    }
+
     @Transactional(readOnly = true)
     public Detail detail(String campus, long id, int childPage, int evidencePage, int devicePage, int size) {
         Alarm head = find(campus, id);

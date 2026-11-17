@@ -24,7 +24,8 @@ class GatewayRoutes {
                         .metadata("response-timeout", -1).uri(workflowUrl))
                 .route("workorder-api", route -> route.path("/api/v1/workorders", "/api/v1/workorders/**").uri(workflowUrl))
                 .route("device-api", route -> route.path("/api/v1/devices/**", "/api/v1/devices", "/api/v1/locations/**", "/api/v1/locations",
-                                "/api/v1/topology/**", "/api/v1/device-sessions", "/api/v1/events/**", "/api/v1/events", "/api/v1/openapi")
+                                "/api/v1/topology/**", "/api/v1/device-sessions", "/api/v1/events/**", "/api/v1/events", "/api/v1/openapi",
+                                "/api/v1/scenarios/templates", "/api/v1/scenario-runs", "/api/v1/scenario-runs/**")
                         .uri(deviceUrl))
                 .build();
     }

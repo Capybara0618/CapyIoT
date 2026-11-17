@@ -27,8 +27,8 @@ class EventController {
             @RequestParam(required = false) String eventType, @RequestParam(required = false) String status,
             @RequestParam(required = false) Instant from, @RequestParam(required = false) Instant to,
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String cursor) {
-        return DeviceController.ok(events.list(DeviceController.campus(jwt), deviceId, eventType, status, from, to, page, size, cursor));
+            @RequestParam(required = false) String cursor, @RequestParam(required = false) String scenarioRunId) {
+        return DeviceController.ok(events.list(DeviceController.campus(jwt), deviceId, eventType, status, from, to, page, size, cursor, scenarioRunId));
     }
 
     @GetMapping("/events/{eventId}")
@@ -41,7 +41,7 @@ class EventController {
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
         String campus = DeviceController.campus(jwt);
         devices.find(campus, id);
-        return DeviceController.ok(events.list(campus, id, null, null, null, null, page, size, null));
+        return DeviceController.ok(events.list(campus, id, null, null, null, null, page, size, null, null));
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

@@ -62,6 +62,16 @@ class AlarmController {
         return response(queries.markers(campus(jwt), deviceIds));
     }
 
+    @GetMapping("/alarms/by-event/{id}")
+    ApiResponse<List<AlarmQueries.Alarm>> forEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable String id) {
+        return response(queries.forEvent(campus(jwt), id));
+    }
+
+    @GetMapping("/alarms/by-device/{id}")
+    ApiResponse<List<AlarmQueries.Alarm>> forDevice(@AuthenticationPrincipal Jwt jwt, @PathVariable String id) {
+        return response(queries.forDevice(campus(jwt), id));
+    }
+
     @GetMapping("/alarms/{id}")
     ApiResponse<AlarmQueries.Detail> detail(@AuthenticationPrincipal Jwt jwt, @PathVariable long id,
             @RequestParam(defaultValue = "1") int childPage, @RequestParam(defaultValue = "1") int evidencePage,

@@ -73,9 +73,14 @@ onMounted(checkHealth)
               <RefreshCw :size="14" :class="{ spinning: checking }" />
             </button>
           </div>
-          <span class="notification-placeholder" title="通知尚未接入"
-            ><Bell :size="18" /><span class="sr-only">通知尚未接入</span></span
+          <RouterLink
+            class="icon-button header-alarms"
+            to="/alarms"
+            aria-label="查看告警"
+            title="查看告警"
           >
+            <Bell :size="18" />
+          </RouterLink>
           <details class="user-menu">
             <summary>
               <span class="avatar">{{
