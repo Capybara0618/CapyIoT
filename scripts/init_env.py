@@ -13,7 +13,9 @@ def password_hash(password: str) -> str:
 
 
 def main() -> None:
-    destination = Path(__file__).resolve().parents[1] / ".env"
+    root = Path(__file__).resolve().parents[1]
+    destination = root / ".env"
+    (root / "var").mkdir(exist_ok=True)
     admin_password = secrets.token_urlsafe(18)
     operator_password = secrets.token_urlsafe(18)
     values = {

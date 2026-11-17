@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -35,6 +36,11 @@ class DeviceController {
 
     @GetMapping("/devices/summary")
     ApiResponse<Summary> summary(@AuthenticationPrincipal Jwt jwt) { return ok(queries.summary(campus(jwt))); }
+
+    @GetMapping("/devices/activity")
+    ApiResponse<List<DeviceQueries.Activity>> activity(@AuthenticationPrincipal Jwt jwt) {
+        return ok(queries.activity(campus(jwt)));
+    }
 
     @GetMapping("/devices/{id}")
     ApiResponse<DeviceView> detail(@AuthenticationPrincipal Jwt jwt, @PathVariable String id) { return ok(queries.find(campus(jwt), id)); }

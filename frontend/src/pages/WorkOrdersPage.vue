@@ -302,7 +302,9 @@ async function submitAction() {
         <ElButton type="primary" native-type="submit"><Search :size="15" />查询</ElButton>
       </div>
     </form>
-    <p v-if="error" class="request-error" role="alert">{{ error }}</p>
+    <p v-if="error" class="request-error" role="alert">
+      {{ error }} <ElButton link type="primary" @click="load">重试</ElButton>
+    </p>
     <div class="alarm-columns work-columns" :class="{ 'with-detail': selected }">
       <div class="table-panel" :aria-busy="loading">
         <div class="panel-heading">

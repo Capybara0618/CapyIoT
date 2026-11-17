@@ -41,7 +41,7 @@ class DeviceEvents {
 
     @Transactional(readOnly = true)
     public EventPage list(String campusId, String deviceId, String type, String status,
-            Instant from, Instant to, int page, int size, String cursor) {
+            Instant from, Instant to, int page, int size, String cursor, String scenarioRunId) {
         if (page < 1 || page > 100000 || size < 1 || size > 100) throw DeviceProblem.badRequest("分页参数无效");
         var parameters = new HashMap<String, Object>();
         parameters.put("campus", campusId);
@@ -52,6 +52,7 @@ class DeviceEvents {
             throw DeviceProblem.badRequest("事件处理状态无效");
         filter(where, parameters, "e.event_type", "type", type);
         filter(where, parameters, "e.processing_status", "status", status);
+        filter(where, parameters, "e.scenario_run_id", "scenario", scenarioRunId);
         if (from != null) { where.append(" AND e.received_at>=:from"); parameters.put("from", Timestamp.from(from)); }
         if (to != null) { where.append(" AND e.received_at<=:to"); parameters.put("to", Timestamp.from(to)); }
         if (from != null && to != null && from.isAfter(to)) throw DeviceProblem.badRequest("开始时间不能晚于结束时间");
@@ -86,6 +87,13 @@ class DeviceEvents {
         var rows = jdbc.query(SELECT + FROM + " WHERE e.campus_id=? AND e.event_id=?", rowMapper, campusId, eventId);
         if (rows.isEmpty()) throw DeviceProblem.notFound("事件不存在");
         return rows.getFirst();
+    }
+
+    List<EventView> scenarioEvidence(String campus, String runId) {
+        return jdbc.query(SELECT + FROM + """
+                WHERE e.campus_id=? AND e.scenario_run_id=? AND e.event_type<>'HEARTBEAT'
+                ORDER BY e.id DESC LIMIT 12
+                """, rowMapper, campus, runId);
     }
 
     private Map<Integer, Long> watermarks(String campusId) {

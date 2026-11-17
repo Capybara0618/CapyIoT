@@ -31,7 +31,9 @@ import {
   TriangleAlert,
   RefreshCw,
 } from 'lucide-vue-next'
-import { request } from '../api'
+import { ApiError, request } from '../api'
+import { alarmTitle, type Alarm, type ImpactMarker } from '../alarms'
+import { workStream, type WorkOrder } from '../workorders'
 import { session } from '../session'
 import { useLiveUpdates } from '../live'
 import {
@@ -65,6 +67,7 @@ const locations = ref<Locations>({
 const switches = ref<Device[]>([])
 const summary = ref({ total: 0, online: 0, offline: 0, abnormal: 0 })
 const summaryLoaded = ref(false)
+const impacts = ref<Map<string, number> | null>(null)
 const filters = reactive({
   keyword: '',
   type: '',
@@ -79,6 +82,10 @@ const history = ref<DeviceEvent[]>([])
 const detailOpen = ref(false)
 const detailLoading = ref(false)
 const detailError = ref('')
+const detailTab = ref('basic')
+const related = ref<{ alarm: Alarm; order: WorkOrder | null }[]>([])
+const relationsLoading = ref(false)
+const relationsError = ref('')
 const dialogOpen = ref(false)
 const saving = ref(false)
 const editing = ref<Device | null>(null)
@@ -115,6 +122,7 @@ rules.deviceCode = [
 ]
 let loadVersion = 0
 let detailVersion = 0
+let relationsVersion = 0
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 
 async function load() {
@@ -134,10 +142,54 @@ async function load() {
     total.value = page.total
     summary.value = counts
     summaryLoaded.value = true
+    void loadImpacts(page.items, version)
   } catch (cause) {
     if (version === loadVersion) error.value = (cause as Error).message
   } finally {
     if (version === loadVersion) loading.value = false
+  }
+}
+
+async function loadImpacts(items: Device[], version: number) {
+  try {
+    const found = items.length
+      ? await request<ImpactMarker[]>(
+          `/alarms/impact?${new URLSearchParams({ deviceIds: items.map(({ id }) => id).join(',') })}`,
+        )
+      : []
+    if (version !== loadVersion) return
+    const linked = new Map<string, number>()
+    for (const marker of found) {
+      if (!linked.has(marker.deviceId)) linked.set(marker.deviceId, marker.alarmId)
+    }
+    impacts.value = linked
+  } catch {
+    if (version === loadVersion) impacts.value = null
+  }
+}
+
+async function loadRelations(id: string, quiet = false) {
+  const version = ++relationsVersion
+  if (!quiet) relationsLoading.value = true
+  try {
+    const alarms = await request<Alarm[]>(`/alarms/by-device/${encodeURIComponent(id)}`)
+    const results = await Promise.all(
+      alarms.map(async (alarm) => {
+        try {
+          return { alarm, order: await request<WorkOrder>(`/workorders/by-alarm/${alarm.id}`) }
+        } catch (failure) {
+          if (failure instanceof ApiError && failure.status === 404) return { alarm, order: null }
+          throw failure
+        }
+      }),
+    )
+    if (version !== relationsVersion) return
+    related.value = results
+    relationsError.value = ''
+  } catch (failure) {
+    if (version === relationsVersion) relationsError.value = (failure as Error).message
+  } finally {
+    if (version === relationsVersion) relationsLoading.value = false
   }
 }
 
@@ -166,10 +218,24 @@ function queueRefresh() {
   refreshTimer = setTimeout(() => {
     refreshTimer = undefined
     void load()
-    if (detailOpen.value && detail.value) void loadDetail(detail.value.id, true)
+    const id = route.query.id
+    if (detailOpen.value && typeof id === 'string') void loadDetail(id, detail.value?.id === id)
   }, 300)
 }
 const live = useLiveUpdates(queueRefresh)
+function refreshRelations() {
+  const id = route.query.id
+  if (detailOpen.value && typeof id === 'string' && detailTab.value === 'relations')
+    void loadRelations(id, true)
+}
+useLiveUpdates(() => {
+  void loadImpacts(devices.value, loadVersion)
+  refreshRelations()
+}, '/api/v1/alarms/stream')
+useLiveUpdates(refreshRelations, workStream)
+watch(detailTab, (tab) => {
+  if (tab === 'relations' && detail.value) void loadRelations(detail.value.id)
+})
 
 watch(
   () => route.query,
@@ -179,10 +245,18 @@ watch(
     filters.page = Number(query.page ?? 1)
     filters.size = Number(query.size ?? 8)
     void load()
-    if (query.id) void loadDetail(String(query.id))
-    else {
+    if (query.id) {
+      if (String(query.id) !== detail.value?.id) {
+        detailTab.value = 'basic'
+        relationsVersion++
+        detail.value = null
+        related.value = []
+      }
+      void loadDetail(String(query.id))
+    } else {
       detailOpen.value = false
       detailVersion++
+      relationsVersion++
     }
   },
   { immediate: true },
@@ -467,6 +541,17 @@ onBeforeUnmount(() => {
             ><span class="mono time-cell">{{ formatTime(row.lastHeartbeatAt) }}</span></template
           ></ElTableColumn
         >
+        <ElTableColumn label="关联告警" min-width="118">
+          <template #default="{ row }">
+            <RouterLink
+              v-if="impacts?.has(row.id)"
+              class="text-link"
+              :to="{ path: '/alarms', query: { id: impacts.get(row.id) } }"
+              >查看活跃告警</RouterLink
+            >
+            <span v-else class="cell-secondary">{{ impacts ? '无活跃告警' : '—' }}</span>
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="操作" width="110" fixed="right"
           ><template #default="{ row }"
             ><ElButton link type="primary" @click="openDetail(row as Device)">详情</ElButton
@@ -508,8 +593,8 @@ onBeforeUnmount(() => {
             detail.enabled ? '已启用' : '已停用'
           }}</span>
         </div>
-        <ElTabs
-          ><ElTabPane label="基本信息"
+        <ElTabs v-model="detailTab"
+          ><ElTabPane name="basic" label="基本信息"
             ><dl class="detail-grid">
               <dt>设备类型</dt>
               <dd>{{ deviceTypes[detail.type] }}</dd>
@@ -537,16 +622,41 @@ onBeforeUnmount(() => {
               >
               <ElButton v-if="admin" @click="openForm(detail)">编辑设备配置</ElButton>
             </div></ElTabPane
-          ><ElTabPane label="最近事件"
+          ><ElTabPane name="events" label="最近事件"
             ><div v-if="!history.length" class="drawer-status">尚无设备事件</div>
             <ol v-else class="event-timeline">
               <li v-for="event in history" :key="event.eventId">
-                <strong>{{
-                  eventTypes[event.eventType as keyof typeof eventTypes] ?? event.eventType
-                }}</strong><span>{{ formatTime(event.receivedAt) }}</span
+                <RouterLink
+                  class="text-link"
+                  :to="{ path: '/events', query: { id: event.eventId, deviceId: detail.id } }"
+                  >{{
+                    eventTypes[event.eventType as keyof typeof eventTypes] ?? event.eventType
+                  }}</RouterLink><span>{{ formatTime(event.receivedAt) }}</span
                 ><StatusBadge :value="event.processingStatus" />
-              </li></ol></ElTabPane
-        ></ElTabs>
+              </li></ol
+          ></ElTabPane>
+          <ElTabPane name="relations" label="告警与工单">
+            <p v-if="relationsLoading" class="drawer-status">正在查询关联记录…</p>
+            <p v-else-if="relationsError" class="drawer-status">
+              {{ relationsError }}
+              <ElButton link type="primary" @click="loadRelations(detail.id)">重试</ElButton>
+            </p>
+            <p v-else-if="!related.length" class="drawer-status">暂无关联告警与工单</p>
+            <ul v-else class="drawer-alarm-links">
+              <li v-for="{ alarm, order } in related" :key="alarm.id">
+                <RouterLink class="text-link" :to="{ path: '/alarms', query: { id: alarm.id } }"
+                  >{{ alarm.alarmNo }} · {{ alarmTitle(alarm) }}</RouterLink
+                >
+                <RouterLink
+                  v-if="order"
+                  class="text-link"
+                  :to="{ path: '/workorders', query: { id: order.id } }"
+                  >{{ order.orderNo }}</RouterLink
+                >
+              </li>
+            </ul>
+          </ElTabPane>
+        </ElTabs>
       </template>
     </ElDrawer>
     <ElDialog

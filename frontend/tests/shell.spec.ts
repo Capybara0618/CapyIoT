@@ -33,6 +33,7 @@ test('login preserves a deep link, reports errors, and signs out', async ({ page
 })
 
 test('eight routes use the specified themes and fit three desktop widths', async ({ page }) => {
+  test.setTimeout(90000)
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/login')
@@ -57,8 +58,16 @@ test('eight routes use the specified themes and fit three desktop widths', async
       await expect(page).toHaveURL(new RegExp(`${path}$`))
       await expect(page.getByRole('heading', { name: title })).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      if (['/scenarios', '/observability'].includes(path)) {
-        await expect(page.getByText('业务功能待接入', { exact: true })).toBeVisible()
+      if (path === '/scenarios') {
+        await expect(page.getByRole('button', { name: '开始模拟' })).toBeDisabled()
+        await expect(page.getByLabel('目标设备')).not.toHaveValue('')
+      }
+      if (path === '/observability') {
+        await expect(page.getByText(/5 \/ 5 就绪/)).toBeVisible()
+      }
+      if (path === '/dashboard') {
+        await expect(page.getByRole('link', { name: '演示模式' })).toBeVisible()
+        await expect(page.locator('.dashboard-chart canvas')).toHaveCount(2)
       }
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -66,10 +75,7 @@ test('eight routes use the specified themes and fit three desktop widths', async
       if (['/devices', '/events'].includes(path)) {
         await expect(page.locator('.table-panel')).toHaveAttribute('aria-busy', 'false')
       }
-      if (
-        process.env.CAPYIOT_SCREENSHOT_DIR &&
-        ['/dashboard', '/devices', '/topology', '/events', '/alarms', '/workorders'].includes(path)
-      ) {
+      if (process.env.CAPYIOT_SCREENSHOT_DIR) {
         await page.screenshot({
           path: resolve(process.env.CAPYIOT_SCREENSHOT_DIR, `${path.slice(1)}-${width}.png`),
           fullPage: true,

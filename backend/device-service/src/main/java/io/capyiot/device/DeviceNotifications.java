@@ -9,6 +9,7 @@ import java.util.concurrent.Semaphore;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Component
@@ -25,6 +26,7 @@ class DeviceNotifications {
     }
     private final ConcurrentHashMap<String, Subscription> subscriptions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Change> pending = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> scenarios = new ConcurrentHashMap<>();
     private final Semaphore slots = new Semaphore(64);
 
     SseEmitter subscribe(String campusId, Instant expiresAt) throws IOException {
@@ -46,10 +48,17 @@ class DeviceNotifications {
                 (previous, next) -> new Change(next.deviceId(), next.traceId(), previous.stateChanged() || next.stateChanged()));
     }
 
+    @TransactionalEventListener
+    public void scenarioChanged(ScenarioRuns.Changed change) {
+        scenarios.put(change.campusId(), change.runId());
+    }
+
     @Scheduled(fixedDelay = 250)
     void flush() {
         var changes = new ConcurrentHashMap<String, Change>();
         pending.forEach((campus, change) -> { if (pending.remove(campus, change)) changes.put(campus, change); });
+        var runChanges = new ConcurrentHashMap<String, String>();
+        scenarios.forEach((campus, id) -> { if (scenarios.remove(campus, id)) runChanges.put(campus, id); });
         subscriptions.forEach((id, subscription) -> {
             if (!Instant.now().isBefore(subscription.expiresAt)) { subscription.emitter.complete(); return; }
             try {
@@ -59,7 +68,13 @@ class DeviceNotifications {
                     subscription.emitter.send(SseEmitter.event().name("events.changed").data(data));
                     if (change.stateChanged()) subscription.emitter.send(SseEmitter.event().name("device.state.changed").data(data));
                     subscription.lastSent = System.currentTimeMillis();
-                } else if (System.currentTimeMillis() - subscription.lastSent > 15000) {
+                }
+                String runId = runChanges.get(subscription.campusId);
+                if (runId != null) {
+                    subscription.emitter.send(SseEmitter.event().name("scenario.updated").data(Map.of("scenarioRunId", runId)));
+                    subscription.lastSent = System.currentTimeMillis();
+                }
+                if (System.currentTimeMillis() - subscription.lastSent > 15000) {
                     subscription.emitter.send(SseEmitter.event().comment("keepalive"));
                     subscription.lastSent = System.currentTimeMillis();
                 }

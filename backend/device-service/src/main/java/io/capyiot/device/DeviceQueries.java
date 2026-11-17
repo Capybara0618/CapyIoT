@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 class DeviceQueries {
+    record Activity(long hour, long online, long offline, long abnormal) {}
     private static final String FROM = """
             FROM device d JOIN building b ON b.id=d.building_id JOIN floor f ON f.id=d.floor_id
             LEFT JOIN area a ON a.id=d.area_id JOIN device_state_snapshot s ON s.device_id=d.id
@@ -72,6 +73,25 @@ class DeviceQueries {
                 FROM device d JOIN device_state_snapshot s ON s.device_id=d.id WHERE d.campus_id=?
                 """, (rs, row) -> new Summary(rs.getLong("total"), rs.getLong("online"),
                 rs.getLong("offline"), rs.getLong("abnormal")), campusId);
+    }
+
+    List<Activity> activity(String campusId) {
+        long currentHour = Instant.now().getEpochSecond() / 3600;
+        var counts = new HashMap<Long, Activity>();
+        jdbc.query("""
+                SELECT UNIX_TIMESTAMP(h.created_at) DIV 3600 AS bucket,
+                    SUM(h.old_connectivity='OFFLINE' AND h.new_connectivity='ONLINE') AS online_count,
+                    SUM(h.old_connectivity='ONLINE' AND h.new_connectivity='OFFLINE') AS offline_count,
+                    SUM(h.old_health='NORMAL' AND h.new_health='ABNORMAL') AS abnormal_count
+                FROM device_state_history h JOIN device d ON d.id=h.device_id
+                WHERE d.campus_id=? AND h.created_at>=? GROUP BY bucket
+                """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    long hour = rs.getLong("bucket");
+                    counts.put(hour, new Activity(hour * 3600, rs.getLong("online_count"), rs.getLong("offline_count"),
+                            rs.getLong("abnormal_count")));
+                }, campusId, Timestamp.from(Instant.ofEpochSecond((currentHour - 23) * 3600)));
+        return java.util.stream.LongStream.rangeClosed(currentHour - 23, currentHour)
+                .mapToObj(hour -> counts.getOrDefault(hour, new Activity(hour * 3600, 0, 0, 0))).toList();
     }
 
     static Instant instant(ResultSet result, String column) throws SQLException {

@@ -10,7 +10,6 @@ import {
   Activity,
 } from 'lucide-vue-next'
 import { logout, session } from './session'
-import PlaceholderPage from './pages/PlaceholderPage.vue'
 import LoginPage from './pages/LoginPage.vue'
 import DevicesPage from './pages/DevicesPage.vue'
 import EventsPage from './pages/EventsPage.vue'
@@ -22,6 +21,8 @@ const featurePages = {
   '/topology': () => import('./pages/TopologyPage.vue'),
   '/alarms': () => import('./pages/AlarmsPage.vue'),
   '/workorders': () => import('./pages/WorkOrdersPage.vue'),
+  '/scenarios': () => import('./pages/ScenariosPage.vue'),
+  '/observability': () => import('./pages/ObservabilityPage.vue'),
 }
 
 export const pages = [
@@ -90,7 +91,7 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { title: '登录', theme: 'dark' } },
     ...pages.map((page) => ({
       path: page.path,
-      component: featurePages[page.path as keyof typeof featurePages] ?? PlaceholderPage,
+      component: featurePages[page.path],
       meta: page,
     })),
     { path: '/:pathMatch(.*)*', redirect: '/dashboard' },

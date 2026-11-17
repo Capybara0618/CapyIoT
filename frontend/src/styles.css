@@ -245,11 +245,6 @@ svg {
   background: var(--panel-soft);
   color: var(--accent);
 }
-.notification-placeholder {
-  color: var(--text-muted);
-  opacity: 0.55;
-  display: flex;
-}
 .user-menu {
   position: relative;
   font-size: 13px;
@@ -336,18 +331,6 @@ svg {
   margin-top: 6px;
   color: var(--text-muted);
   font-size: 13px;
-}
-.placeholder-panel {
-  min-height: 520px;
-  height: calc(100vh - 286px);
-  display: grid;
-  place-items: center;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-:root[data-theme='dark'] .placeholder-panel {
-  background: radial-gradient(ellipse at 50% 45%, #192e4433, transparent 65%), var(--panel);
 }
 .empty-state {
   text-align: center;
@@ -587,7 +570,7 @@ svg {
     padding: 0 16px;
   }
   .health-indicator > span:not(.status-dot),
-  .notification-placeholder,
+  .header-alarms,
   .user-menu summary > span:not(.avatar) {
     display: none;
   }
@@ -599,9 +582,6 @@ svg {
   }
   .page-header h1 {
     font-size: 22px;
-  }
-  .placeholder-panel {
-    min-height: 400px;
   }
   .workspace-footer {
     padding: 0 16px 18px;

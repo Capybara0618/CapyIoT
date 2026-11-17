@@ -172,6 +172,9 @@ onMounted(async () => {
         <p v-if="topology.truncated" class="network-note">
           当前展示前 100 个节点，可按楼宇缩小范围。
         </p>
+        <p v-if="loading && !topology.nodes.length" class="network-note" role="status">
+          正在读取园区拓扑…
+        </p>
         <div v-if="list" class="network-list">
           <button
             v-for="item in topology.nodes"
