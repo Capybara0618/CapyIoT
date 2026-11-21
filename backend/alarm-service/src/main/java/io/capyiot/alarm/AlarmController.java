@@ -56,6 +56,13 @@ class AlarmController {
         return response(queries.summary(campus(jwt)));
     }
 
+    @GetMapping("/alarms/history")
+    ApiResponse<AlarmQueries.History> history(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "true") boolean mainOnly, @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size) {
+        return response(queries.history(campus(jwt), mainOnly, cursor, size));
+    }
+
     @GetMapping("/alarms/impact")
     ApiResponse<List<AlarmQueries.ImpactMarker>> impacts(@AuthenticationPrincipal Jwt jwt,
             @RequestParam List<String> deviceIds) {

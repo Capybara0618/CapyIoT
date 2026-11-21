@@ -2,6 +2,9 @@ package io.capyiot.device;
 
 import static io.capyiot.device.DeviceModels.*;
 
+import io.capyiot.contract.KeysetCursor;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -17,6 +20,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 class DeviceQueries {
     record Activity(long hour, long online, long offline, long abnormal) {}
+    record CursorPage(List<DeviceView> items, String nextCursor) {}
     private static final String FROM = """
             FROM device d JOIN building b ON b.id=d.building_id JOIN floor f ON f.id=d.floor_id
             LEFT JOIN area a ON a.id=d.area_id JOIN device_state_snapshot s ON s.device_id=d.id
@@ -29,10 +33,14 @@ class DeviceQueries {
             """;
     private final NamedParameterJdbcTemplate named;
     private final JdbcTemplate jdbc;
+    private final Timer listTime;
+    private final Timer cursorTime;
 
-    DeviceQueries(JdbcTemplate jdbc) {
+    DeviceQueries(JdbcTemplate jdbc, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.named = new NamedParameterJdbcTemplate(jdbc);
+        listTime = Timer.builder("capyiot.query").tag("query", "device-list").publishPercentileHistogram().register(meters);
+        cursorTime = Timer.builder("capyiot.query").tag("query", "device-cursor").publishPercentileHistogram().register(meters);
     }
 
     DeviceView find(String campusId, String id) {
@@ -57,12 +65,14 @@ class DeviceQueries {
             where.append(" AND (d.name LIKE :keyword ESCAPE '!' OR d.device_code LIKE :keyword ESCAPE '!')");
             parameters.put("keyword", "%" + keyword.trim().replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%");
         }
-        Long total = named.queryForObject("SELECT COUNT(*) " + FROM + where, parameters, Long.class);
         parameters.put("limit", size);
         parameters.put("offset", (page - 1L) * size);
-        List<DeviceView> items = named.query("SELECT " + COLUMNS + FROM + where
-                + " ORDER BY d.created_at DESC,d.id DESC LIMIT :limit OFFSET :offset", parameters, VIEW);
-        return new Page<>(items, total == null ? 0 : total, page, size);
+        return listTime.record(() -> {
+            Long total = named.queryForObject("SELECT COUNT(*) " + FROM + where, parameters, Long.class);
+            List<DeviceView> items = named.query("SELECT " + COLUMNS + FROM + where
+                    + " ORDER BY d.created_at DESC,d.id DESC LIMIT :limit OFFSET :offset", parameters, VIEW);
+            return new Page<>(items, total == null ? 0 : total, page, size);
+        });
     }
 
     Summary summary(String campusId) {
@@ -73,6 +83,29 @@ class DeviceQueries {
                 FROM device d JOIN device_state_snapshot s ON s.device_id=d.id WHERE d.campus_id=?
                 """, (rs, row) -> new Summary(rs.getLong("total"), rs.getLong("online"),
                 rs.getLong("offline"), rs.getLong("abnormal")), campusId);
+    }
+
+    CursorPage cursor(String campusId, String buildingId, String cursor, int size) {
+        if (size < 1 || size > 100) throw DeviceProblem.badRequest("分页参数无效");
+        var parameters = new HashMap<String, Object>();
+        parameters.put("campus", campusId);
+        parameters.put("limit", size + 1);
+        var where = new StringBuilder(" WHERE campus_id=:campus");
+        addFilter(where, parameters, "building_id", "building", buildingId, List.of());
+        if (cursor != null) {
+            KeysetCursor after = KeysetCursor.parse(cursor);
+            parameters.put("afterTime", Timestamp.from(after.at()));
+            parameters.put("afterId", after.id());
+            where.append(" AND (created_at<:afterTime OR (created_at=:afterTime AND id<:afterId))");
+        }
+        String pageIds = "SELECT id FROM device" + where + " ORDER BY created_at DESC,id DESC LIMIT :limit";
+        var found = cursorTime.record(() -> named.query("SELECT " + COLUMNS + FROM
+                + " JOIN (" + pageIds + ") current_page ON current_page.id=d.id"
+                + " ORDER BY d.created_at DESC,d.id DESC", parameters, VIEW));
+        if (found.size() <= size) return new CursorPage(found, null);
+        var items = List.copyOf(found.subList(0, size));
+        var last = items.getLast();
+        return new CursorPage(items, new KeysetCursor(last.createdAt(), last.id()).encode());
     }
 
     List<Activity> activity(String campusId) {

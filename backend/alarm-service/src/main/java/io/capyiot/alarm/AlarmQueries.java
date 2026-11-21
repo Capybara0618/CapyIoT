@@ -3,6 +3,9 @@ package io.capyiot.alarm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.capyiot.contract.ApiResponse;
+import io.capyiot.contract.KeysetCursor;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -26,6 +29,7 @@ class AlarmQueries {
             String acknowledgedBy, long version) {}
     record Summary(long active, long critical, long grouped, long affected) {}
     record Page<T>(List<T> items, long total, int page, int size) {}
+    record History(List<Alarm> items, String nextCursor) {}
     record Detail(Alarm alarm, Page<Alarm> children, Page<Evidence> evidence, Page<Impact> devices) {}
     record Evidence(String eventId, String causeEventId, String deviceId, String reason,
             String evidenceType, String upstreamNodeId, long topologyVersion, String traceId, Instant occurredAt,
@@ -58,14 +62,18 @@ class AlarmQueries {
     private final AlarmRules rules;
     private final TopologyProjection topology;
     private final AlarmOutbox outbox;
+    private final Timer listTime;
+    private final Timer historyTime;
 
     AlarmQueries(JdbcTemplate jdbc, ObjectMapper json, AlarmRules rules, TopologyProjection topology,
-            AlarmOutbox outbox) {
+            AlarmOutbox outbox, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.json = json;
         this.rules = rules;
         this.topology = topology;
         this.outbox = outbox;
+        listTime = Timer.builder("capyiot.query").tag("query", "alarm-list").publishPercentileHistogram().register(meters);
+        historyTime = Timer.builder("capyiot.query").tag("query", "alarm-history").publishPercentileHistogram().register(meters);
     }
 
     @Transactional(readOnly = true)
@@ -81,8 +89,8 @@ class AlarmQueries {
         filter(type, "a.alarm_type", List.of("DEVICE_OFFLINE", "DEVICE_FAULT", "NETWORK_UPSTREAM_FAILURE",
                 "SENSOR_THRESHOLD_BREACH", "NETWORK_INCIDENT"), where, args);
         filter(building, "a.building_id", List.of(), where, args);
-        return page(SELECT, "SELECT COUNT(*) FROM alarm a", where.toString(),
-                " ORDER BY a.active_marker DESC,a.last_seen_at DESC,a.id DESC", VIEW, page, size, args.toArray());
+        return listTime.record(() -> page(SELECT, "SELECT COUNT(*) FROM alarm a", where.toString(),
+                " ORDER BY a.active_marker DESC,a.last_seen_at DESC,a.id DESC", VIEW, page, size, args.toArray()));
     }
 
     Summary summary(String campus) {
@@ -95,6 +103,34 @@ class AlarmQueries {
                 FROM alarm WHERE campus_id=? AND parent_alarm_id IS NULL AND active_marker=1
                 """, (rs, row) -> new Summary(rs.getLong("active"), rs.getLong("critical"),
                         rs.getLong("grouped"), rs.getLong("affected")), campus, campus);
+    }
+
+    History history(String campus, boolean mainOnly, String cursor, int size) {
+        checkPage(1, size);
+        var args = new ArrayList<Object>();
+        args.add(campus);
+        var where = new StringBuilder(" WHERE a.campus_id=? AND a.status='RECOVERED'");
+        if (mainOnly) where.append(" AND a.parent_alarm_id IS NULL");
+        if (cursor != null) {
+            try {
+                KeysetCursor after = KeysetCursor.parse(cursor);
+                long id = Long.parseLong(after.id());
+                if (id < 1) throw new IllegalArgumentException("Invalid alarm cursor");
+                args.add(Timestamp.from(after.at()));
+                args.add(Timestamp.from(after.at()));
+                args.add(id);
+                where.append(" AND (a.last_seen_at<? OR (a.last_seen_at=? AND a.id<?))");
+            } catch (IllegalArgumentException invalid) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "告警游标无效");
+            }
+        }
+        args.add(size + 1);
+        var rows = historyTime.record(() -> jdbc.query(SELECT + where
+                + " ORDER BY a.last_seen_at DESC,a.id DESC LIMIT ?", VIEW, args.toArray()));
+        if (rows.size() <= size) return new History(rows, null);
+        var items = List.copyOf(rows.subList(0, size));
+        var last = items.getLast();
+        return new History(items, new KeysetCursor(last.lastSeenAt(), Long.toString(last.id())).encode());
     }
 
     List<ImpactMarker> markers(String campus, List<String> devices) {

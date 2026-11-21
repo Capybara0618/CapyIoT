@@ -100,6 +100,24 @@ class AlarmGovernanceTest {
     }
 
     @Test
+    void recoveredAlarmKeysetUsesIdForTimestampTiesAndKeepsCampusScope() {
+        String campus = "CURSOR";
+        topology.replace(campus, 2, List.of(node("A", "CAMERA", null), node("B", "CAMERA", null)));
+        Instant at = Instant.now().minusSeconds(30);
+        for (String id : List.of("A", "B")) {
+            rules.evaluate(signal(campus, id, null, 1, "HEARTBEAT_TIMEOUT", "OFFLINE", at, null, null));
+            rules.evaluate(signal(campus, id, null, 2, "HEARTBEAT", "ONLINE", at.plusSeconds(1), null, null));
+        }
+        var first = queries.history(campus, true, null, 1);
+        assertThat(first.items()).extracting(AlarmQueries.Alarm::deviceId).containsExactly("B");
+        assertThat(first.nextCursor()).isNotBlank();
+        var next = queries.history(campus, true, first.nextCursor(), 1);
+        assertThat(next.items()).extracting(AlarmQueries.Alarm::deviceId).containsExactly("A");
+        assertThat(next.nextCursor()).isNull();
+        assertThat(queries.history("ANOTHER-CAMPUS", true, first.nextCursor(), 1).items()).isEmpty();
+    }
+
+    @Test
     void archivesEveryRepeatButReusesTheSameInteractionForAnIsolatedFlap() {
         String campus = "FLAP";
         topology.replace(campus, 2, List.of(node("CAM", "CAMERA", null)));

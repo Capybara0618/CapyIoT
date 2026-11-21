@@ -71,3 +71,56 @@ jobs:
         run: docker compose logs --tail=80
       - if: always()
         run: docker compose down
+
+  kubernetes-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [backend, frontend]
+    env:
+      CLUSTER: capyiot-m5
+      NAMESPACE: capyiot
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Helm and install kind
+        run: |
+          helm lint infra/helm/capyiot
+          helm template capyiot infra/helm/capyiot --set keda.enabled=true > /tmp/capyiot-helm.yaml
+          kind_release=https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0
+          curl -fsSLO "$kind_release/kind-linux-amd64"
+          checksum=$(curl -fsSL "$kind_release/kind-linux-amd64.sha256sum" | awk '{print $1}')
+          printf '%s  %s\n' "$checksum" kind-linux-amd64 | sha256sum -c
+          install -m 0755 kind-linux-amd64 "$RUNNER_TEMP/kind"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Build application and simulator images
+        run: |
+          python3 scripts/init_env.py
+          docker compose --profile simulation build
+          for service in gateway device-ingestion device-service alarm-service workflow-service frontend simulator; do
+            docker tag "capyiot-$service:latest" "capyiot-$service:m5"
+          done
+      - name: Deploy CapyIoT and KEDA
+        run: |
+          kind create cluster --name "$CLUSTER" --image kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0 --wait 120s
+          kind load docker-image --name "$CLUSTER" capyiot-gateway:m5 capyiot-device-ingestion:m5 capyiot-device-service:m5 capyiot-alarm-service:m5 capyiot-workflow-service:m5 capyiot-frontend:m5 capyiot-simulator:m5
+          helm repo add kedacore https://kedacore.github.io/charts
+          helm upgrade --install keda kedacore/keda --version 2.21.1 --namespace keda --create-namespace --wait --timeout 6m
+          kubectl create namespace "$NAMESPACE"
+          python3 scripts/k8s_secrets.py --context "kind-$CLUSTER" --namespace "$NAMESPACE"
+          helm upgrade --install capyiot infra/helm/capyiot --namespace "$NAMESPACE" --set keda.enabled=true,keda.lagThreshold=10 --wait --timeout 6m
+      - name: Verify Kafka lag scaling, replacement and telemetry
+        run: |
+          kubectl -n "$NAMESPACE" port-forward svc/frontend 18088:8080 >/tmp/capyiot-ui-forward.log 2>&1 &
+          ui_pid=$!
+          kubectl -n "$NAMESPACE" port-forward svc/jaeger 16687:16686 >/tmp/capyiot-jaeger-forward.log 2>&1 &
+          jaeger_pid=$!
+          trap 'kill "$ui_pid" "$jaeger_pid" 2>/dev/null || true' EXIT
+          python3 scripts/k8s_smoke.py --context "kind-$CLUSTER" --namespace "$NAMESPACE"
+      - if: failure()
+        run: |
+          kubectl -n "$NAMESPACE" get pods,deploy,hpa,scaledobject,job -o wide || true
+          kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -60 || true
+          for service in mysql kafka emqx gateway device-ingestion device-service; do
+            kubectl -n "$NAMESPACE" logs "deployment/$service" --tail=50 || true
+          done
+      - if: always()
+        run: kind delete cluster --name "$CLUSTER"

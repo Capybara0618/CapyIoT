@@ -2,6 +2,7 @@ package io.capyiot.outbox;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.capyiot.contract.Telemetry;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -18,7 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public final class OutboxRelay {
     public record Dead(long id, String eventId, String eventType, String topic, int attempts,
             String error, Instant createdAt) {}
-    private record Delivery(long id, String eventId, String topic, String key, String json, int attempts) {}
+    private record Delivery(long id, String eventId, String topic, String key, String json, int attempts, String traceParent) {}
 
     private static final System.Logger LOG = System.getLogger(OutboxRelay.class.getName());
     private final JdbcTemplate jdbc;
@@ -52,9 +53,9 @@ public final class OutboxRelay {
             throw new IllegalStateException("Cannot serialize outbox event", failure);
         }
         jdbc.update("""
-                INSERT INTO outbox_event(campus_id,aggregate_type,aggregate_id,event_type,event_id,topic,message_key,payload_json)
-                VALUES (?,?,?,?,?,?,?,?)
-                """, campus, aggregate, id, type, eventId, topic, id, jsonBody);
+                INSERT INTO outbox_event(campus_id,aggregate_type,aggregate_id,event_type,event_id,topic,message_key,payload_json,trace_parent)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                """, campus, aggregate, id, type, eventId, topic, id, jsonBody, Telemetry.traceParent());
     }
 
     @Scheduled(fixedDelayString = "${capyiot.outbox-delay-ms:500}")
@@ -68,7 +69,7 @@ public final class OutboxRelay {
             Delivery delivery = claim.execute(status -> {
                 var ready = jdbc.query("""
                         SELECT candidate.id,candidate.event_id,candidate.topic,candidate.message_key,
-                            candidate.payload_json,candidate.retry_count
+                            candidate.payload_json,candidate.retry_count,candidate.trace_parent
                         FROM outbox_event candidate
                         WHERE candidate.status IN ('PENDING','RETRY') AND candidate.next_retry_at<=CURRENT_TIMESTAMP(3)
                           AND NOT EXISTS (
@@ -77,7 +78,7 @@ public final class OutboxRelay {
                               AND predecessor.status IN ('PENDING','RETRY') AND predecessor.id<candidate.id)
                         ORDER BY candidate.id LIMIT 1 FOR UPDATE SKIP LOCKED
                         """, (rs, row) -> new Delivery(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                        rs.getString(5), rs.getInt(6)));
+                        rs.getString(5), rs.getInt(6), rs.getString(7)));
                 if (ready.isEmpty()) return null;
                 var item = ready.getFirst();
                 jdbc.update("""
@@ -87,7 +88,7 @@ public final class OutboxRelay {
                 return item;
             });
             if (delivery == null) return;
-            try {
+            try (var scope = Telemetry.parent(delivery.traceParent())) {
                 kafka.send(delivery.topic(), delivery.key(), delivery.json()).get(15, TimeUnit.SECONDS);
             } catch (Exception failure) {
                 if (failure instanceof InterruptedException) {

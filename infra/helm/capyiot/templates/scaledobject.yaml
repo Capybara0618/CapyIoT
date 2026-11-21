@@ -1,0 +1,26 @@
+{{- if .Values.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: device-service
+spec:
+  scaleTargetRef:
+    name: device-service
+  pollingInterval: 10
+  minReplicaCount: {{ .Values.keda.minReplicas }}
+  maxReplicaCount: {{ .Values.keda.maxReplicas }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: {{ ternary (printf "kafka.%s.svc.cluster.local:29092" .Release.Namespace) .Values.endpoints.kafka .Values.demo.enabled | quote }}
+        consumerGroup: device-state-group
+        topic: iot.device.events.v1
+        lagThreshold: {{ .Values.keda.lagThreshold | quote }}
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"
+{{- end }}

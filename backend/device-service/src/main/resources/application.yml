@@ -42,17 +42,21 @@ spring:
     enabled: true
     clean-disabled: true
 management:
-  endpoints:
-    web:
-      exposure:
-        include: health,prometheus
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoint:
     health:
       group:
         readiness:
-          include: readinessState,db
+          include: readinessState,db,redis
       probes:
         enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
 capyiot:
   user-jwt-secret: ${JWT_SECRET}
   device-jwt-secret: ${DEVICE_JWT_SECRET}

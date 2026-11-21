@@ -37,6 +37,10 @@ spring:
     enabled: true
     clean-disabled: true
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:

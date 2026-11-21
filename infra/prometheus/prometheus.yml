@@ -6,7 +6,12 @@ scrape_configs:
     static_configs:
       - targets:
           - gateway:9090
-          - device-ingestion:8081
-          - device-service:8082
-          - alarm-service:8083
-          - workflow-service:8084
+        labels: { service: gateway }
+      - targets: [device-ingestion:8081]
+        labels: { service: device-ingestion }
+      - targets: [device-service:8082]
+        labels: { service: device-service }
+      - targets: [alarm-service:8083]
+        labels: { service: alarm-service }
+      - targets: [workflow-service:8084]
+        labels: { service: workflow-service }
