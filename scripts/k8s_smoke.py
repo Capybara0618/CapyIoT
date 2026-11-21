@@ -181,14 +181,16 @@ def main():
     wait(lambda: total() >= baseline + 72, "consume queued MQTT events")
     wait(lambda: ready_replicas() == 1 and inspect("deployment", "device-service")["spec"]["replicas"] == 1,
          "KEDA return to one replica", 150)
+    print("KEDA returned device-service to one ready replica after consuming the backlog.", flush=True)
     baseline = total()
     pods = json.loads(kube("get", "pod", "-l", "app.kubernetes.io/name=device-service", "-o", "json", capture=True))
     ready = next(item for item in pods["items"] if not item["metadata"].get("deletionTimestamp")
                  and any(condition["type"] == "Ready" and condition["status"] == "True"
                          for condition in item["status"].get("conditions", [])))
     kube("delete", "pod", ready["metadata"]["name"], "--wait=false")
-    simulator("m5-replacement", 2)
     rollout()
+    total()  # New sessions need the replacement API and Service endpoints to be ready.
+    simulator("m5-replacement", 2)
     wait(lambda: total() >= baseline + 24, "process MQTT events after pod replacement")
     wait(lambda: any(row["metadata"]["uid"] != ready["metadata"]["uid"]
                      for row in json.loads(kube("get", "pod", "-l", "app.kubernetes.io/name=device-service",
