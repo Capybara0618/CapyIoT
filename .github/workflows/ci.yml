@@ -118,9 +118,11 @@ jobs:
       - if: failure()
         run: |
           kubectl -n "$NAMESPACE" get pods,deploy,hpa,scaledobject,job -o wide || true
+          kubectl -n "$NAMESPACE" get pods -o json || true
           kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -60 || true
           for service in mysql kafka emqx gateway device-ingestion device-service; do
             kubectl -n "$NAMESPACE" logs "deployment/$service" --tail=50 || true
+            kubectl -n "$NAMESPACE" logs "deployment/$service" --previous --tail=80 || true
           done
       - if: always()
         run: kind delete cluster --name "$CLUSTER"
