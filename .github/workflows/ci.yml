@@ -59,6 +59,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: python3 scripts/init_env.py
       - run: docker compose config --quiet
+      - run: python3 scripts/mysql_bootstrap_smoke.py
       - run: docker compose up -d --build --wait --wait-timeout 300
       - run: python3 scripts/smoke.py --check-databases
       - run: python3 scripts/demo_devices.py

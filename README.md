@@ -102,6 +102,8 @@ cd backend
 
 Windows 使用 `mvnw.cmd verify`。后端模块为 Gateway、设备接入、设备管理、告警治理、工单协同及共享契约。MySQL 中三个独立业务库由各自服务的 Flyway 管理，本地共用一个 MySQL 实例。
 
+根目录运行 `python scripts/mysql_bootstrap_smoke.py` 可验证三库首次初始化，测试会特意设置不同的客户端和服务端 socket 路径，并清理自己的临时容器和数据卷。
+
 可单独构建 Java 模拟器，在项目根目录运行。
 
 ```sh
