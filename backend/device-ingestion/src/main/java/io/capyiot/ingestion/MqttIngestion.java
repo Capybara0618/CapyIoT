@@ -3,6 +3,10 @@ package io.capyiot.ingestion;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.capyiot.contract.DeviceEvent;
 import io.capyiot.contract.DeviceMessage;
+import io.capyiot.contract.Telemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.StatusCode;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Validator;
@@ -66,11 +70,14 @@ class MqttIngestion implements SmartLifecycle, HealthIndicator {
             @Override public void messageArrived(String topic, MqttMessage message) throws Exception {
                 long receivedGeneration = generation.get();
                 inflight.acquire();
-                try {
+                Span span = Telemetry.start("mqtt receive", SpanKind.CONSUMER)
+                        .setAttribute("messaging.system", "mqtt");
+                try (var scope = span.makeCurrent()) {
                     publish(topic, message).whenComplete((result, error) -> {
                         try {
                             synchronized (ackLock) {
                                 if (error != null) {
+                                    span.setStatus(StatusCode.ERROR);
                                     reconnect.set(true); generation.incrementAndGet();
                                     LOG.warn("Kafka confirmation failed, MQTT message remains unacknowledged");
                                 } else if (receivedGeneration == generation.get() && !reconnect.get() && mqtt.isConnected() && message.getQos() > 0) {
@@ -78,10 +85,18 @@ class MqttIngestion implements SmartLifecycle, HealthIndicator {
                                     acknowledged.increment();
                                 }
                             }
-                        } catch (MqttException failure) { reconnect.set(true); generation.incrementAndGet(); }
-                        finally { inflight.release(); }
+                        } catch (MqttException failure) {
+                            span.setStatus(StatusCode.ERROR);
+                            reconnect.set(true);
+                            generation.incrementAndGet();
+                        } finally {
+                            span.end();
+                            inflight.release();
+                        }
                     });
                 } catch (Exception error) {
+                    span.setStatus(StatusCode.ERROR);
+                    span.end();
                     inflight.release(); reconnect.set(true); generation.incrementAndGet();
                     LOG.warn("Publish could not start, MQTT message remains unacknowledged");
                 }
@@ -112,8 +127,10 @@ class MqttIngestion implements SmartLifecycle, HealthIndicator {
                     || !wire.sessionId().equals(session.getClaimAsString("sessionId"))) throw new IllegalArgumentException();
             Number epoch = session.getClaim("sessionEpoch");
             if (epoch == null || epoch.longValue() < 1 || epoch.longValue() > 9007199254740991L) throw new IllegalArgumentException();
+            Span.current().setAttribute("capyiot.event_id", wire.eventId());
             var event = new DeviceEvent(wire.eventId(), wire.eventType(), 1, wire.campusId(), wire.deviceId(), wire.sessionId(),
-                    epoch.longValue(), wire.seq(), wire.occurredAt(), Instant.now(), UUID.randomUUID().toString(), "device-ingestion", wire.payload());
+                    epoch.longValue(), wire.seq(), wire.occurredAt(), Instant.now(),
+                    Telemetry.traceId(UUID.randomUUID().toString()), "device-ingestion", wire.payload());
             key = event.deviceId();
             body = json.writeValueAsString(event);
         } catch (Exception invalid) {

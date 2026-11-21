@@ -1,5 +1,6 @@
 package io.capyiot.device;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
@@ -7,6 +8,12 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import org.springframework.http.HttpStatus;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -14,7 +21,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Component
 class DeviceNotifications {
+    private static final ChannelTopic TOPIC = new ChannelTopic("capyiot:device:notifications");
     private record Change(String deviceId, String traceId, boolean stateChanged) {}
+    private record Notice(String origin, String campusId, Change device, String runId) {}
     private static class Subscription {
         final String campusId;
         final Instant expiresAt;
@@ -27,7 +36,19 @@ class DeviceNotifications {
     private final ConcurrentHashMap<String, Subscription> subscriptions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Change> pending = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> scenarios = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Notice> outgoing = new ConcurrentHashMap<>();
+    private final String instanceId = UUID.randomUUID().toString();
     private final Semaphore slots = new Semaphore(64);
+    private final StringRedisTemplate redis;
+    private final ObjectMapper json;
+    private final boolean pubsub;
+
+    DeviceNotifications(StringRedisTemplate redis, ObjectMapper json,
+            @org.springframework.beans.factory.annotation.Value("${capyiot.device-pubsub-enabled:false}") boolean pubsub) {
+        this.redis = redis;
+        this.json = json;
+        this.pubsub = pubsub;
+    }
 
     SseEmitter subscribe(String campusId, Instant expiresAt) throws IOException {
         if (!slots.tryAcquire()) throw new DeviceProblem(HttpStatus.TOO_MANY_REQUESTS, "STREAM_LIMIT", "实时连接数已达上限，请稍后重试");
@@ -44,17 +65,65 @@ class DeviceNotifications {
     }
 
     void changed(String campusId, String deviceId, String traceId, boolean stateChanged) {
-        pending.merge(campusId, new Change(deviceId, traceId, stateChanged),
-                (previous, next) -> new Change(next.deviceId(), next.traceId(), previous.stateChanged() || next.stateChanged()));
+        queue(new Notice(instanceId, campusId, new Change(deviceId, traceId, stateChanged), null));
+    }
+
+    private void receive(Notice notice) {
+        if (notice.runId() != null) scenarios.put(notice.campusId(), notice.runId());
+        if (notice.device() != null) pending.merge(notice.campusId(), notice.device(), DeviceNotifications::merge);
+    }
+
+    private static Change merge(Change previous, Change next) {
+        return new Change(next.deviceId(), next.traceId(), previous.stateChanged() || next.stateChanged());
+    }
+
+    private void queue(Notice notice) {
+        receive(notice);
+        if (!pubsub) return;
+        outgoing.merge(notice.campusId(), notice, (previous, next) ->
+                new Notice(instanceId, next.campusId(),
+                        previous.device() == null ? next.device() : next.device() == null ? previous.device()
+                                : merge(previous.device(), next.device()),
+                        next.runId() == null ? previous.runId() : next.runId()));
+    }
+
+    private void distribute(Notice notice) {
+        try {
+            redis.convertAndSend(TOPIC.getTopic(), json.writeValueAsString(notice));
+        } catch (org.springframework.dao.DataAccessException | com.fasterxml.jackson.core.JsonProcessingException failure) {
+            // Durable state remains available to interested clients after reconnect.
+        }
     }
 
     @TransactionalEventListener
     public void scenarioChanged(ScenarioRuns.Changed change) {
-        scenarios.put(change.campusId(), change.runId());
+        queue(new Notice(instanceId, change.campusId(), null, change.runId()));
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class PubSub {
+        @Bean
+        @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+                name = "capyiot.device-pubsub-enabled", havingValue = "true")
+        RedisMessageListenerContainer deviceNotificationListener(RedisConnectionFactory factory,
+                DeviceNotifications notifications, ObjectMapper json) {
+            var container = new RedisMessageListenerContainer();
+            container.setConnectionFactory(factory);
+            container.addMessageListener((message, pattern) -> {
+                try {
+                    Notice notice = json.readValue(message.getBody(), Notice.class);
+                    if (!notifications.instanceId.equals(notice.origin())) notifications.receive(notice);
+                } catch (IOException invalid) {
+                    throw new IllegalArgumentException("Invalid device notification", invalid);
+                }
+            }, TOPIC);
+            return container;
+        }
     }
 
     @Scheduled(fixedDelay = 250)
     void flush() {
+        outgoing.forEach((campus, notice) -> { if (outgoing.remove(campus, notice)) distribute(notice); });
         var changes = new ConcurrentHashMap<String, Change>();
         pending.forEach((campus, change) -> { if (pending.remove(campus, change)) changes.put(campus, change); });
         var runChanges = new ConcurrentHashMap<String, String>();

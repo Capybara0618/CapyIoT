@@ -64,6 +64,9 @@ test('eight routes use the specified themes and fit three desktop widths', async
       }
       if (path === '/observability') {
         await expect(page.getByText(/5 \/ 5 就绪/)).toBeVisible()
+        await expect(
+          page.getByText('当前为 Compose 模式，Kubernetes 副本与 KEDA 状态不可用。'),
+        ).toBeVisible()
       }
       if (path === '/dashboard') {
         await expect(page.getByRole('link', { name: '演示模式' })).toBeVisible()

@@ -1,8 +1,8 @@
 package io.capyiot.device;
 
-import java.time.Instant;
-import java.sql.Timestamp;
+import io.capyiot.contract.Telemetry;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +33,7 @@ class DeviceOutbox {
     @Scheduled(fixedDelayString = "${capyiot.outbox-delay-ms:500}")
     void publish() {
         for (int i = 0; i < 20; i++) {
+            String lease = UUID.randomUUID().toString();
             Map<String, Object> event = transactions.execute(status -> {
                 // A leased or retrying predecessor must finish before another replica sends a later state.
                 var rows = jdbc.queryForList("""
@@ -47,18 +48,27 @@ class DeviceOutbox {
                         """);
                 if (rows.isEmpty()) return null;
                 var row = rows.getFirst();
-                jdbc.update("UPDATE outbox_event SET next_retry_at=? WHERE id=?", Timestamp.from(Instant.now().plusSeconds(30)), row.get("id"));
+                jdbc.update("""
+                        UPDATE outbox_event SET delivery_token=?,next_retry_at=TIMESTAMPADD(SECOND,60,CURRENT_TIMESTAMP(3))
+                        WHERE id=?
+                        """, lease, row.get("id"));
                 return row;
             });
             if (event == null) return;
-            try {
+            try (var scope = Telemetry.parent((String) event.get("trace_parent"))) {
                 kafka.send((String) event.get("topic"), (String) event.get("message_key"),
                         (String) event.get("payload_json")).get(15, TimeUnit.SECONDS);
-                jdbc.update("UPDATE outbox_event SET status='SENT',sent_at=CURRENT_TIMESTAMP(3) WHERE id=?", event.get("id"));
+                jdbc.update("""
+                        UPDATE outbox_event SET status='SENT',sent_at=CURRENT_TIMESTAMP(3),delivery_token=NULL
+                        WHERE id=? AND delivery_token=?
+                        """, event.get("id"), lease);
             } catch (Exception error) {
                 if (error instanceof InterruptedException) Thread.currentThread().interrupt();
-                jdbc.update("UPDATE outbox_event SET status='RETRY',retry_count=retry_count+1,next_retry_at=? WHERE id=?",
-                        Timestamp.from(Instant.now().plusSeconds(5)), event.get("id"));
+                jdbc.update("""
+                        UPDATE outbox_event SET status='RETRY',retry_count=retry_count+1,delivery_token=NULL,
+                            next_retry_at=TIMESTAMPADD(SECOND,5,CURRENT_TIMESTAMP(3))
+                        WHERE id=? AND delivery_token=?
+                        """, event.get("id"), lease);
                 LOG.warn("Outbox retry eventId={}", event.get("event_id"));
                 return;
             }

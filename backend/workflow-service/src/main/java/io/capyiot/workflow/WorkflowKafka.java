@@ -3,6 +3,8 @@ package io.capyiot.workflow;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.capyiot.contract.AlarmEvent;
+import io.capyiot.contract.KafkaTelemetry;
+import io.opentelemetry.api.trace.StatusCode;
 import java.util.List;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -31,7 +33,16 @@ class WorkflowKafka {
 
     @KafkaListener(topics = AlarmEvent.TOPIC, groupId = WorkOrderService.GROUP)
     void consume(ConsumerRecord<String, String> record) {
-        orders.consume(decode(record.key(), record.value()));
+        var event = decode(record.key(), record.value());
+        var span = KafkaTelemetry.process(record, event.eventId());
+        try (var scope = span.makeCurrent()) {
+            orders.consume(event);
+        } catch (RuntimeException error) {
+            span.setStatus(StatusCode.ERROR);
+            throw error;
+        } finally {
+            span.end();
+        }
     }
 
     AlarmEvent decode(String key, String value) {

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import io.capyiot.contract.DeviceEvent;
 import io.capyiot.contract.DeviceMessage;
 import io.capyiot.contract.DeviceSignal;
+import io.capyiot.contract.Telemetry;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.security.MessageDigest;
 import java.sql.Timestamp;
@@ -154,9 +155,9 @@ class DeviceStateTransactions {
         var event = new DeviceSignal(id, type, 1, campusId, after.deviceId(), occurredAt, Instant.now(),
                 traceId, "device-service", payload);
         jdbc.update("""
-                INSERT INTO outbox_event(aggregate_type,aggregate_id,event_type,event_id,topic,message_key,payload_json)
-                VALUES ('DEVICE',?,?,?,?,?,?)
-                """, after.deviceId(), type, id, DeviceEvent.STATUS_TOPIC, after.deviceId(), serialize(event));
+                INSERT INTO outbox_event(aggregate_type,aggregate_id,event_type,event_id,topic,message_key,payload_json,trace_parent)
+                VALUES ('DEVICE',?,?,?,?,?,?,?)
+                """, after.deviceId(), type, id, DeviceEvent.STATUS_TOPIC, after.deviceId(), serialize(event), Telemetry.traceParent());
     }
 
     private String fingerprint(DeviceEvent event) {

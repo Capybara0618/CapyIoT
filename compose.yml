@@ -8,6 +8,12 @@ x-app: &app
   restart: unless-stopped
   networks: [internal]
   mem_limit: 512m
+  stop_grace_period: 45s
+
+x-observability: &observability
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+  SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 15s
+  LOGGING_PATTERN_CORRELATION: "[trace=%X{trace_id} span=%X{span_id}] "
 
 services:
   mysql:
@@ -21,7 +27,7 @@ services:
     ports: ['127.0.0.1:3306:3306']
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./infra/mysql/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
+      - ./infra/helm/capyiot/files/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysql -uroot -e "SELECT schema_name FROM information_schema.schemata WHERE schema_name = ''workflow_db''" | grep workflow_db']
       interval: 5s
@@ -94,6 +100,7 @@ services:
       <<: *java-build
       args: { SERVICE: device-ingestion }
     environment:
+      <<: *observability
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MQTT_URL: tcp://emqx:1883
       DEVICE_JWT_SECRET: ${DEVICE_JWT_SECRET:?Run python scripts/init_env.py}
@@ -112,6 +119,7 @@ services:
       <<: *java-build
       args: { SERVICE: device-service }
     environment:
+      <<: *observability
       DEVICE_DB_URL: jdbc:mysql://mysql:3306/device_db?connectionTimeZone=UTC
       DEVICE_DB_PASSWORD: ${DEVICE_DB_PASSWORD:?Missing device password}
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
@@ -120,6 +128,9 @@ services:
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SCENARIO_DEVICE_FILE: /demo/demo-devices.json
+      CAPYIOT_KAFKA_LAG_ENABLED: "true"
+      CAPYIOT_QUERY_CACHE_ENABLED: ${CAPYIOT_QUERY_CACHE_ENABLED:-true}
+      CAPYIOT_JFR_OPTIONS: ${CAPYIOT_JFR_OPTIONS:-}
       MQTT_URL: tcp://emqx:1883
     volumes:
       - ./var:/demo:ro
@@ -139,6 +150,7 @@ services:
       <<: *java-build
       args: { SERVICE: alarm-service }
     environment:
+      <<: *observability
       ALARM_DB_URL: jdbc:mysql://mysql:3306/alarm_db?connectionTimeZone=UTC
       ALARM_DB_PASSWORD: ${ALARM_DB_PASSWORD:?Missing alarm password}
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
@@ -161,6 +173,7 @@ services:
       <<: *java-build
       args: { SERVICE: workflow-service }
     environment:
+      <<: *observability
       WORKFLOW_DB_URL: jdbc:mysql://mysql:3306/workflow_db?connectionTimeZone=UTC
       WORKFLOW_DB_PASSWORD: ${WORKFLOW_DB_PASSWORD:?Missing workflow password}
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
@@ -182,6 +195,8 @@ services:
       <<: *java-build
       args: { SERVICE: gateway }
     environment:
+      <<: *observability
+      PROMETHEUS_URL: http://prometheus:9090
       DEVICE_SERVICE_URL: http://device-service:8082
       INGESTION_SERVICE_URL: http://device-ingestion:8081
       ALARM_SERVICE_URL: http://alarm-service:8083
@@ -245,8 +260,16 @@ services:
       GF_USERS_ALLOW_SIGN_UP: 'false'
     ports: ['127.0.0.1:3000:3000']
     volumes:
-      - ./infra/grafana/datasources.yml:/etc/grafana/provisioning/datasources/default.yml:ro
+      - ./infra/helm/capyiot/files/datasources.yml:/etc/grafana/provisioning/datasources/default.yml:ro
+      - ./infra/helm/capyiot/files/dashboards.yml:/etc/grafana/provisioning/dashboards/default.yml:ro
+      - ./infra/helm/capyiot/files/capyiot.json:/etc/grafana/capyiot/capyiot.json:ro
       - grafana-data:/var/lib/grafana
+    networks: [internal]
+
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
+    profiles: [monitoring]
+    ports: ['127.0.0.1:16686:16686']
     networks: [internal]
 
 networks:

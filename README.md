@@ -2,7 +2,7 @@
 
 云原生智慧园区物联设备接入与分布式告警治理平台，个人开源项目。
 
-当前版本支持从场景控制台发起 MQTT 故障演示，经离线巡检、拓扑关联告警到工单恢复验证。驾驶舱图表使用设备状态历史和当前告警数据，可观测中心展示服务就绪探测。
+支持从场景控制台发起 MQTT 故障演示，经离线巡检、拓扑关联告警到工单恢复验证。可用 Docker Compose 或 Helm 部署，通过 Prometheus、Grafana 和 OpenTelemetry 检查实际服务运行。
 
 ## 本地启动
 
@@ -102,6 +102,8 @@ cd backend
 
 Windows 使用 `mvnw.cmd verify`。后端模块为 Gateway、设备接入、设备管理、告警治理、工单协同及共享契约。MySQL 中三个独立业务库由各自服务的 Flyway 管理，本地共用一个 MySQL 实例。
 
+根目录运行 `python scripts/mysql_bootstrap_smoke.py` 可验证三库首次初始化，测试会特意设置不同的客户端和服务端 socket 路径，并清理自己的临时容器和数据卷。
+
 可单独构建 Java 模拟器，在项目根目录运行。
 
 ```sh
@@ -133,4 +135,47 @@ npm run test:e2e
 docker compose --profile monitoring up -d
 ```
 
-Prometheus 位于 <http://localhost:9095>，Grafana 位于 <http://localhost:3000>。Grafana 使用 `admin` 和 `.env` 中的 `GRAFANA_ADMIN_PASSWORD` 登录，已配置 Prometheus 数据源。当前提供 Java 服务基础指标，业务监控和 Kubernetes 指标随后接入。
+在 [系统可观测中心](http://localhost:8088/observability) 查看就绪探针、Kafka 消费组积压、设备事件处理速率、HTTP P95、JVM 堆与 GC、HikariCP 和查询指标。负载较低时部分图表需要先产生实际请求或事件。Grafana 使用 `admin` 和 `.env` 中的 `GRAFANA_ADMIN_PASSWORD` 登录，导航至 [CapyIoT 服务监控](http://localhost:3000/d/capyiot)。Prometheus 位于 <http://localhost:9095>。
+
+需要追踪时，将 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger:4318/v1/traces` 加到本机 `.env`，重新运行带 monitoring profile 的启动命令。事件详情中的 32 位 traceId 可在 [Jaeger](http://localhost:16686) 查询。Java agent 采集 HTTP 和 Kafka，MQTT 接入创建起始 span，Outbox 保留发送时使用的 traceparent。Jaeger 演示实例用内存保存最近链路。
+
+## Kubernetes 演示
+
+需要本机 Docker、kind、kubectl、Helm。以下命令使用 Bash，部署单节点 Kubernetes、独立命名空间和本地 PVC。也可配置 `demo.enabled=false` 及 `endpoints.*`，连接已经初始化的外部 MySQL、Redis、Kafka、EMQX。外部 Kafka 的连接地址及 `advertised.listeners` 必须能从应用和 KEDA 所在命名空间解析。示例 broker 和监控服务面向本地演示。
+
+```sh
+python scripts/init_env.py
+docker compose --profile simulation build
+kind create cluster --name capyiot-m5 --image kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0 --wait 120s
+for service in gateway device-ingestion device-service alarm-service workflow-service frontend simulator; do
+  docker tag "capyiot-$service:latest" "capyiot-$service:m5"
+  kind load docker-image --name capyiot-m5 "capyiot-$service:m5"
+done
+helm repo add kedacore https://kedacore.github.io/charts
+```
+
+```sh
+helm --kube-context kind-capyiot-m5 upgrade --install keda kedacore/keda --version 2.21.1 -n keda --create-namespace --wait
+kubectl --context kind-capyiot-m5 create namespace capyiot
+python scripts/k8s_secrets.py --context kind-capyiot-m5
+helm --kube-context kind-capyiot-m5 upgrade --install capyiot infra/helm/capyiot -n capyiot --set keda.enabled=true --wait --timeout 6m
+kubectl --context kind-capyiot-m5 -n capyiot port-forward svc/frontend 18088:8080
+```
+
+打开 <http://localhost:18088>。另开终端可分别转发 `svc/prometheus 9095:9090`、`svc/grafana 3000:3000`、`svc/jaeger 16686:16686`。Compose 与 Kubernetes 同时运行时选择空闲的本地端口。
+
+在 Kubernetes 使用场景中心时，先注册设备并挂载演示凭据。
+
+```sh
+python scripts/demo_devices.py --base-url http://localhost:18088 --output var/k8s-demo-devices.json
+kubectl --context kind-capyiot-m5 -n capyiot create secret generic capyiot-demo-devices --from-file=demo-devices.json=var/k8s-demo-devices.json
+helm --kube-context kind-capyiot-m5 upgrade capyiot infra/helm/capyiot -n capyiot --reuse-values --set demo.scenarioSecret=capyiot-demo-devices --wait
+```
+
+KEDA 跟踪 `iot.device.events.v1` 的 `device-state-group`。默认 8 个分区，每副本 2 个消费者，1–4 个副本。专用测试集群可用 `--set keda.lagThreshold=10` 部署，并转发 Jaeger 至本地 16687 后运行 `python scripts/k8s_smoke.py --context kind-capyiot-m5`。该测试临时关闭设备消费者以建立积压，验证扩缩容、重启替换、再次消费和监控采集。
+
+## 查询与 JVM 诊断
+
+- `GET /api/v1/devices/cursor?buildingId=BLD-1&size=20` 和 `GET /api/v1/alarms/history?size=20` 支持稳定排序的游标；下一页传 `cursor=nextCursor`。原有分页 API 可用于对照。
+- 设备汇总通过 Redis 保存 2 秒，Redis 不可用时读取 MySQL。Compose 用 `CAPYIOT_QUERY_CACHE_ENABLED=false`，Helm 用 `queryCacheEnabled=false` 关闭缓存做对照。
+- 在本机 `.env` 设置 `CAPYIOT_JFR_OPTIONS=settings=profile,disk=false,delay=30s,duration=60s,filename=/tmp/capyiot.jfr`，重建 Device Service 容器后等待录制完成，用 `docker compose cp device-service:/tmp/capyiot.jfr ./var/capyiot.jfr` 取回，再用 JDK 的 `jfr summary` 查看。示例使用内存环形缓冲区进行短时诊断，避免容器文件系统对 JFR 磁盘仓库导出的兼容性限制；繁忙服务可能覆盖较早的采样。Helm 可通过 `deviceJfrOptions` 启用同一入口。Grafana 的 HikariCP 面板提供连接池使用情况。

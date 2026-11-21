@@ -242,7 +242,8 @@ class DevicePipelineTest {
             assertThat(redis.opsForHash().get("device:state:" + id, "sessionEpoch")).isEqualTo("2");
             assertThat(redis.opsForHash().get("device:state:" + id, "seq")).isEqualTo("1");
             assertThat(redis.opsForHash().get("device:state:" + id, "health")).isEqualTo("NORMAL");
-            assertThat(jdbc.queryForObject("SELECT processing_status FROM device_event WHERE device_id=? AND seq=100", String.class, id)).isEqualTo("IGNORED_SESSION");
+            assertThat(jdbc.queryForList("SELECT processing_status FROM device_event WHERE device_id=? AND seq=100",
+                    String.class, id)).containsExactly("IGNORED_SESSION");
         });
         projection.apply(new DeviceStateTransactions.Snapshot(id, "OFFLINE", "ABNORMAL", 1, 5, Instant.now(), 1));
         assertThat(redis.opsForHash().get("device:state:" + id, "seq")).isEqualTo("1");
@@ -275,6 +276,25 @@ class DevicePipelineTest {
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> verify(notifications, atLeastOnce())
                 .changed("CAMPUS-A", id, event.traceId(), false));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM device_event WHERE event_id=?", Long.class, event.eventId())).isEqualTo(1);
+    }
+
+    @Test
+    void assetCursorTraversesEqualTimestampsAndRespectsCampusAndBuilding() throws Exception {
+        var first = register("CAMERA", null).path("device").path("id").asText();
+        var second = register("SENSOR", null).path("device").path("id").asText();
+        jdbc.update("UPDATE device SET created_at=? WHERE id IN (?,?)",
+                java.sql.Timestamp.from(Instant.now().plusSeconds(10)), first, second);
+        String path = "/devices/cursor?buildingId=BLD-1&size=1";
+        var page = call(HttpMethod.GET, path, null, "OPERATOR", "CAMPUS-A", 200);
+        assertThat(page.path("items").get(0).path("id").asText()).isEqualTo(
+                java.util.stream.Stream.of(first, second).max(String::compareTo).orElseThrow());
+        var next = call(HttpMethod.GET, path + "&cursor=" + page.path("nextCursor").asText(), null,
+                "OPERATOR", "CAMPUS-A", 200);
+        assertThat(next.path("items").get(0).path("id").asText()).isEqualTo(
+                java.util.stream.Stream.of(first, second).min(String::compareTo).orElseThrow());
+        var foreign = call(HttpMethod.GET, path, null, "OPERATOR", "ANOTHER-CAMPUS", 200);
+        assertThat(foreign.path("items").size()).isZero();
+        call(HttpMethod.GET, path + "&cursor=bad", null, "OPERATOR", "CAMPUS-A", 400);
     }
 
     @Test

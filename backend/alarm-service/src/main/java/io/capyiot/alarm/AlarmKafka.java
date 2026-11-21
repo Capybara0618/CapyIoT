@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.capyiot.contract.DeviceEvent;
 import io.capyiot.contract.DeviceSignal;
+import io.capyiot.contract.KafkaTelemetry;
+import io.opentelemetry.api.trace.StatusCode;
 import io.capyiot.contract.TopologyEvent;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
@@ -36,7 +38,15 @@ class AlarmKafka {
         if (event == null || event.schemaVersion() != 1 || event.campusId() == null
                 || !event.campusId().equals(record.key()) || event.payload() == null
                 || event.payload().version() < 1 || event.payload().node() == null) return;
-        if (!topology.apply(event)) sync.refresh(event.campusId(), event.payload().version());
+        var span = KafkaTelemetry.process(record, event.eventId());
+        try (var scope = span.makeCurrent()) {
+            if (!topology.apply(event)) sync.refresh(event.campusId(), event.payload().version());
+        } catch (RuntimeException error) {
+            span.setStatus(StatusCode.ERROR);
+            throw error;
+        } finally {
+            span.end();
+        }
     }
 
     @KafkaListener(topics = DeviceEvent.STATUS_TOPIC, groupId = "alarm-rule-group")
@@ -46,8 +56,16 @@ class AlarmKafka {
                 || event.deviceId() == null || !event.deviceId().equals(record.key()) || event.payload() == null
                 || event.payload().reason() == null || event.payload().causationId() == null
                 || event.receivedAt() == null || event.occurredAt() == null) return;
-        sync.ensure(event.campusId(), event.payload().topologyVersion());
-        rules.evaluate(event);
+        var span = KafkaTelemetry.process(record, event.eventId());
+        try (var scope = span.makeCurrent()) {
+            sync.ensure(event.campusId(), event.payload().topologyVersion());
+            rules.evaluate(event);
+        } catch (RuntimeException error) {
+            span.setStatus(StatusCode.ERROR);
+            throw error;
+        } finally {
+            span.end();
+        }
     }
 
     private <T> T read(ConsumerRecord<String, String> record, Class<T> type) {

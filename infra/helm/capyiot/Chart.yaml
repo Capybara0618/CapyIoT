@@ -1,0 +1,6 @@
+apiVersion: v2
+name: capyiot
+description: CapyIoT applications and optional local dependencies
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

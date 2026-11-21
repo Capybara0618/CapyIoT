@@ -3,6 +3,7 @@ package io.capyiot.device;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.capyiot.contract.TopologyEvent;
+import io.capyiot.contract.Telemetry;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -56,7 +57,8 @@ class DeviceTopology {
         var node = jdbc.queryForObject(NODE_SQL + " AND d.id=?", NODE, campusId, deviceId);
         Instant now = Instant.now();
         String id = UUID.randomUUID().toString();
-        var event = new TopologyEvent(id, "TOPOLOGY_NODE_CHANGED", 1, campusId, now, now, id,
+        String traceId = Telemetry.traceId(id);
+        var event = new TopologyEvent(id, "TOPOLOGY_NODE_CHANGED", 1, campusId, now, now, traceId,
                 "device-service", new TopologyEvent.Change(version, node));
         String body;
         try {
@@ -65,11 +67,11 @@ class DeviceTopology {
             throw new IllegalStateException("Cannot serialize topology event", error);
         }
         jdbc.update("""
-                INSERT INTO outbox_event(aggregate_type,aggregate_id,event_type,event_id,topic,message_key,payload_json)
-                VALUES ('TOPOLOGY',?,'TOPOLOGY_NODE_CHANGED',?,?,?,?)
-                """, deviceId, id, TopologyEvent.TOPIC, campusId, body);
+                INSERT INTO outbox_event(aggregate_type,aggregate_id,event_type,event_id,topic,message_key,payload_json,trace_parent)
+                VALUES ('TOPOLOGY',?,'TOPOLOGY_NODE_CHANGED',?,?,?,?,?)
+                """, deviceId, id, TopologyEvent.TOPIC, campusId, body, Telemetry.traceParent());
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override public void afterCommit() { notifications.changed(campusId, deviceId, id, true); }
+            @Override public void afterCommit() { notifications.changed(campusId, deviceId, traceId, true); }
         });
         return version;
     }
