@@ -166,8 +166,8 @@ a.network-metric:hover {
 .topology-graph .vue-flow {
   --xy-background-color: transparent;
   --xy-minimap-background-color: var(--panel-soft);
-  --xy-minimap-mask-background-color: #faf9f599;
-  --xy-minimap-node-background-color: #9a978e;
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bg) 60%, transparent);
+  --xy-minimap-node-background-color: var(--text-muted);
   --xy-controls-button-background-color: var(--panel);
   --xy-controls-button-color: var(--text-muted);
   --xy-controls-button-border-color: var(--border);
