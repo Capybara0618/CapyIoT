@@ -12,6 +12,7 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { AlarmSummary } from '../alarms'
+import { readChartStyle } from '../chartStyle'
 
 use([LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 type ChartOption = ComposeOption<
@@ -36,36 +37,38 @@ const hourLabel = new Intl.DateTimeFormat('zh-CN', {
   hourCycle: 'h23',
 })
 const activitySeries = [
-  ['online', '恢复在线', '#4ce4a1'],
-  ['offline', '转为离线', '#ff7b86'],
-  ['abnormal', '健康异常', '#ffc069'],
+  ['online', '恢复在线', 'success'],
+  ['offline', '转为离线', 'danger'],
+  ['abnormal', '健康异常', 'warning'],
 ] as const
 
 function render() {
+  const style = readChartStyle()
   const points = props.activity ?? []
   activityChart?.setOption<ChartOption>(
     {
       animation: false,
+      textStyle: style.textStyle,
       grid: { left: 40, right: 24, bottom: 28, top: 40 },
-      legend: { top: 6, textStyle: { color: '#a9bfd1' } },
-      tooltip: { trigger: 'axis' },
+      legend: { top: 6, textStyle: { color: style.muted } },
+      tooltip: { trigger: 'axis', ...style.tooltip },
       xAxis: {
         type: 'category',
         data: points.map(({ hour }) => hourLabel.format(new Date(hour * 1000))),
-        axisLabel: { color: '#a9bfd1' },
-        axisLine: { lineStyle: { color: '#315168' } },
+        axisLabel: { color: style.muted },
+        axisLine: { lineStyle: { color: style.border } },
       },
       yAxis: {
         type: 'value',
         minInterval: 1,
-        axisLabel: { color: '#a9bfd1' },
-        splitLine: { lineStyle: { color: '#213a50' } },
+        axisLabel: { color: style.muted },
+        splitLine: { lineStyle: { color: style.border } },
       },
       series: activitySeries.map(([key, name, color]) => ({
         name,
         type: 'line',
         showSymbol: false,
-        itemStyle: { color },
+        itemStyle: { color: style[color] },
         data: points.map((point) => point[key]),
       })),
     },
@@ -74,9 +77,10 @@ function render() {
   alarmChart?.setOption<ChartOption>(
     {
       animation: false,
-      tooltip: { trigger: 'item' },
-      legend: { bottom: 0, textStyle: { color: '#a9bfd1' } },
-      color: ['#ff7b86', '#ffc069'],
+      textStyle: style.textStyle,
+      tooltip: { trigger: 'item', ...style.tooltip },
+      legend: { bottom: 0, textStyle: { color: style.muted } },
+      color: [style.danger, style.warning],
       series: [
         {
           type: 'pie',
@@ -97,8 +101,9 @@ function render() {
   )
 }
 
-onMounted(() => {
-  if (!activityEl.value || !alarmEl.value) return
+onMounted(async () => {
+  await document.fonts.ready
+  if (!activityEl.value?.isConnected || !alarmEl.value?.isConnected) return
   activityChart = init(activityEl.value)
   alarmChart = init(alarmEl.value)
   observer = new ResizeObserver(() => {

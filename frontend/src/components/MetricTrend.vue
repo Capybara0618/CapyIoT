@@ -4,6 +4,7 @@ import { init, use, type EChartsType } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { readChartStyle } from '../chartStyle'
 
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 const props = defineProps<{
@@ -18,25 +19,27 @@ let chart: EChartsType | undefined
 let observer: ResizeObserver | undefined
 
 function update() {
+  const style = readChartStyle()
   chart?.setOption(
     {
       animation: false,
+      textStyle: style.textStyle,
       grid: { top: 12, left: 42, right: 15, bottom: 25 },
-      tooltip: { trigger: 'axis' },
+      tooltip: { trigger: 'axis', ...style.tooltip },
       xAxis: {
         type: 'time',
         min: props.from * 1000,
         max: props.to * 1000,
         splitNumber: 3,
-        axisLabel: { color: '#9ab1c6', hideOverlap: true },
-        axisLine: { lineStyle: { color: '#315168' } },
+        axisLabel: { color: style.muted, hideOverlap: true },
+        axisLine: { lineStyle: { color: style.border } },
       },
       yAxis: {
         type: 'value',
         min: 0,
         splitNumber: 3,
-        axisLabel: { color: '#9ab1c6' },
-        splitLine: { lineStyle: { color: '#213a50' } },
+        axisLabel: { color: style.muted },
+        splitLine: { lineStyle: { color: style.border } },
       },
       series: [
         {
@@ -45,7 +48,7 @@ function update() {
           showSymbol: false,
           lineStyle: { color: props.color, width: 2 },
           itemStyle: { color: props.color },
-          areaStyle: { color: props.color, opacity: 0.12 },
+          areaStyle: { color: props.color, opacity: 0.06 },
           data: props.points.map(({ at, value }) => [at * 1000, value]),
         },
       ],
@@ -53,8 +56,9 @@ function update() {
     true,
   )
 }
-onMounted(() => {
-  if (!element.value) return
+onMounted(async () => {
+  await document.fonts.ready
+  if (!element.value?.isConnected) return
   chart = init(element.value)
   observer = new ResizeObserver(() => chart?.resize())
   observer.observe(element.value)

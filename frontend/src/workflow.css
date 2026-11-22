@@ -39,7 +39,7 @@
 .work-actions {
   padding: 12px 16px;
   border-block: 1px solid var(--border);
-  background: #f6faff;
+  background: var(--panel-soft);
 }
 .work-actions .el-button {
   margin: 0;
@@ -81,7 +81,7 @@
 }
 .work-timeline li {
   position: relative;
-  border-left: 1px solid #bddeef;
+  border-left: 1px solid var(--border);
   padding: 0 0 15px 13px;
   font-size: 12px;
 }
@@ -93,7 +93,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #1683d8;
+  background: var(--accent);
 }
 .work-timeline time {
   display: block;
@@ -104,8 +104,8 @@
   margin: 4px 0 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  background: #f2f7fe;
-  border: 1px solid #dce9f6;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 8px;
 }

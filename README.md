@@ -4,6 +4,8 @@
 
 支持从场景控制台发起 MQTT 故障演示，经离线巡检、拓扑关联告警到工单恢复验证。可用 Docker Compose 或 Helm 部署，通过 Prometheus、Grafana 和 OpenTelemetry 检查实际服务运行。
 
+八个页面统一采用暖白主题，界面字体为本地托管的 Poppins 与思源黑体，品牌文字使用 Lora。字体的 OFL 许可随前端静态文件提供。
+
 ## 本地启动
 
 需要 Docker Engine / Docker Desktop、Docker Compose v2+ 和 Python 3.10+。首次构建需要联网下载镜像与依赖。
