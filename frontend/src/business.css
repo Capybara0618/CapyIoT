@@ -26,6 +26,13 @@
   --el-border-radius-base: 6px;
   --el-font-size-base: 13px;
 }
+.el-button--primary {
+  --el-button-hover-link-text-color: var(--accent-hover);
+}
+.el-button--primary:not(.is-plain, .is-link, .is-text) {
+  --el-button-hover-bg-color: var(--accent-hover);
+  --el-button-hover-border-color: var(--accent-hover);
+}
 .business-page .el-button {
   gap: 6px;
   height: 34px;
