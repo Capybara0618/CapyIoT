@@ -20,6 +20,10 @@ spring:
     deserialization:
       fail-on-numbers-for-enums: true
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:

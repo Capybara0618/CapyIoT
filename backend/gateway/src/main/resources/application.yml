@@ -27,6 +27,10 @@ capyiot:
       username: operator
       password-hash: ${DEMO_OPERATOR_PASSWORD_HASH}
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   server:
     port: 9090
   endpoints:

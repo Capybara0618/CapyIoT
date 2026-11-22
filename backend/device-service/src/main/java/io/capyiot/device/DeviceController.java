@@ -19,11 +19,13 @@ class DeviceController {
     private final DeviceAssets assets;
     private final DeviceQueries queries;
     private final DeviceSessions sessions;
+    private final DeviceSummaries summaries;
 
-    DeviceController(DeviceAssets assets, DeviceQueries queries, DeviceSessions sessions) {
+    DeviceController(DeviceAssets assets, DeviceQueries queries, DeviceSessions sessions, DeviceSummaries summaries) {
         this.assets = assets;
         this.queries = queries;
         this.sessions = sessions;
+        this.summaries = summaries;
     }
 
     @GetMapping("/devices")
@@ -35,7 +37,14 @@ class DeviceController {
     }
 
     @GetMapping("/devices/summary")
-    ApiResponse<Summary> summary(@AuthenticationPrincipal Jwt jwt) { return ok(queries.summary(campus(jwt))); }
+    ApiResponse<Summary> summary(@AuthenticationPrincipal Jwt jwt) { return ok(summaries.summary(campus(jwt))); }
+
+    @GetMapping("/devices/cursor")
+    ApiResponse<DeviceQueries.CursorPage> cursor(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) String buildingId, @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size) {
+        return ok(queries.cursor(campus(jwt), buildingId, cursor, size));
+    }
 
     @GetMapping("/devices/activity")
     ApiResponse<List<DeviceQueries.Activity>> activity(@AuthenticationPrincipal Jwt jwt) {

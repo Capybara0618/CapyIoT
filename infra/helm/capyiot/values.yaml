@@ -1,0 +1,74 @@
+existingSecret: capyiot-secrets
+imageTag: m5
+imagePullPolicy: IfNotPresent
+javaOptions: "-XX:MaxRAMPercentage=55 -XX:ActiveProcessorCount=2 -Dfile.encoding=UTF-8"
+queryCacheEnabled: true
+deviceJfrOptions: ""
+
+endpoints:
+  mysql: mysql
+  redis: redis
+  kafka: kafka:29092
+  mqtt: tcp://emqx:1883
+
+demo:
+  enabled: true
+  scenarioSecret: ""
+  simulatorJob:
+    enabled: false
+    image: capyiot-simulator
+    rounds: 4
+    intervalMs: 500
+
+keda:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 4
+  lagThreshold: 100
+
+monitoring:
+  enabled: true
+  tracing: true
+  prometheusImage: prom/prometheus:v3.5.0
+  grafanaImage: grafana/grafana:12.3.0
+  jaegerImage: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
+
+apps:
+  gateway:
+    image: capyiot-gateway
+    port: 8080
+    management: 9090
+    secrets: [JWT_SECRET, DEMO_ADMIN_PASSWORD_HASH, DEMO_OPERATOR_PASSWORD_HASH]
+  device-ingestion:
+    image: capyiot-device-ingestion
+    port: 8081
+    waitFor: [kafka, emqx]
+    strategy: Recreate
+    secrets: [DEVICE_JWT_SECRET]
+  device-service:
+    image: capyiot-device-service
+    port: 8082
+    waitFor: [mysql, redis, device-ingestion]
+    secrets: [JWT_SECRET, DEVICE_JWT_SECRET, DEVICE_DB_PASSWORD, TOPOLOGY_SYNC_TOKEN]
+  alarm-service:
+    image: capyiot-alarm-service
+    port: 8083
+    waitFor: [mysql, device-service]
+    secrets: [JWT_SECRET, ALARM_DB_PASSWORD, TOPOLOGY_SYNC_TOKEN]
+  workflow-service:
+    image: capyiot-workflow-service
+    port: 8084
+    waitFor: [mysql, alarm-service]
+    secrets: [JWT_SECRET, WORKFLOW_DB_PASSWORD]
+  frontend:
+    image: capyiot-frontend
+    port: 8080
+    waitFor: [gateway]
+
+resources:
+  java:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "2", memory: 640Mi }
+  frontend:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 250m, memory: 96Mi }
