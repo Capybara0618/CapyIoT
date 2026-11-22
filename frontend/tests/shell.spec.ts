@@ -32,24 +32,28 @@ test('login preserves a deep link, reports errors, and signs out', async ({ page
   await expect(page).toHaveURL(/\/login$/)
 })
 
-test('eight routes use the specified themes and fit three desktop widths', async ({ page }) => {
+test('eight routes share the light theme and typography at three desktop widths', async ({
+  page,
+}) => {
   test.setTimeout(90000)
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/login')
+  await page.evaluate(() => document.fonts.ready)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.getByLabel('账号', { exact: true }).fill('operator')
   await page.getByLabel('密码', { exact: true }).fill(credentials.DEMO_OPERATOR_PASSWORD)
   await page.getByRole('button', { name: '进入工作台' }).click()
   await expect(page.getByText('服务已连接', { exact: true })).toBeVisible()
   const routes = [
-    ['/dashboard', '运营驾驶舱', 'dark'],
+    ['/dashboard', '运营驾驶舱', 'light'],
     ['/devices', '设备资产中心', 'light'],
-    ['/topology', '网络拓扑中心', 'dark'],
+    ['/topology', '网络拓扑中心', 'light'],
     ['/events', '实时事件中心', 'light'],
     ['/alarms', '告警治理中心', 'light'],
     ['/workorders', '工单协同中心', 'light'],
-    ['/scenarios', '场景模拟中心', 'dark'],
-    ['/observability', '系统可观测中心', 'dark'],
+    ['/scenarios', '场景模拟中心', 'light'],
+    ['/observability', '系统可观测中心', 'light'],
   ]
   for (const width of [1440, 1280, 1024]) {
     await page.setViewportSize({ width, height: 900 })
@@ -58,6 +62,9 @@ test('eight routes use the specified themes and fit three desktop widths', async
       await expect(page).toHaveURL(new RegExp(`${path}$`))
       await expect(page.getByRole('heading', { name: title })).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+      expect(
+        await page.locator('body').evaluate((element) => getComputedStyle(element).fontFamily),
+      ).toContain('Noto Sans SC Variable')
       if (path === '/scenarios') {
         await expect(page.getByRole('button', { name: '开始模拟' })).toBeDisabled()
         await expect(page.getByLabel('目标设备')).not.toHaveValue('')

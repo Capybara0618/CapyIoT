@@ -39,48 +39,48 @@ interface Deployment {
   scaling: { configured: boolean; ready: boolean; active: boolean; min: number; max: number } | null
 }
 const definitions = [
-  { id: 'lag', label: 'Kafka 消费积压', unit: '条', color: '#ffb65c', hint: 'device-state-group' },
+  { id: 'lag', label: 'Kafka 消费积压', unit: '条', color: '#97641b', hint: 'device-state-group' },
   {
     id: 'tps',
     label: '设备事件处理速率',
     unit: '条/秒',
-    color: '#42dfb2',
+    color: '#347454',
     hint: '完成状态投影，包括成功重投',
   },
   {
     id: 'httpP95',
     label: 'API 延迟 P95',
     unit: 'ms',
-    color: '#73b9fb',
+    color: '#426788',
     hint: '请求直方图 · 五分钟窗口',
   },
   {
     id: 'heapMiB',
     label: 'JVM 堆使用',
     unit: 'MiB',
-    color: '#9caaff',
+    color: '#766b87',
     hint: '所选服务各实例的堆用量',
   },
-  { id: 'gcPause', label: 'GC 暂停速率', unit: 'ms/s', color: '#45d9f0', hint: '每秒平均暂停时间' },
+  { id: 'gcPause', label: 'GC 暂停速率', unit: 'ms/s', color: '#507b7d', hint: '每秒平均暂停时间' },
   {
     id: 'poolActive',
     label: 'HikariCP 活跃连接',
     unit: '条',
-    color: '#72ddb7',
+    color: '#5d8067',
     hint: '当前借出的连接数',
   },
   {
     id: 'mysqlP95',
     label: 'MySQL 查询路径 P95',
     unit: 'ms',
-    color: '#f5c169',
+    color: '#a7793b',
     hint: '设备或告警查询 · 五分钟窗口',
   },
   {
     id: 'cacheHit',
     label: 'Redis 汇总缓存命中率',
     unit: '%',
-    color: '#67d3f8',
+    color: '#56779a',
     hint: '设备汇总 · 五分钟窗口',
   },
 ] as const

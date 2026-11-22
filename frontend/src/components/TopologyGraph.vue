@@ -53,12 +53,12 @@ const graphic = computed(() => {
     const signal = props.markers.get(target)
     const grouping = signal?.rootNetworkNodeId === source ? signal.relationKind : ''
     const tone = spatial
-      ? '#406d81'
+      ? 'var(--text-muted)'
       : grouping === 'CONFIRMED_UPSTREAM'
-        ? '#ff6775'
+        ? 'var(--danger)'
         : grouping === 'SUSPECTED_UPSTREAM'
-          ? '#fbb453'
-          : '#29bfd5'
+          ? 'var(--warning)'
+          : 'var(--accent)'
     edges.push({
       id: `${source}:${target}`,
       source,
@@ -224,7 +224,7 @@ function select(id: string) {
       :max-zoom="1.8"
       :fit-view="true"
       :fit-view-options="{ padding: 0.16, maxZoom: 1.05 }"
-      color-mode="dark"
+      color-mode="light"
       @init="instance = $event"
       @node-click="select($event.node.id)"
     >
@@ -249,7 +249,7 @@ function select(id: string) {
           :position="Position.Bottom"
         />
       </template>
-      <Background :gap="20" :size="1" pattern-color="#31516a" />
+      <Background :gap="20" :size="1" pattern-color="#dedbd2" />
       <Controls :show-interactive="false" position="bottom-left" />
       <MiniMap
         v-if="!compact"
