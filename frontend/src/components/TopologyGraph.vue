@@ -249,7 +249,7 @@ function select(id: string) {
           :position="Position.Bottom"
         />
       </template>
-      <Background :gap="20" :size="1" pattern-color="#dedbd2" />
+      <Background :gap="20" :size="1" pattern-color="var(--border)" />
       <Controls :show-interactive="false" position="bottom-left" />
       <MiniMap
         v-if="!compact"

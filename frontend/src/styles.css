@@ -5,23 +5,24 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   color-scheme: light;
-  --bg: #faf9f5;
-  --panel: #fffefd;
-  --panel-soft: #f3f1eb;
-  --text: #292824;
-  --text-muted: #716e66;
-  --border: #e3e0d8;
-  --accent: #426788;
-  --accent-soft: #edf1f5;
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --panel-soft: #f1f4f8;
+  --text: #1f2937;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: #eaf2ff;
   --success: #347454;
   --success-soft: #edf4ee;
   --warning: #97641b;
   --warning-soft: #faf1e2;
   --danger: #b4483f;
   --danger-soft: #faeeeb;
-  --sidebar: #f3f1eb;
-  --topbar: #faf9f5;
-  --active: #e9e6de;
+  --sidebar: #ffffff;
+  --topbar: #ffffff;
+  --active: var(--accent-soft);
 }
 * {
   box-sizing: border-box;
@@ -102,7 +103,7 @@ svg {
   padding: 0 24px;
 }
 .brand > svg {
-  color: var(--text);
+  color: var(--accent);
 }
 .brand > span {
   font-family: var(--font-editorial);
@@ -140,7 +141,7 @@ svg {
 }
 .sidebar nav a.active {
   background: var(--active);
-  color: var(--text);
+  color: var(--accent);
   font-weight: 500;
 }
 .sidebar nav a.active::before {
@@ -367,7 +368,7 @@ svg {
   padding: 8px 20px;
 }
 .primary-button:hover {
-  filter: brightness(1.08);
+  background: var(--accent-hover);
 }
 .login-page {
   min-height: 100vh;
@@ -386,7 +387,7 @@ svg {
   letter-spacing: -0.7px;
 }
 .login-brand svg {
-  color: var(--text);
+  color: var(--accent);
 }
 .login-layout {
   width: min(100%, 1040px);
@@ -427,7 +428,7 @@ svg {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 36px;
-  box-shadow: 0 8px 32px #29282406;
+  box-shadow: 0 8px 32px #1f293706;
 }
 .login-card h2 {
   font-size: 23px;

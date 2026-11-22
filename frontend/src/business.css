@@ -7,12 +7,12 @@
   --el-color-success: var(--success);
   --el-color-warning: var(--warning);
   --el-color-danger: var(--danger);
-  --el-color-primary-light-3: #748da4;
-  --el-color-primary-light-5: #9caebf;
-  --el-color-primary-light-7: #c6d0db;
-  --el-color-primary-light-8: #dde4ea;
+  --el-color-primary-light-3: color-mix(in srgb, var(--accent) 70%, white);
+  --el-color-primary-light-5: color-mix(in srgb, var(--accent) 50%, white);
+  --el-color-primary-light-7: color-mix(in srgb, var(--accent) 30%, white);
+  --el-color-primary-light-8: color-mix(in srgb, var(--accent) 20%, white);
   --el-color-primary-light-9: var(--accent-soft);
-  --el-color-primary-dark-2: #355570;
+  --el-color-primary-dark-2: var(--accent-hover);
   --el-color-primary: var(--accent);
   --el-border-color: var(--border);
   --el-border-color-light: var(--border);
@@ -25,6 +25,13 @@
   --el-text-color-secondary: var(--text-muted);
   --el-border-radius-base: 6px;
   --el-font-size-base: 13px;
+}
+.el-button--primary {
+  --el-button-hover-link-text-color: var(--accent-hover);
+}
+.el-button--primary:not(.is-plain, .is-link, .is-text) {
+  --el-button-hover-bg-color: var(--accent-hover);
+  --el-button-hover-border-color: var(--accent-hover);
 }
 .business-page .el-button {
   gap: 6px;

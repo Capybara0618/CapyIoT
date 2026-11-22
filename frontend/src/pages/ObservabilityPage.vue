@@ -51,7 +51,7 @@ const definitions = [
     id: 'httpP95',
     label: 'API 延迟 P95',
     unit: 'ms',
-    color: '#426788',
+    color: '#2563eb',
     hint: '请求直方图 · 五分钟窗口',
   },
   {
@@ -80,7 +80,7 @@ const definitions = [
     id: 'cacheHit',
     label: 'Redis 汇总缓存命中率',
     unit: '%',
-    color: '#56779a',
+    color: '#4b7bec',
     hint: '设备汇总 · 五分钟窗口',
   },
 ] as const
