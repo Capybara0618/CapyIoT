@@ -53,8 +53,8 @@ class DeviceAssets {
         asset.version = 0L;
         mapper.insert(asset);
         jdbc.update("UPDATE device SET device_type=?,device_secret_hash=?,asset_status='IN_SERVICE',legacy_only=? WHERE id=?",
-                asset.type.equals("CAMERA") ? "IPC" : asset.type.equals("SWITCH") ? "SWITCH" : null,
-                asset.passwordHash, !Set.of("CAMERA","SWITCH").contains(asset.type), asset.id);
+                asset.type.equals("CAMERA") ? "IPC" : Set.of("SWITCH","NVR").contains(asset.type) ? asset.type : null,
+                asset.passwordHash, !Set.of("CAMERA","SWITCH","NVR").contains(asset.type), asset.id);
         jdbc.update("INSERT INTO device_state_snapshot(device_id) VALUES (?)", asset.id);
         setParent(campusId, asset.id, emptyToNull(request.upstreamNodeId()));
         topology.publishChange(campusId, asset.id);

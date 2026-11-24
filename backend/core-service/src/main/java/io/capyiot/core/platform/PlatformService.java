@@ -172,9 +172,21 @@ public class PlatformService implements io.capyiot.core.ports.UserAssignmentPort
     private void advanceAuthorization(String id) { db.update("UPDATE app_user SET authorization_version=authorization_version+1,version=version+1 WHERE user_id=?",id); revokeSessions(id,"AUTHORIZATION_CHANGED"); }
     private void revokeSessions(String id,String reason) { db.update("UPDATE login_session SET status='REVOKED',revoked_at=CURRENT_TIMESTAMP(3),revoked_reason=? WHERE user_id=? AND status='ACTIVE'",reason,id); }
     public List<Map<String,Object>> auditRecords(AuthorizationContext actor,int limit) {
-        actor.require("platform.audit.read");
-        if(actor.grants().stream().noneMatch(g->g.roleCode().equals("SYS_ADMIN")&&g.scopeType().equals("NONE"))) return List.of();
-        return db.queryForList("SELECT audit_id AS auditId,actor_user_id AS actorUserId,action_code AS actionCode,resource_type AS resourceType,resource_id AS resourceId,result,source,reason,created_at AS createdAt FROM audit_record ORDER BY audit_id DESC LIMIT ?",Math.min(Math.max(limit,1),100));
+        var grants=actor.require("platform.audit.read");
+        boolean platform=grants.stream().anyMatch(g->g.roleCode().equals("SYS_ADMIN")&&g.scopeType().equals("NONE"));
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        return db.queryForList("SELECT audit_id AS auditId,actor_user_id AS actorUserId,actor_name_snapshot AS actorName,action_code AS actionCode,resource_type AS resourceType,resource_id AS resourceId,park_id AS parkId,result,source,reason,details_json AS details,created_at AS createdAt FROM audit_record ORDER BY audit_id DESC").stream().filter(row->{
+            String park=(String)row.get("parkId");
+            if(park==null)return platform;
+            if(grants.stream().anyMatch(g->g.scopeType().equals("PARK")&&park.equals(g.parkId())))return true;
+            var port=assets.getIfAvailable();if(port==null)return false;
+            try {
+                var details=json.readTree(Objects.toString(row.get("details"),"{}"));
+                List<String> devices=new ArrayList<>(),areas=new ArrayList<>();
+                details.path("deviceIds").forEach(id->devices.add(id.asText()));details.path("areaIds").forEach(id->areas.add(id.asText()));
+                return port.auditVisible(actor,park,devices,areas);
+            }catch(com.fasterxml.jackson.core.JsonProcessingException invalid){return false;}
+        }).limit(Math.min(Math.max(limit,1),100)).map(row->{row.remove("details");return io.capyiot.core.Views.row(row);}).toList();
     }
     public void audit(AuthorizationContext actor,String action,String type,String id,String result,Long before,Long after,String reason) {
         db.update("INSERT INTO audit_record(actor_type,actor_id,actor_user_id,actor_name_snapshot,action_code,resource_type,resource_id,result,source,reason,before_version,after_version,session_id,authorization_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

@@ -34,6 +34,14 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
     @Override public boolean areasBelongToPark(String park,List<String> ids) {
         return ids.stream().allMatch(id->Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM area WHERE id=? AND park_id=? AND status='ACTIVE'",Boolean.class,id,park)));
     }
+    @Override public boolean auditVisible(AuthorizationContext actor,String park,List<String> devices,List<String> areas) {
+        if(devices.isEmpty()&&areas.isEmpty())return false;
+        try {
+            if(!devices.isEmpty())for(var device:requireVisibleDevices(actor,"platform.audit.read",devices))if(!device.parkId().equals(park))return false;
+            for(String id:areas)requireArea(actor,"platform.audit.read",park,id);
+            return true;
+        }catch(ApiProblem hidden){return false;}
+    }
     private Map<String,Object> area(String id) {
         var rows=store.db.queryForList("SELECT * FROM area WHERE id=?",id); if(rows.isEmpty()) throw ApiProblem.missing(); return rows.getFirst();
     }

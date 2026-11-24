@@ -20,4 +20,9 @@ final class FaultStore {
         Flyway.configure().dataSource(source).locations("classpath:db/fault").load().migrate();db=new JdbcTemplate(source);tx=new TransactionTemplate(new DataSourceTransactionManager(source));
     }
     @PreDestroy void close(){source.close();}
+    @org.springframework.context.annotation.Bean
+    @ConditionalOnProperty(name="capyiot.domain-runtime.enabled",havingValue="true")
+    io.capyiot.outbox.OutboxRelay faultOutbox(org.springframework.kafka.core.KafkaTemplate<String,String> kafka,com.fasterxml.jackson.databind.ObjectMapper json) {
+        return new io.capyiot.outbox.OutboxRelay(db,kafka,json,tx.getTransactionManager(),true,20);
+    }
 }

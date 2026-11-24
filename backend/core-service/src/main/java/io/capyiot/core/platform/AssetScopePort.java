@@ -6,4 +6,5 @@ import java.util.List;
 public interface AssetScopePort {
     boolean parkExists(String parkId);
     boolean areasBelongToPark(String parkId, List<String> areaIds);
+    default boolean auditVisible(AuthorizationContext actor,String parkId,List<String> deviceIds,List<String> areaIds) { return false; }
 }

@@ -220,6 +220,14 @@ services:
       CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
       CAPYIOT_ASSETS_ENABLED: 'true'
       CAPYIOT_DEVICE_RUNTIME_ENABLED: 'true'
+      CAPYIOT_FAULTS_ENABLED: 'true'
+      CAPYIOT_FAULT_RUNTIME_ENABLED: 'true'
+      CAPYIOT_WORKORDERS_ENABLED: 'true'
+      CAPYIOT_DOMAIN_RUNTIME_ENABLED: 'true'
+      ALARM_DB_URL: jdbc:mysql://mysql:3306/alarm_db?connectionTimeZone=UTC
+      ALARM_DB_PASSWORD: ${ALARM_DB_PASSWORD:?Missing alarm password}
+      WORKFLOW_DB_URL: jdbc:mysql://mysql:3306/workflow_db?connectionTimeZone=UTC
+      WORKFLOW_DB_PASSWORD: ${WORKFLOW_DB_PASSWORD:?Missing workflow password}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       CAPYIOT_DEVICE_KEY_FILE: /keys/device-keys.json
       CAPYIOT_DEVICE_KEYS_GENERATE: 'true'

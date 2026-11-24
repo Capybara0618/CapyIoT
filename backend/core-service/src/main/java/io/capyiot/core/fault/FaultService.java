@@ -223,6 +223,7 @@ public class FaultService implements HealthQueryPort,IncidentGatePort {
     }
     public void observation(JsonNode event){
         String eventId=event.path("eventId").asText(),type=event.path("eventType").asText(),deviceId=event.path("aggregateId").asText(),park=event.path("parkId").asText();JsonNode body=event.path("body");
+        if(!Set.of("DeviceConnectionLost","DeviceConnectionRestored","DeviceObservationAccepted").contains(type))return;
         var device=devices.device(deviceId);if(!device.parkId().equals(park))throw ApiProblem.invalid("观察园区不一致");
         boolean applied=Boolean.TRUE.equals(store.tx.execute(status->{
             store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)",park);store.db.queryForObject("SELECT scope_id FROM command_lock WHERE scope_id=? FOR UPDATE",String.class,park);

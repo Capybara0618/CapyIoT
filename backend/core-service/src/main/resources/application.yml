@@ -2,6 +2,10 @@ server:
   port: 8085
   shutdown: graceful
 spring:
+  task:
+    scheduling:
+      pool:
+        size: 6
   jackson:
     deserialization:
       fail-on-unknown-properties: true
