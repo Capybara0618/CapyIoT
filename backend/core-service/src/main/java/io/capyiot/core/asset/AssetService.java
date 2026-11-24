@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 @ConditionalOnProperty(name="capyiot.assets.enabled",havingValue="true")
-public class AssetService implements AssetScopePort,DeviceQueryPort {
+public class AssetService implements AssetScopePort,DeviceQueryPort,EvidenceQueryPort {
     private final AssetStore store;
     private final ObjectMapper json;
     private final CommandJournal commands;
@@ -110,6 +110,8 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
                 .peek(a->{if(a.get("parentAreaId")!=null&&!visible.contains(a.get("parentAreaId"))) a.put("parentAreaId",null);}).toList();
     }
     public JsonNode createArea(AuthorizationContext actor,String key,CreateArea c) {
+        if(c.areaType()==AreaType.BUILDING&&c.parentAreaId()!=null||c.areaType()!=AreaType.BUILDING&&c.parentAreaId()==null)throw ApiProblem.invalid("楼栋直属园区，楼层和区域必须有上级");
+        if(c.parentAreaId()!=null){var parent=area(c.parentAreaId());if(!parent.get("status").equals("ACTIVE")||c.areaType()==AreaType.FLOOR&&!parent.get("area_type").equals("BUILDING")||c.areaType()==AreaType.AREA&&!Set.of("FLOOR","AREA").contains(parent.get("area_type")))throw ApiProblem.invalid("上级区域层级无效或已停用");}
         String park;
         if(c.parentAreaId()==null) {
             park="CAMPUS-A";
@@ -194,6 +196,8 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
         return write(actor,key,before.parkId(),"DeviceUpdated",Map.of("id",id,"body",c),()->{
             var d=row(id); version(d,c.expectedVersion());
             if(d.get("asset_status").equals("RETIRED")) throw ApiProblem.conflict("退役设备不能重新启用或修改");
+            if(c.assetStatus()==AssetStatus.REGISTERED&&!d.get("asset_status").equals("REGISTERED"))throw ApiProblem.invalid("已投用资产不能退回待投用状态");
+            if(c.areaId()!=null){if(!area(c.areaId()).get("status").equals("ACTIVE"))throw ApiProblem.invalid("目标区域已停用");var parents=legacyParents(c.areaId());store.db.update("UPDATE device SET building_id=?,floor_id=? WHERE id=?",parents.get("building"),parents.get("floor"),id);}
             if(c.capabilities()!=null&&!Set.of("poeInput","poeOutput").containsAll(c.capabilities().keySet())) throw ApiProblem.invalid("设备能力无效");
             if(c.capabilities()!=null&&c.assetStatus()!=AssetStatus.RETIRED){
                 if(!Boolean.TRUE.equals(c.capabilities().get("poeOutput"))&&Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM power_dependency WHERE poe_switch_id=? AND valid_to IS NULL",Boolean.class,id)))throw ApiProblem.conflict("请先结束当前 PoE 供电关系，再移除输出能力");
@@ -218,7 +222,14 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
     }
     private Map<String,String> legacyParents(String id) {
         Map<String,String> result=new HashMap<>(); String next=id; Set<String> seen=new HashSet<>();
-        while(next!=null&&seen.add(next)) { var a=area(next); if(a.get("area_type").equals("BUILDING")) result.put("building",next); if(a.get("area_type").equals("FLOOR")) result.put("floor",next); next=(String)a.get("parent_area_id"); }
+        while(next!=null&&seen.add(next)) {
+            var a=area(next);String kind=a.get("area_type").toString().toLowerCase(Locale.ROOT);
+            if(Set.of("building","floor").contains(kind)){
+                var mapping=store.db.queryForList("SELECT legacy_id FROM legacy_location_mapping WHERE legacy_table=? AND area_id=?",String.class,kind,next);
+                if(!mapping.isEmpty())result.put(kind,mapping.getFirst());
+            }
+            next=(String)a.get("parent_area_id");
+        }
         return result;
     }
     public Map<String,Object> overview(AuthorizationContext actor) {
@@ -241,8 +252,13 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
     }
     public Map<String,Object> event(AuthorizationContext actor,String id) {
         var rows=store.db.queryForList("SELECT event_id AS eventId,device_id AS deviceId,event_type AS eventType,stream_key AS streamKey,sequence_no AS sequence,session_epoch AS sessionEpoch,occurred_at AS occurredAt,received_at AS receivedAt,source,processing_status AS processingStatus,trace_id AS traceId,payload_json AS payload FROM device_event WHERE event_id=? AND schema_version='1'",id);
-        if(rows.isEmpty())throw ApiProblem.missing();var result=Views.row(rows.getFirst());String device=result.get("deviceId").toString();
+        if(rows.isEmpty())throw ApiProblem.missing();if(rows.size()>1)throw new ApiProblem(409,"AMBIGUOUS_EVENT_ID","事件标识跨来源重复，请按设备历史核查");var result=Views.row(rows.getFirst());String device=result.get("deviceId").toString();
         requireVisibleDevices(actor,"event.read",List.of(device));requireVisibleDevices(actor,"device.read",List.of(device));result.put("payload",parse(result.get("payload").toString()));return result;
+    }
+    @Override public boolean visibleEvidence(AuthorizationContext actor,String id,Collection<String> targets){
+        var ids=store.db.queryForList("SELECT device_id FROM device_event WHERE event_id=? AND schema_version='1'",String.class,id);
+        if(ids.isEmpty()||!new HashSet<>(targets).containsAll(ids))return false;
+        try{requireVisibleDevices(actor,"event.read",ids);return true;}catch(ApiProblem hidden){return false;}
     }
     private void endDeviceRelations(String id,String actor) {
         store.db.update("UPDATE monitoring_point SET version=version+1 WHERE monitoring_point_id IN(SELECT monitoring_point_id FROM monitoring_point_binding WHERE ipc_device_id=? AND valid_to IS NULL)",id);
@@ -253,6 +269,7 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
     }
     public JsonNode createPoint(AuthorizationContext actor,String key,CreatePoint c) {
         String park=str(area(c.areaId()),"park_id"); requireArea(actor,"device.manage",park,c.areaId());
+        if(!area(c.areaId()).get("status").equals("ACTIVE"))throw ApiProblem.invalid("区域已停用");
         return write(actor,key,park,"MonitoringPointCreated",c,()->{
             String id=id(); store.db.update("INSERT INTO monitoring_point(monitoring_point_id,park_id,area_id,point_code,name,description) VALUES(?,?,?,?,?,?)",id,park,c.areaId(),c.pointCode(),c.name(),c.description());
             events.append("MonitoringPointCreated",id,park,actor,Map.of("monitoringPointId",id)); return Map.of("monitoringPointId",id,"version",0);
@@ -260,7 +277,16 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
     }
     private Map<String,Object> point(AuthorizationContext actor,String permission,String id) {
         var rows=store.db.queryForList("SELECT * FROM monitoring_point WHERE monitoring_point_id=?",id); if(rows.isEmpty()) throw ApiProblem.missing();
-        var p=rows.getFirst(); requireArea(actor,permission,str(p,"park_id"),str(p,"area_id")); return p;
+        var p=rows.getFirst();if(!pointVisible(actor,permission,p))throw ApiProblem.missing();return p;
+    }
+    private boolean pointVisible(AuthorizationContext actor,String permission,Map<String,Object> p){
+        String park=Objects.toString(p.getOrDefault("park_id",p.get("parkId"))),area=Objects.toString(p.getOrDefault("area_id",p.get("areaId")));
+        for(var grant:actor.require(permission))if(park.equals(grant.parkId())){
+            if(grant.scopeType().equals("PARK")||grant.scopeType().equals("AREA_SUBTREE")&&descendants(park,grant.rootAreaIds()).contains(area))return true;
+        }
+        String id=Objects.toString(p.getOrDefault("monitoring_point_id",p.get("monitoringPointId")));
+        var assigned=visibleDeviceIds(actor,permission);
+        return store.db.queryForList("SELECT ipc_device_id FROM monitoring_point_binding WHERE monitoring_point_id=? AND valid_to IS NULL",String.class,id).stream().anyMatch(assigned::contains);
     }
     public JsonNode updatePoint(AuthorizationContext actor,String key,String id,UpdatePoint c) {
         var p=point(actor,"device.manage",id); String park=str(p,"park_id");
@@ -274,7 +300,7 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
     }
     public List<Map<String,Object>> points(AuthorizationContext actor,String park) {
         Set<String> areas=visibleAreas(actor,"device.read",park);
-        return store.db.queryForList("SELECT monitoring_point_id AS monitoringPointId,park_id AS parkId,area_id AS areaId,point_code AS pointCode,name,description,status,version FROM monitoring_point WHERE park_id=? ORDER BY point_code",park).stream().filter(p->areas.contains(p.get("areaId"))).toList();
+        return store.db.queryForList("SELECT monitoring_point_id AS monitoringPointId,park_id AS parkId,area_id AS areaId,point_code AS pointCode,name,description,status,version FROM monitoring_point WHERE park_id=? ORDER BY point_code",park).stream().filter(p->areas.contains(p.get("areaId"))&&pointVisible(actor,"device.read",p)).toList();
     }
     public JsonNode bind(AuthorizationContext actor,String key,String pointId,BindPoint c) {
         var p=point(actor,"topology.manage",pointId); var d=requireVisibleDevices(actor,"topology.manage",List.of(c.ipcDeviceId())).getFirst(); String park=str(p,"park_id");
@@ -299,7 +325,7 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
         Set<String> visible=visibleDeviceIds(actor,"device.read");
         return store.db.queryForList("SELECT binding_id AS bindingId,monitoring_point_id AS monitoringPointId,ipc_device_id AS ipcDeviceId,valid_from AS validFrom,valid_to AS validTo,reason,version FROM monitoring_point_binding ORDER BY valid_from,binding_id").stream()
                 .filter(b->visible.contains(b.get("ipcDeviceId"))&&(deviceId==null||deviceId.equals(b.get("ipcDeviceId")))&&(pointId==null||pointId.equals(b.get("monitoringPointId"))))
-                .filter(b->{try {point(actor,"device.read",str(b,"monitoringPointId"));return true;}catch(ApiProblem ignored){return false;}}).toList();
+                .filter(b->{try {point(actor,"device.read",str(b,"monitoringPointId"));return true;}catch(ApiProblem ignored){return false;}}).map(Views::row).toList();
     }
     public JsonNode network(AuthorizationContext actor,String key,Network c) {
         var devices=requireVisibleDevices(actor,"topology.manage",List.of(c.upstreamSwitchId(),c.downstreamDeviceId())); DeviceRef up=devices.getFirst(),down=devices.getLast();

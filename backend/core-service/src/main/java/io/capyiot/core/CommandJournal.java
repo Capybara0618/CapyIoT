@@ -31,12 +31,16 @@ public final class CommandJournal {
                 if(!hash.equals(prior.get("request_hash"))) throw new ApiProblem(409,"IDEMPOTENCY_CONFLICT","幂等键已用于不同命令");
                 return parse(prior.get("result_snapshot").toString());
             }
-            JsonNode response=json.valueToTree(mutation.get()); JsonNode stored=response.deepCopy();
+            JsonNode response=json.valueToTree(mutation.get());
+            boolean creation=Set.of("AreaCreated","DeviceRegistered","MonitoringPointCreated","MonitoringPointBound","NetworkDependencyCreated","PowerDependencyCreated","VideoChannelAssociated","IncidentCreated","WorkOrderCreated","user.create").contains(type);
+            if(creation&&response instanceof ObjectNode object)object.put("created",true);
+            JsonNode stored=response.deepCopy();
             // Registration/rotation can reveal a credential only once. It is never in a journal or event.
             if(stored instanceof ObjectNode object) {
                 boolean revealed=object.has("deviceSecret");
                 object.remove(List.of("deviceSecret","secret","sessionToken","accessToken"));
                 if(revealed)object.put("secretAlreadyRevealed",true);
+                if(creation)object.put("created",false);
             }
             if(workOrders){
                 long orderId=Long.parseLong(response.path("workOrderId").asText());

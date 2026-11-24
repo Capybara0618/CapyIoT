@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 @ConditionalOnProperty(name="capyiot.faults.enabled",havingValue="true")
-public class FaultService implements HealthQueryPort,IncidentGatePort {
+public class FaultService implements HealthQueryPort,IncidentGatePort,EvidenceQueryPort {
     private final FaultStore store;private final DeviceQueryPort devices;private final ObjectProvider<WorkOrderQueryPort> orders;
     private final ObjectMapper json;private final CommandJournal commands;private final LocalEvents events;
     private final long correlationSeconds,healthySeconds;
@@ -25,6 +25,11 @@ public class FaultService implements HealthQueryPort,IncidentGatePort {
         if(correlationSeconds<1||healthySeconds<1)throw new IllegalArgumentException("Fault observation windows must be positive");this.correlationSeconds=correlationSeconds;this.healthySeconds=healthySeconds;
     }
     private Map<String,Object> anomaly(String id){var rows=store.db.queryForList("SELECT * FROM anomaly WHERE anomaly_id=?",id);if(rows.isEmpty())throw ApiProblem.missing();return rows.getFirst();}
+    @Override public boolean visibleEvidence(AuthorizationContext actor,String id,Collection<String> targets){
+        var ids=store.db.queryForList("SELECT a.device_id FROM anomaly_evidence e JOIN anomaly a ON a.anomaly_id=e.anomaly_id WHERE e.evidence_id=? AND a.device_id IS NOT NULL",String.class,id);
+        if(ids.isEmpty()||!new HashSet<>(targets).containsAll(ids))return false;
+        try{devices.requireVisibleDevices(actor,"anomaly.read",ids);return true;}catch(ApiProblem hidden){return false;}
+    }
     private Map<String,Object> incident(String id){var rows=store.db.queryForList("SELECT * FROM incident WHERE incident_id=?",id);if(rows.isEmpty())throw ApiProblem.missing();return rows.getFirst();}
     private Set<String> incidentDevices(String id){return new HashSet<>(store.db.queryForList("SELECT DISTINCT a.device_id FROM anomaly a JOIN incident_anomaly_link l ON l.anomaly_id=a.anomaly_id WHERE l.incident_id=? AND a.device_id IS NOT NULL",String.class,id));}
     private void visible(AuthorizationContext actor,String permission,Map<String,Object> anomaly){

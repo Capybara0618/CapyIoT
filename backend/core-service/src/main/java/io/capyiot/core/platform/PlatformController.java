@@ -36,9 +36,9 @@ class PlatformController {
     @GetMapping("/api/v1/users/{id}")
     ApiResponse<?> user(@AuthenticationPrincipal Jwt jwt,@PathVariable String id,HttpServletRequest request) { return ok(platform.user(platform.current(jwt),id),request); }
     @PostMapping("/api/v1/users")
-    ApiResponse<?> create(@AuthenticationPrincipal Jwt jwt,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody PlatformService.CreateUser command,HttpServletRequest request) {
+    org.springframework.http.ResponseEntity<?> create(@AuthenticationPrincipal Jwt jwt,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody PlatformService.CreateUser command,HttpServletRequest request) {
         var actor=platform.current(jwt); actor.requirePlatform("platform.user.manage");
-        return ok(commands.execute("PLATFORM",key,actor.userId(),"user.create",command,()->platform.createUser(actor,command)),request);
+        var result=commands.execute("PLATFORM",key,actor.userId(),"user.create",command,()->platform.createUser(actor,command));return org.springframework.http.ResponseEntity.status(result.path("created").asBoolean()?201:200).body(ok(result,request));
     }
     @PatchMapping("/api/v1/users/{id}")
     ApiResponse<?> update(@AuthenticationPrincipal Jwt jwt,@RequestHeader("Idempotency-Key") String key,@PathVariable String id,@Valid @RequestBody PlatformService.UpdateUser command,HttpServletRequest request) {

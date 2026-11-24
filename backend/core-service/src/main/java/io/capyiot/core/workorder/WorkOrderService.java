@@ -17,7 +17,9 @@ import org.springframework.stereotype.Service;
 public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort {
     private final WorkOrderStore store;private final DeviceQueryPort devices;private final IncidentGatePort gate;private final UserAssignmentPort users;
     private final ObjectMapper json;private final CommandJournal commands;private final LocalEvents events;
-    public WorkOrderService(WorkOrderStore store,DeviceQueryPort devices,IncidentGatePort gate,UserAssignmentPort users,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String key){
+    private final org.springframework.beans.factory.ObjectProvider<EvidenceQueryPort> evidence;
+    public WorkOrderService(WorkOrderStore store,DeviceQueryPort devices,IncidentGatePort gate,UserAssignmentPort users,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String key,org.springframework.beans.factory.ObjectProvider<EvidenceQueryPort> evidence){
+        this.evidence=evidence;
         this.store=store;this.devices=devices;this.gate=gate;this.users=users;this.json=json;commands=new CommandJournal(store.db,store.tx,json,key,true);events=new LocalEvents(store.db,json,"workorder");
     }
     private Map<String,Object> row(long id){var rows=store.db.queryForList("SELECT * FROM work_order WHERE id=?",id);if(rows.isEmpty())throw ApiProblem.missing();return rows.getFirst();}
@@ -98,17 +100,18 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
     public JsonNode accept(AuthorizationContext actor,String key,long id,Version c){return mutate(actor,key,id,"WorkOrderAccepted","workorder.repair.accept",c,c.expectedVersion(),o->{repairer(actor,o);allowed(o,Set.of("ASSIGNED"));store.db.update("UPDATE work_order SET accepted_at=CURRENT_TIMESTAMP(3),status='ACCEPTED' WHERE id=?",id);return "ACCEPTED";},null);}
     public JsonNode decline(AuthorizationContext actor,String key,long id,Reason c){return mutate(actor,key,id,"WorkOrderDeclined","workorder.repair.accept",c,c.expectedVersion(),o->{repairer(actor,o);allowed(o,Set.of("ASSIGNED"));store.db.update("UPDATE work_order SET assigned_repairer_id=NULL,designated_acceptor_id=NULL,status='OPEN' WHERE id=?",id);return "OPEN";},c.reason());}
     public JsonNode start(AuthorizationContext actor,String key,long id,Version c){return mutate(actor,key,id,"WorkOrderStarted","workorder.repair.start",c,c.expectedVersion(),o->{repairer(actor,o);allowed(o,Set.of("ACCEPTED","RETURNED"));store.db.update("UPDATE work_order SET work_cycle_no=work_cycle_no+?,started_at=CURRENT_TIMESTAMP(3),completion_summary=NULL,status='IN_PROGRESS' WHERE id=?",o.get("status").equals("RETURNED")?1:0,id);return "IN_PROGRESS";},null);}
-    public JsonNode repair(AuthorizationContext actor,String key,long id,Repair c){return mutate(actor,key,id,"WorkOrderRepairRecorded","workorder.repair.record",c,c.expectedVersion(),o->{
+    public JsonNode repair(AuthorizationContext actor,String key,long id,Repair c){validateEvidence(actor,id,c.evidenceReferenceIds(),"workorder.repair.record");return mutate(actor,key,id,"WorkOrderRepairRecorded","workorder.repair.record",c,c.expectedVersion(),o->{
         repairer(actor,o);allowed(o,Set.of("IN_PROGRESS"));if(!Set.of("DIAGNOSIS","ACTION","RESULT","NOTE").contains(c.recordType()))throw ApiProblem.invalid("维修记录类型无效");
         store.db.update("INSERT INTO repair_record(record_id,work_order_id,work_cycle_no,operator_id,record_type,content,evidence_refs_json,recorded_at) VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP(3))",UUID.randomUUID().toString(),id,o.get("work_cycle_no"),actor.userId(),c.recordType(),c.content(),serialize(c.evidenceReferenceIds()==null?List.of():c.evidenceReferenceIds()));return "IN_PROGRESS";
     },null);}
-    public JsonNode submit(AuthorizationContext actor,String key,long id,Completion c){return mutate(actor,key,id,"WorkOrderCompletionSubmitted","workorder.repair.submit",c,c.expectedVersion(),o->{
+    public JsonNode submit(AuthorizationContext actor,String key,long id,Completion c){validateEvidence(actor,id,c.evidenceReferenceIds(),"workorder.repair.submit");return mutate(actor,key,id,"WorkOrderCompletionSubmitted","workorder.repair.submit",c,c.expectedVersion(),o->{
         repairer(actor,o);allowed(o,Set.of("IN_PROGRESS"));var ids=deviceIds(id);var results=c.deviceResults().stream().map(DeviceResult::deviceId).toList();
         if(results.size()!=new HashSet<>(results).size()||!new HashSet<>(ids).equals(new HashSet<>(results)))throw ApiProblem.invalid("必须逐项提交所有维修设备的处置结果");
         store.db.update("INSERT INTO repair_record(record_id,work_order_id,work_cycle_no,operator_id,record_type,content,evidence_refs_json,device_results_json,recorded_at) VALUES(?,?,?,?,'RESULT',?,?,?,CURRENT_TIMESTAMP(3))",UUID.randomUUID().toString(),id,o.get("work_cycle_no"),actor.userId(),c.completionSummary(),serialize(c.evidenceReferenceIds()==null?List.of():c.evidenceReferenceIds()),serialize(c.deviceResults()));
         store.db.update("UPDATE work_order SET completion_summary=?,submitted_at=CURRENT_TIMESTAMP(3),status='VERIFYING' WHERE id=?",c.completionSummary(),id);return "VERIFYING";
     },null);}
     public JsonNode acceptance(AuthorizationContext actor,String key,long id,Acceptance c){String permission=c.result()==AcceptanceResult.PASS?"workorder.acceptance.pass":"workorder.acceptance.reject";
+        validateEvidence(actor,id,c.evidenceReferenceIds(),permission);
         return mutate(actor,key,id,c.result()==AcceptanceResult.PASS?"WorkOrderClosed":"WorkOrderReturned",permission,c,c.expectedVersion(),o->{
             allowed(o,Set.of("VERIFYING"));if(!actor.userId().equals(o.get("designated_acceptor_id"))||actor.userId().equals(o.get("assigned_repairer_id")))throw ApiProblem.forbidden();
             if(c.result()==AcceptanceResult.PASS&&c.checkItems().stream().anyMatch(check->!check.passed()))throw ApiProblem.invalid("验收通过时所有检查项必须通过");
@@ -147,5 +150,10 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
     }
     private static void allowed(Map<String,Object> order,Set<String> states){if(!states.contains(order.get("status")))throw ApiProblem.conflict("当前工单状态不允许此操作");}
     private static void repairer(AuthorizationContext actor,Map<String,Object> order){if(!actor.userId().equals(order.get("assigned_repairer_id")))throw ApiProblem.forbidden();}
+    private void validateEvidence(AuthorizationContext actor,long id,List<String> references,String permission){
+        require(actor,permission,id);if(references==null||references.isEmpty())return;
+        if(new HashSet<>(references).size()!=references.size())throw ApiProblem.invalid("证据引用不能重复");
+        var targets=deviceIds(id);for(String reference:references)if(evidence.orderedStream().noneMatch(port->port.visibleEvidence(actor,reference,targets)))throw ApiProblem.missing();
+    }
     private String serialize(Object value){try{return json.writeValueAsString(value);}catch(Exception failure){throw new IllegalStateException(failure);}}
 }

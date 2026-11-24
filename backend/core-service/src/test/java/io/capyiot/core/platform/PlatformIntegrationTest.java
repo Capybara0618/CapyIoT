@@ -133,9 +133,11 @@ class PlatformIntegrationTest {
         Jwt admin=login("admin");String authorization="Bearer "+admin.getTokenValue();
         String command="{\"loginName\":\"new-user\",\"password\":\"private-test-password\",\"displayName\":\"New user\"}";
         String first=http.perform(post("/api/v1/users").header("Authorization",authorization).header("Idempotency-Key","create-user")
-                .contentType("application/json").content(command)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+                .contentType("application/json").content(command)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         http.perform(post("/api/v1/users").header("Authorization",authorization).header("Idempotency-Key","create-user")
-                .contentType("application/json").content(command)).andExpect(status().isOk()).andExpect(content().json(first));
+                .contentType("application/json").content(command)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value(new com.fasterxml.jackson.databind.ObjectMapper().readTree(first).path("data").path("userId").asText()))
+                .andExpect(jsonPath("$.data.created").value(false));
         http.perform(post("/api/v1/users").header("Authorization",authorization).header("Idempotency-Key","create-user")
                 .contentType("application/json").content(command.replace("new-user","other-user"))).andExpect(status().isConflict());
         http.perform(post("/api/v1/users").header("Authorization",authorization).contentType("application/json").content(command)).andExpect(status().isBadRequest());
