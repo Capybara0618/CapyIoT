@@ -57,7 +57,9 @@ class PlatformController {
         return ok(commands.execute("PLATFORM",key,actor.userId(),"grant.revoke",Map.of("grantId",id,"body",command),()->{platform.revokeGrant(actor,id,command.reason());return Map.of("revoked",true);}),request);
     }
     @GetMapping("/api/v1/audit-records")
-    ApiResponse<?> audit(@AuthenticationPrincipal Jwt jwt,@RequestParam(defaultValue="50") int size,HttpServletRequest request) { return ok(platform.auditRecords(platform.current(jwt),size),request); }
+    ApiResponse<?> audit(@AuthenticationPrincipal Jwt jwt,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size,
+        @RequestParam(required=false) String actorUserId,@RequestParam(required=false) String resourceId,
+        @RequestParam(required=false) java.time.Instant from,@RequestParam(required=false) java.time.Instant to,HttpServletRequest request) { return ok(platform.auditPage(platform.current(jwt),page,size,actorUserId,resourceId,from,to),request); }
 }
 
 @Configuration

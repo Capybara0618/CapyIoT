@@ -8,6 +8,8 @@ data:
   LOGGING_PATTERN_CORRELATION: "[trace=%X{trace_id} span=%X{span_id}] "
   KAFKA_BOOTSTRAP_SERVERS: {{ .Values.endpoints.kafka | quote }}
   MQTT_URL: {{ .Values.endpoints.mqtt | quote }}
+  MQTT_CA_FILE: /tls/ca.pem
+  EMQX_MANAGEMENT_URL: http://emqx:18083
   REDIS_HOST: {{ .Values.endpoints.redis | quote }}
   CAPYIOT_DEVICE_PUBSUB_ENABLED: "true"
   CAPYIOT_KAFKA_LAG_ENABLED: "true"
@@ -33,9 +35,13 @@ kind: ConfigMap
 metadata:
   name: capyiot-nginx
 data:
-  default.conf: |
+  default.conf.template: |
     server {
         listen 8080;
+        listen 8443 ssl;
+        ssl_certificate /etc/nginx/local-tls/server.pem;
+        ssl_certificate_key /etc/nginx/local-tls/server.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
         server_tokens off;
         root /usr/share/nginx/html;
         index index.html;
@@ -43,6 +49,9 @@ data:
             proxy_pass http://gateway:8080;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Session-Proxy-Key "${CORE_SERVICE_KEY}";
             proxy_buffering off;
             proxy_read_timeout 60s;
         }

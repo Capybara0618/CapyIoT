@@ -9,6 +9,7 @@ public final class Views {
             StringBuilder name=new StringBuilder();boolean upper=false;
             for(char c:key.toCharArray()){if(c=='_'){upper=true;continue;}name.append(upper?Character.toUpperCase(c):c);upper=false;}
             if(value instanceof java.sql.Timestamp||value instanceof java.time.LocalDateTime)value=DbTime.instant(value);
+            if(name.toString().endsWith("Json")&&value instanceof String text){try{value=new com.fasterxml.jackson.databind.ObjectMapper().readTree(text);}catch(com.fasterxml.jackson.core.JsonProcessingException invalid){throw new IllegalStateException("Invalid persisted JSON",invalid);}}
             view.put(name.toString(),value);
         });return view;
     }

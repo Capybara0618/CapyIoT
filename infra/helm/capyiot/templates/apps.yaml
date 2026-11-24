@@ -24,7 +24,7 @@ spec:
       annotations:
         checksum/config: {{ include (print $root.Template.BasePath "/config.yaml") $root | sha256sum }}
     spec:
-      {{- if eq $name "gateway" }}
+      {{- if or (eq $name "gateway") (eq $name "core-service") }}
       securityContext: { fsGroup: 1000 }
       {{- end }}
       enableServiceLinks: false
@@ -47,7 +47,7 @@ spec:
           args:
             - |
               {{- range $waits }}
-              until nc -w 2 -z {{ . }} {{ get (dict "mysql" 3306 "redis" 6379 "kafka" 29092 "emqx" 1883 "gateway" 8080 "device-ingestion" 8081 "device-service" 8082 "alarm-service" 8083 "core-service" 8085) . }}; do sleep 2; done
+              until nc -w 2 -z {{ . }} {{ get (dict "mysql" 3306 "redis" 6379 "kafka" 29092 "emqx" 8883 "gateway" 8080 "device-ingestion" 8081 "device-service" 8082 "alarm-service" 8083 "core-service" 8085) . }}; do sleep 2; done
               {{- end }}
           resources:
             requests: { cpu: 10m, memory: 8Mi }
@@ -59,6 +59,9 @@ spec:
           imagePullPolicy: {{ $root.Values.imagePullPolicy }}
           ports:
             - { name: http, containerPort: {{ $app.port }} }
+            {{- if $frontend }}
+            - { name: https, containerPort: 8443 }
+            {{- end }}
             {{- if ne (int $management) (int $app.port) }}
             - { name: management, containerPort: {{ $management }} }
             {{- end }}
@@ -67,8 +70,11 @@ spec:
           {{- if not $frontend }}
           envFrom:
             - configMapRef: { name: capyiot-runtime }
+          {{- end }}
           env:
+            {{- if not $frontend }}
             - { name: OTEL_SERVICE_NAME, value: {{ $name }} }
+            {{- end }}
             {{- range $app.secrets }}
             - name: {{ . }}
               valueFrom:
@@ -78,22 +84,38 @@ spec:
             - { name: K8S_ENABLED, value: "true" }
             - { name: USER_KEY_FILE, value: /keys/user-keys.json }
             - { name: USER_KEYS_GENERATE, value: "true" }
-          volumeMounts:
-            - { name: user-signing-keys, mountPath: /keys }
+            {{- end }}
+            {{- if eq $name "core-service" }}
+            - { name: CAPYIOT_ASSETS_ENABLED, value: "true" }
+            - { name: CAPYIOT_DEVICE_RUNTIME_ENABLED, value: "true" }
+            - { name: CAPYIOT_FAULTS_ENABLED, value: "true" }
+            - { name: CAPYIOT_FAULT_RUNTIME_ENABLED, value: "true" }
+            - { name: CAPYIOT_WORKORDERS_ENABLED, value: "true" }
+            - { name: CAPYIOT_DOMAIN_RUNTIME_ENABLED, value: "true" }
+            - { name: CAPYIOT_DEVICE_KEY_FILE, value: /keys/device-keys.json }
+            - { name: CAPYIOT_DEVICE_KEYS_GENERATE, value: "true" }
+            {{- end }}
+            {{- if has $name (list "device-service" "alarm-service" "workflow-service") }}
+            - { name: SPRING_KAFKA_LISTENER_AUTO_STARTUP, value: "false" }
+            - { name: CAPYIOT_OUTBOX_ENABLED, value: "false" }
+            - { name: CAPYIOT_SWEEP_ENABLED, value: "false" }
             {{- end }}
             {{- if eq $name "device-service" }}
             - { name: CAPYIOT_QUERY_CACHE_ENABLED, value: {{ $root.Values.queryCacheEnabled | quote }} }
             - { name: CAPYIOT_JFR_OPTIONS, value: {{ $root.Values.deviceJfrOptions | quote }} }
             {{- end }}
-            {{- if and (eq $name "device-service") $root.Values.demo.scenarioSecret }}
-            - { name: SCENARIO_DEVICE_FILE, value: /demo/demo-devices.json }
-          volumeMounts:
-            - { name: scenario-credentials, mountPath: /demo, readOnly: true }
+            {{- if $frontend }}
+            - { name: NGINX_ENVSUBST_FILTER, value: '^CORE_SERVICE_KEY$' }
             {{- end }}
-          {{- else }}
           volumeMounts:
-            - { name: nginx, mountPath: /etc/nginx/conf.d, readOnly: true }
-          {{- end }}
+            - { name: ca-certificates, mountPath: /tls, readOnly: true }
+            {{- if or (eq $name "gateway") (eq $name "core-service") }}
+            - { name: signing-keys, mountPath: /keys }
+            {{- end }}
+            {{- if $frontend }}
+            - { name: nginx, mountPath: /etc/nginx/templates, readOnly: true }
+            - { name: tls-server, mountPath: /etc/nginx/local-tls, readOnly: true }
+            {{- end }}
           {{- $ready := ternary "/" "/actuator/health/readiness" $frontend }}
           {{- $live := ternary "/" "/actuator/health/liveness" $frontend }}
           startupProbe:
@@ -108,19 +130,24 @@ spec:
             httpGet: { path: {{ $live }}, port: {{ $management }} }
             periodSeconds: 15
             timeoutSeconds: 3
-      {{- if $frontend }}
       volumes:
+        - name: ca-certificates
+          secret:
+            secretName: {{ $root.Values.tlsSecret | quote }}
+            items: [{ key: ca.pem, path: ca.pem }]
+        {{- if $frontend }}
         - name: nginx
           configMap: { name: capyiot-nginx }
-      {{- else if eq $name "gateway" }}
-      volumes:
-        - name: user-signing-keys
-          persistentVolumeClaim: { claimName: gateway-signing-keys }
-      {{- else if and (eq $name "device-service") $root.Values.demo.scenarioSecret }}
-      volumes:
-        - name: scenario-credentials
-          secret: { secretName: {{ $root.Values.demo.scenarioSecret | quote }} }
-      {{- end }}
+        - name: tls-server
+          secret:
+            secretName: {{ $root.Values.tlsSecret | quote }}
+            items: [{ key: server.pem, path: server.pem }, { key: server.key, path: server.key }]
+        {{- end }}
+        {{- if or (eq $name "gateway") (eq $name "core-service") }}
+        - name: signing-keys
+          persistentVolumeClaim: { claimName: {{ ternary "gateway-signing-keys" "device-signing-keys" (eq $name "gateway") }} }
+        {{- end }}
+
 ---
 apiVersion: v1
 kind: Service
@@ -130,6 +157,9 @@ spec:
   selector: { app.kubernetes.io/name: {{ $name }} }
   ports:
     - { name: http, port: {{ $app.port }}, targetPort: http }
+    {{- if $frontend }}
+    - { name: https, port: 8443, targetPort: https }
+    {{- end }}
 {{- if and $root.Values.monitoring.enabled (not $frontend) }}
 ---
 apiVersion: v1
@@ -148,6 +178,16 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: gateway-signing-keys
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 64Mi }
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: device-signing-keys
 spec:
   accessModes: [ReadWriteOnce]
   resources:

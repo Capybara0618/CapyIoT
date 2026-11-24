@@ -70,9 +70,9 @@ export interface Topology {
 }
 export interface Evidence {
   evidenceId: string
-  sourceEventId: string
+  eventId: string
   receivedAt: string
-  evidenceJson?: unknown
+  summaryJson?: unknown
 }
 export interface Anomaly {
   anomalyId: string

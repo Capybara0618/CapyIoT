@@ -18,6 +18,7 @@ class GatewayRoutes {
         return builder.routes()
                 .route("foundation-api",route->route.path("/api/v1/auth/me","/api/v1/auth/logout","/api/v1/users","/api/v1/users/**","/api/v1/grants/**","/api/v1/audit-records").uri(coreUrl))
                 .route("agent-api",route->route.path("/api/v1/agent/**").metadata("response-timeout",-1).uri(agentUrl))
+                .route("core-openapi",route->route.path("/api/v1/openapi").filters(f->f.setPath("/v3/api-docs")).uri(coreUrl))
                 .route("legacy-device-history",route->route.path("/api/v1/devices/activity","/api/v1/devices/cursor").uri(deviceUrl))
                 .route("core-assets",route->route.path("/api/v1/parks","/api/v1/areas","/api/v1/areas/**","/api/v1/monitoring-points","/api/v1/monitoring-points/**",
                         "/api/v1/monitoring-point-bindings/**","/api/v1/network-dependencies","/api/v1/network-dependencies/**","/api/v1/power-dependencies","/api/v1/power-dependencies/**",

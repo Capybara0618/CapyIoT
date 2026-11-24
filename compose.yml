@@ -290,6 +290,9 @@ services:
 
   frontend:
     build: ./frontend
+    environment:
+      CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
+      NGINX_ENVSUBST_FILTER: '^CORE_SERVICE_KEY$'
     ports: ['127.0.0.1:8088:8080','127.0.0.1:8443:8443']
     volumes:
       - ./var/tls/server.pem:/etc/nginx/local-tls/server.pem:ro

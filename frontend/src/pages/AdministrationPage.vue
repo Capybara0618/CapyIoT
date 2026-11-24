@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import PageHeader from '../components/PageHeader.vue'
-import { command, core, loadMe } from '../video'
+import { command, core, loadMe, type Page } from '../video'
 import { formatTime } from '../domain'
 interface Grant {
   grantId: string
@@ -56,7 +56,7 @@ async function run(task: () => Promise<void>) {
 }
 async function load() {
   users.value = await core<User[]>('/users')
-  audit.value = await core<typeof audit.value>('/audit-records?size=50')
+  audit.value = (await core<Page<(typeof audit.value)[number]>>('/audit-records?size=50')).items
 }
 async function open(id: string) {
   selected.value = await core<User>('/users/' + id)

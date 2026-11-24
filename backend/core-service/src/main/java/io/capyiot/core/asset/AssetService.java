@@ -285,6 +285,9 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
             // Replacing the point's current IPC is explicit; an IPC already used by another point is rejected.
             if(Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM monitoring_point_binding WHERE ipc_device_id=? AND monitoring_point_id<>? AND valid_to IS NULL",Boolean.class,d.deviceId(),pointId))) throw ApiProblem.conflict("IPC 已绑定其他点位");
             java.time.LocalDateTime now=DbTime.sql(Instant.now());
+            var replaced=store.db.queryForList("SELECT ipc_device_id FROM monitoring_point_binding WHERE monitoring_point_id=? AND valid_to IS NULL",String.class,pointId);
+            requireVisibleDevices(actor,"topology.manage",replaced);
+            for(String previous:replaced)if(!previous.equals(d.deviceId()))store.db.update("UPDATE device SET version=version+1 WHERE id=?",previous);
             store.db.update("UPDATE monitoring_point_binding SET valid_to=?,ended_by=?,version=version+1 WHERE monitoring_point_id=? AND valid_to IS NULL",now,actor.userId(),pointId);
             String id=id(); store.db.update("INSERT INTO monitoring_point_binding(binding_id,monitoring_point_id,ipc_device_id,valid_from,reason,created_by) VALUES(?,?,?,?,?,?)",id,pointId,d.deviceId(),now,c.reason(),actor.userId());
             store.db.update("UPDATE monitoring_point SET version=version+1 WHERE monitoring_point_id=?",pointId); store.db.update("UPDATE device SET version=version+1 WHERE id=?",d.deviceId());
@@ -386,7 +389,7 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
             }
             selected=next;
         }
-        return Map.of("targetId",target,"asOf",asOf,"nodes",selected.stream().sorted().map(this::summary).toList(),"relations",edges,"completeness",incomplete?"INCOMPLETE":"COMPLETE","unknownRelations",incomplete);
+        return Map.of("targetId",target,"asOf",asOf,"nodes",selected.stream().sorted().map(this::summary).toList(),"relations",edges.stream().map(Views::row).toList(),"completeness",incomplete?"INCOMPLETE":"COMPLETE","unknownRelations",incomplete||edges.isEmpty(),"configurationStatus",edges.isEmpty()?"UNCONFIGURED":"CONFIGURED_RELATIONS_AVAILABLE");
     }
     public Page<Map<String,Object>> history(AuthorizationContext actor,String id,String dimension,Instant from,Instant to,int page,int size) {
         requireVisibleDevices(actor,"device.read",List.of(id)); requireVisibleDevices(actor,"event.read",List.of(id)); checkPage(page,size);

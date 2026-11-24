@@ -257,7 +257,7 @@ public class FaultService implements HealthQueryPort,IncidentGatePort {
                 if(epoch<oldEpoch||epoch==oldEpoch&&sequence<=oldSeq)return false;
             }
             store.db.update("INSERT INTO fault_observation_cursor(device_id,stream_key,session_epoch,sequence_no,received_at) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE session_epoch=VALUES(session_epoch),sequence_no=VALUES(sequence_no),received_at=VALUES(received_at)",deviceId,stream,epoch,sequence,DbTime.sql(received));
-            if(type.equals("DeviceObservationAccepted")&&(!body.path("eventType").asText().equals("STATUS_OBSERVATION")||body.path("payload").path("quality").asText().equals("GOOD")&&!body.path("payload").path("value").asText().equals("UNKNOWN")))
+            if(type.equals("DeviceObservationAccepted")&&(body.path("eventType").asText().equals("DEVICE_RECOVERED")||body.path("eventType").asText().equals("STATUS_OBSERVATION")&&body.path("payload").path("quality").asText().equals("GOOD")&&!body.path("payload").path("value").asText().equals("UNKNOWN")))
                 store.db.update("INSERT INTO fault_device_observation(device_id,last_good_observed_at) VALUES(?,?) ON DUPLICATE KEY UPDATE last_good_observed_at=GREATEST(last_good_observed_at,VALUES(last_good_observed_at))",deviceId,DbTime.sql(received));
             if(anomalyType==null)return false;
             String dedupe=sha("DEVICE|"+deviceId+"|"+anomalyType+"|"+resource);
@@ -271,6 +271,10 @@ public class FaultService implements HealthQueryPort,IncidentGatePort {
                 var old=active.getFirst();anomalyId=old.get("anomaly_id").toString();
                 // A recovery from another stream must still be newer than the active fault evidence.
                 if(recovering&&received.isBefore(DbTime.instant(old.get("last_observed_at"))))return false;
+                if(recovering){
+                    var evidenceTimes=store.db.queryForList("SELECT occurred_at FROM anomaly_evidence WHERE anomaly_id=? ORDER BY received_at DESC,evidence_id DESC LIMIT 1",Object.class,anomalyId);
+                    if(!evidenceTimes.isEmpty()&&occurred.isBefore(DbTime.instant(evidenceTimes.getFirst())))return false;
+                }
                 store.db.update("UPDATE anomaly SET status=?,active_dedupe_key=?,last_observed_at=GREATEST(last_observed_at,?),recovered_at=?,observation_count=observation_count+1,version=version+1,updated_at=CURRENT_TIMESTAMP(3) WHERE anomaly_id=?",recovering?"RECOVERED":"ACTIVE",recovering?null:dedupe,DbTime.sql(received),recovering?DbTime.sql(received):null,anomalyId);
             }
             String evidence=UUID.randomUUID().toString();store.db.update("INSERT INTO anomaly_evidence(evidence_id,anomaly_id,source_context,source_type,source_id,event_id,evidence_type,occurred_at,received_at,summary_json) VALUES(?,?,'DEVICE',?,?,?,?,?,?,?)",evidence,anomalyId,type,eventId,body.path("eventId").isTextual()?body.path("eventId").asText():null,recovering?"RECOVERY":"OBSERVATION",DbTime.sql(occurred),DbTime.sql(received),serialize(Map.of("deviceId",deviceId,"anomalyType",anomalyType,"resourceKey",resource,"streamKey",stream,"sequence",sequence)));

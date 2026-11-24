@@ -37,7 +37,12 @@ class AssetController {
     @GetMapping("/devices/{id}") ApiResponse<?> device(@AuthenticationPrincipal Jwt jwt,@PathVariable String id,HttpServletRequest req) { return ok(assets.detail(platform.current(jwt),id),req); }
     @PostMapping("/devices") ApiResponse<?> device(@AuthenticationPrincipal Jwt jwt,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody CreateDevice body,HttpServletRequest req) { return ok(assets.createDevice(platform.current(jwt),key,body),req); }
     @PatchMapping("/devices/{id}") ApiResponse<?> device(@AuthenticationPrincipal Jwt jwt,@PathVariable String id,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody UpdateDevice body,HttpServletRequest req) { return ok(assets.updateDevice(platform.current(jwt),key,id,body),req); }
-    @GetMapping("/monitoring-points") ApiResponse<?> points(@AuthenticationPrincipal Jwt jwt,@RequestParam(defaultValue="CAMPUS-A") String parkId,HttpServletRequest req) { return ok(assets.points(platform.current(jwt),parkId),req); }
+    @GetMapping("/monitoring-points") ApiResponse<?> points(@AuthenticationPrincipal Jwt jwt,@RequestParam(defaultValue="CAMPUS-A") String parkId,
+        @RequestParam(required=false) String areaId,@RequestParam(required=false) String status,@RequestParam(required=false) String keyword,HttpServletRequest req) {
+        if(status!=null&&!java.util.Set.of("ACTIVE","INACTIVE").contains(status))throw io.capyiot.core.ApiProblem.invalid("点位状态无效");
+        return ok(assets.points(platform.current(jwt),parkId).stream().filter(p->areaId==null||areaId.equals(p.get("areaId")))
+            .filter(p->status==null||status.equals(p.get("status"))).filter(p->keyword==null||p.get("name").toString().contains(keyword)||p.get("pointCode").toString().contains(keyword)).toList(),req);
+    }
     @PostMapping("/monitoring-points") ApiResponse<?> point(@AuthenticationPrincipal Jwt jwt,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody CreatePoint body,HttpServletRequest req) { return ok(assets.createPoint(platform.current(jwt),key,body),req); }
     @PatchMapping("/monitoring-points/{id}") ApiResponse<?> point(@AuthenticationPrincipal Jwt jwt,@PathVariable String id,@RequestHeader("Idempotency-Key") String key,@Valid @RequestBody UpdatePoint body,HttpServletRequest req) { return ok(assets.updatePoint(platform.current(jwt),key,id,body),req); }
     @GetMapping("/monitoring-points/{id}/bindings") ApiResponse<?> bindings(@AuthenticationPrincipal Jwt jwt,@PathVariable String id,HttpServletRequest req) { return ok(assets.bindings(platform.current(jwt),null,id),req); }

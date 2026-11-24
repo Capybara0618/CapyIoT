@@ -421,9 +421,9 @@ onMounted(() =>
       <div v-for="e in anomaly.evidenceReferences" :key="e.evidenceId" class="video-timeline">
         <p>{{ e.evidenceId }}</p>
         <p class="video-muted">
-          来源事件 {{ e.sourceEventId }} · 接收于 {{ formatTime(e.receivedAt) }}
+          来源事件 {{ e.eventId }} · 接收于 {{ formatTime(e.receivedAt) }}
         </p>
-        <pre>{{ e.evidenceJson }}</pre>
+        <pre>{{ JSON.stringify(e.summaryJson, null, 2) }}</pre>
       </div>
     </section>
   </div>

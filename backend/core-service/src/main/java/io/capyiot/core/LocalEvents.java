@@ -16,7 +16,7 @@ public final class LocalEvents {
     public void append(String type,String id,String park,AuthorizationContext actor,Map<String,?> body) {
         if(!TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException("Domain event requires local transaction");
         String eventId=UUID.randomUUID().toString(); Map<String,Object> event=new LinkedHashMap<>();
-        event.put("eventId",eventId); event.put("eventType",type); event.put("schemaVersion",1);event.put("sourceContext",context); event.put("producer","core-service");event.put("aggregateType",context);event.put("aggregateId",id);
+        event.put("eventId",eventId); event.put("eventType",type); event.put("schemaVersion",1);event.put("sourceContext",context); event.put("producer","core-service");event.put("aggregateType",aggregate(type));event.put("aggregateId",id);
         event.put("aggregateVersion",body.get("aggregateVersion") instanceof Number?body.get("aggregateVersion"):body.get("version") instanceof Number?body.get("version"):body.get("stateVersion") instanceof Number?body.get("stateVersion"):version(type,id));
         event.put("actorType",actor==null?"SERVICE":"USER");event.put("actorId",actor==null?context:actor.userId());event.put("source",context);
         event.put("deviceIds",deviceIds(type,id,body));
@@ -41,10 +41,25 @@ public final class LocalEvents {
         if(context.equals("device")) {
             if(type.startsWith("Device")) query="SELECT version FROM device WHERE id=?";
             else if(type.startsWith("Area")) query="SELECT version FROM area WHERE id=?";
+            else if(type.equals("MonitoringPointBindingEnded")) query="SELECT version FROM monitoring_point_binding WHERE binding_id=?";
             else if(type.startsWith("MonitoringPoint")) query="SELECT version FROM monitoring_point WHERE monitoring_point_id=?";
+            else if(type.startsWith("Network")||type.startsWith("NETWORK"))query="SELECT version FROM network_dependency WHERE dependency_id=?";
+            else if(type.startsWith("Power")||type.startsWith("POWER"))query="SELECT version FROM power_dependency WHERE power_dependency_id=?";
+            else if(type.startsWith("Video")||type.startsWith("VIDEO"))query="SELECT version FROM video_channel_association WHERE association_id=?";
         }
         if(query==null)return 0;
         var rows=db.queryForList(query,Long.class,id);return rows.isEmpty()?0:rows.getFirst();
+    }
+    private String aggregate(String type){
+        if(context.equals("workorder"))return "WorkOrder";
+        if(context.equals("fault"))return type.startsWith("Anomaly")?"Anomaly":"Incident";
+        if(type.startsWith("Area"))return "Area";
+        if(type.startsWith("MonitoringPointBinding"))return "MonitoringPointBinding";
+        if(type.startsWith("MonitoringPoint"))return "MonitoringPoint";
+        if(type.startsWith("Network")||type.startsWith("NETWORK"))return "NetworkDependency";
+        if(type.startsWith("Power")||type.startsWith("POWER"))return "PowerDependency";
+        if(type.startsWith("Video")||type.startsWith("VIDEO"))return "VideoChannelAssociation";
+        return type.startsWith("DeviceConnection")||type.startsWith("DeviceRuntime")||type.equals("DeviceObservationAccepted")?"DeviceRuntimeState":"Device";
     }
     private List<String> deviceIds(String type,String id,Map<String,?> body) {
         if(context.equals("workorder"))return db.queryForList("SELECT device_id FROM work_order_device_item WHERE work_order_id=? ORDER BY device_id",String.class,id);

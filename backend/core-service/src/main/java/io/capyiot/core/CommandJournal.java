@@ -33,7 +33,11 @@ public final class CommandJournal {
             }
             JsonNode response=json.valueToTree(mutation.get()); JsonNode stored=response.deepCopy();
             // Registration/rotation can reveal a credential only once. It is never in a journal or event.
-            if(stored instanceof ObjectNode object) object.remove(List.of("deviceSecret","secret","sessionToken","accessToken"));
+            if(stored instanceof ObjectNode object) {
+                boolean revealed=object.has("deviceSecret");
+                object.remove(List.of("deviceSecret","secret","sessionToken","accessToken"));
+                if(revealed)object.put("secretAlreadyRevealed",true);
+            }
             if(workOrders){
                 long orderId=Long.parseLong(response.path("workOrderId").asText());
                 String reservation=Set.of("WorkOrderCreated","WorkOrderReopened").contains(type)?db.queryForObject("SELECT last_reservation_id FROM work_order WHERE id=?",String.class,orderId):null;

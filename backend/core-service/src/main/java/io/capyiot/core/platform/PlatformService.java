@@ -182,6 +182,17 @@ public class PlatformService implements io.capyiot.core.ports.UserAssignmentPort
     private void advanceAuthorization(String id) { db.update("UPDATE app_user SET authorization_version=authorization_version+1,version=version+1 WHERE user_id=?",id); revokeSessions(id,"AUTHORIZATION_CHANGED"); }
     private void revokeSessions(String id,String reason) { db.update("UPDATE login_session SET status='REVOKED',revoked_at=CURRENT_TIMESTAMP(3),revoked_reason=? WHERE user_id=? AND status='ACTIVE'",reason,id); }
     public List<Map<String,Object>> auditRecords(AuthorizationContext actor,int limit) {
+        return visibleAuditRecords(actor).stream().limit(Math.min(Math.max(limit,1),100)).toList();
+    }
+    public Map<String,Object> auditPage(AuthorizationContext actor,int page,int size,String user,String resource,Instant from,Instant to) {
+        if(from!=null&&to!=null&&!from.isBefore(to))throw ApiProblem.invalid("时间范围无效");
+        var rows=visibleAuditRecords(actor).stream().filter(r->user==null||user.equals(r.get("actorUserId")))
+            .filter(r->resource==null||resource.equals(r.get("resourceId")))
+            .filter(r->from==null||!io.capyiot.core.DbTime.instant(r.get("createdAt")).isBefore(from))
+            .filter(r->to==null||io.capyiot.core.DbTime.instant(r.get("createdAt")).isBefore(to)).toList();
+        return io.capyiot.core.Views.page(rows,page,size);
+    }
+    private List<Map<String,Object>> visibleAuditRecords(AuthorizationContext actor) {
         var grants=actor.require("platform.audit.read");
         boolean platform=grants.stream().anyMatch(g->g.roleCode().equals("SYS_ADMIN")&&g.scopeType().equals("NONE"));
         var json=new com.fasterxml.jackson.databind.ObjectMapper();
@@ -196,7 +207,7 @@ public class PlatformService implements io.capyiot.core.ports.UserAssignmentPort
                 details.path("deviceIds").forEach(id->devices.add(id.asText()));details.path("areaIds").forEach(id->areas.add(id.asText()));
                 return port.auditVisible(actor,park,devices,areas);
             }catch(com.fasterxml.jackson.core.JsonProcessingException invalid){return false;}
-        }).limit(Math.min(Math.max(limit,1),100)).map(row->{row.remove("details");return io.capyiot.core.Views.row(row);}).toList();
+        }).map(row->{row.remove("details");return io.capyiot.core.Views.row(row);}).toList();
     }
     public void audit(AuthorizationContext actor,String action,String type,String id,String result,Long before,Long after,String reason) {
         db.update("INSERT INTO audit_record(actor_type,actor_id,actor_user_id,actor_name_snapshot,action_code,resource_type,resource_id,result,source,reason,before_version,after_version,session_id,authorization_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

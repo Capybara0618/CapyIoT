@@ -1,4 +1,5 @@
 existingSecret: capyiot-secrets
+tlsSecret: capyiot-tls
 imageTag: m5
 imagePullPolicy: IfNotPresent
 javaOptions: "-XX:MaxRAMPercentage=55 -XX:ActiveProcessorCount=2 -Dfile.encoding=UTF-8"
@@ -9,7 +10,7 @@ endpoints:
   mysql: mysql
   redis: redis
   kafka: kafka:29092
-  mqtt: tcp://emqx:1883
+  mqtt: ssl://emqx:8883
 
 demo:
   enabled: true
@@ -38,7 +39,7 @@ apps:
     image: capyiot-core-service
     port: 8085
     waitFor: [mysql]
-    secrets: [PLATFORM_DB_PASSWORD, CORE_SERVICE_KEY, DEMO_ADMIN_PASSWORD_HASH, DEMO_OPERATOR_PASSWORD_HASH]
+    secrets: [PLATFORM_DB_PASSWORD, DEVICE_DB_PASSWORD, ALARM_DB_PASSWORD, WORKFLOW_DB_PASSWORD, CORE_SERVICE_KEY, EMQX_API_KEY, EMQX_API_SECRET, DEMO_ADMIN_PASSWORD_HASH, DEMO_OPERATOR_PASSWORD_HASH]
   gateway:
     image: capyiot-gateway
     port: 8080
@@ -49,7 +50,7 @@ apps:
     port: 8081
     waitFor: [kafka, emqx]
     strategy: Recreate
-    secrets: [DEVICE_JWT_SECRET]
+    secrets: [DEVICE_JWT_SECRET, CORE_SERVICE_KEY]
   device-service:
     image: capyiot-device-service
     port: 8082
@@ -69,6 +70,7 @@ apps:
     image: capyiot-frontend
     port: 8080
     waitFor: [gateway]
+    secrets: [CORE_SERVICE_KEY]
 
 resources:
   java:

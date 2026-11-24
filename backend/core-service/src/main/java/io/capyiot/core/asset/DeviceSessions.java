@@ -33,7 +33,9 @@ public class DeviceSessions {
     public record SessionContext(String deviceId,String parkId,String deviceType,String source,String sessionId,long sessionEpoch,long credentialVersion,Instant expiresAt,String monitoringPointId) {}
     public record Rotate(@NotNull @Min(0) Long expectedVersion,@NotBlank @Size(max=1000) String reason) {}
     public SessionResult create(SessionCommand c) {
-        return store.tx.execute(status->{
+        String identity=identity(c.deviceId());
+        if(Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM device_authentication_attempt WHERE identity_hash=? AND locked_until>CURRENT_TIMESTAMP(3)",Boolean.class,identity)))throw new ApiProblem(429,"DEVICE_AUTH_RATE_LIMITED","设备认证失败次数过多，请稍后再试");
+        try{return store.tx.execute(status->{
             var rows=store.db.queryForList("SELECT * FROM device WHERE id=? FOR UPDATE",c.deviceId());
             if(rows.isEmpty()){passwords.matches(c.secret(),dummyHash);throw denied();}
             var d=rows.getFirst(); String hash=Objects.toString(d.get("device_secret_hash"),dummyHash);
@@ -55,9 +57,21 @@ public class DeviceSessions {
             }
             // A disconnect request from an older epoch must be drained before a new valid CONNECT.
             if(Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM broker_disconnect_outbox WHERE device_id=? AND status='PENDING'",Boolean.class,c.deviceId()))) throw new ApiProblem(503,"DEVICE_RECONNECT_PENDING","旧连接撤销尚未完成，请稍后重试");
+            store.db.update("DELETE FROM device_authentication_attempt WHERE identity_hash=?",identity);
             return new SessionResult(epoch,credential,token(c.deviceId(),c.sessionId(),epoch,credential,expiry),expiry);
-        });
+        });}catch(ApiProblem failure){
+            if(failure.status()==401)store.tx.executeWithoutResult(status->{
+                store.db.update("INSERT INTO device_authentication_attempt(identity_hash,failed_count) VALUES(?,1) ON DUPLICATE KEY UPDATE failed_count=IF(last_failed_at<TIMESTAMPADD(MINUTE,-10,CURRENT_TIMESTAMP(3)),1,failed_count+1),last_failed_at=CURRENT_TIMESTAMP(3)",identity);
+                store.db.update("UPDATE device_authentication_attempt SET locked_until=TIMESTAMPADD(MINUTE,5,CURRENT_TIMESTAMP(3)) WHERE identity_hash=? AND failed_count>=5",identity);
+                var rows=store.db.queryForList("SELECT campus_id FROM device WHERE id=?",c.deviceId());
+                if(!rows.isEmpty())events.append("DeviceAuthenticationFailed",c.deviceId(),rows.getFirst().get("campus_id").toString(),null,Map.of("reason","DEVICE_CREDENTIAL_OR_SESSION_REJECTED"));
+            });
+            throw failure;
+        }
     }
+    private static String identity(String id){try{return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(id.getBytes(java.nio.charset.StandardCharsets.UTF_8)));}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}}
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay=3600000)
+    void cleanAttempts(){store.db.update("DELETE FROM device_authentication_attempt WHERE last_failed_at<TIMESTAMPADD(DAY,-1,CURRENT_TIMESTAMP(3)) AND (locked_until IS NULL OR locked_until<CURRENT_TIMESTAMP(3))");}
     private String token(String device,String session,long epoch,long credential,Instant expiry) {
         String topic="capyiot/v1/devices/"+device+"/sessions/"+session+"/events";
         return keys.sign(JwtClaimsSet.builder().issuer("capyiot-device-service").subject(device).audience(List.of("capyiot-emqx"))
@@ -89,7 +103,7 @@ public class DeviceSessions {
             store.db.update("UPDATE device_session SET status='REVOKED',revoked_at=CURRENT_TIMESTAMP(3),revoked_reason='CREDENTIAL_ROTATED' WHERE device_id=? AND status<>'REVOKED'",id);
             store.db.update("INSERT INTO broker_disconnect_outbox(device_id,expected_session_epoch) VALUES(?,?)",id,epoch);
             events.append("DeviceCredentialRotated",id,device.parkId(),actor,Map.of("credentialVersion",credential,"reason",c.reason()));
-            return Map.of("deviceId",id,"credentialVersion",credential,"version",c.expectedVersion()+1,"deviceSecret",secret);
+            return Map.of("deviceId",id,"credentialVersion",credential,"version",c.expectedVersion()+1,"deviceSecret",secret,"rotationId",UUID.randomUUID().toString(),"rotatedAt",Instant.now());
         });
     }
     public String ingestionToken(String clientId) {
