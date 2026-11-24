@@ -141,6 +141,9 @@ services:
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SCENARIO_DEVICE_FILE: /demo/demo-devices.json
+      SPRING_KAFKA_LISTENER_AUTO_STARTUP: 'false'
+      CAPYIOT_SWEEP_ENABLED: 'false'
+      CAPYIOT_OUTBOX_ENABLED: 'false'
       CAPYIOT_KAFKA_LAG_ENABLED: "true"
       CAPYIOT_QUERY_CACHE_ENABLED: ${CAPYIOT_QUERY_CACHE_ENABLED:-true}
       CAPYIOT_JFR_OPTIONS: ${CAPYIOT_JFR_OPTIONS:-}
@@ -166,6 +169,8 @@ services:
       <<: *observability
       ALARM_DB_URL: jdbc:mysql://mysql:3306/alarm_db?connectionTimeZone=UTC
       ALARM_DB_PASSWORD: ${ALARM_DB_PASSWORD:?Missing alarm password}
+      SPRING_KAFKA_LISTENER_AUTO_STARTUP: 'false'
+      CAPYIOT_OUTBOX_ENABLED: 'false'
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
       USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
       CORE_SERVICE_URL: http://core-service:8085
@@ -192,6 +197,8 @@ services:
       <<: *observability
       WORKFLOW_DB_URL: jdbc:mysql://mysql:3306/workflow_db?connectionTimeZone=UTC
       WORKFLOW_DB_PASSWORD: ${WORKFLOW_DB_PASSWORD:?Missing workflow password}
+      SPRING_KAFKA_LISTENER_AUTO_STARTUP: 'false'
+      CAPYIOT_OUTBOX_ENABLED: 'false'
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
       USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
       CORE_SERVICE_URL: http://core-service:8085

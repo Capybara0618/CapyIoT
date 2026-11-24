@@ -56,11 +56,13 @@ public class FaultService implements HealthQueryPort,IncidentGatePort {
     }
     public JsonNode dismiss(AuthorizationContext actor,String key,String id,Reason c){
         var a=anomaly(id);visible(actor,"anomaly.dismiss",a);String park=a.get("park_id").toString();
-        return write(actor,key,park,"AnomalyDismissed",Map.of("id",id,"body",c),()->{
+        var result=write(actor,key,park,"AnomalyDismissed",Map.of("id",id,"body",c),()->{
             var current=anomaly(id);Views.version(current,c.expectedVersion());if(!current.get("status").equals("ACTIVE"))throw ApiProblem.conflict("异常已终结");
             store.db.update("UPDATE anomaly SET status='DISMISSED',active_dedupe_key=NULL,resolution_reason=?,version=version+1,updated_at=CURRENT_TIMESTAMP(3) WHERE anomaly_id=?",c.reason(),id);
             events.append("AnomalyDismissed",id,park,actor,Map.of("reason",c.reason()));return Map.of("anomalyId",id,"status","DISMISSED","version",c.expectedVersion()+1);
         });
+        for(String incident:store.db.queryForList("SELECT incident_id FROM incident_anomaly_link WHERE anomaly_id=? AND unlinked_at IS NULL",String.class,id))reevaluateClosure(incident);
+        return result;
     }
     public Map<String,Object> incidents(AuthorizationContext actor,String status,String priority,String deviceId,String areaId,Instant from,Instant to,int page,int size){
         Set<String> visible=devices.visibleDeviceIds(actor,"incident.read");

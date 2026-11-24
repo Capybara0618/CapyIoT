@@ -140,7 +140,11 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
         return result;
     }
     public Map<String,Object> maintenance(AuthorizationContext actor,String device,int page,int size){devices.requireVisibleDevices(actor,"workorder.read",List.of(device));return list(actor,device,null,null,null,null,null,null,null,page,size);}
-    private void history(AuthorizationContext actor,long id,long version,String action,String from,String to,String reason,String requestId){store.db.update("INSERT INTO work_order_history(order_id,order_version,action,from_status,to_status,actor,remark,request_id) VALUES(?,?,?,?,?,?,?,?)",id,version,action.length()>32?action.substring(0,32):action,from,to,actor.userId(),reason,requestId);}
+    private void history(AuthorizationContext actor,long id,long version,String action,String from,String to,String reason,String requestId){
+        String correlation=null;var attributes=org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet){var req=servlet.getRequest();if(requestId==null)requestId=Objects.toString(req.getHeader("X-Request-Id"),req.getRequestId());correlation=Objects.toString(req.getHeader("X-Correlation-Id"),requestId);}
+        store.db.update("INSERT INTO work_order_history(order_id,order_version,action,from_status,to_status,actor,remark,request_id,correlation_id) VALUES(?,?,?,?,?,?,?,?,?)",id,version,action.length()>32?action.substring(0,32):action,from,to,actor.userId(),reason,requestId,correlation);
+    }
     private static void allowed(Map<String,Object> order,Set<String> states){if(!states.contains(order.get("status")))throw ApiProblem.conflict("当前工单状态不允许此操作");}
     private static void repairer(AuthorizationContext actor,Map<String,Object> order){if(!actor.userId().equals(order.get("assigned_repairer_id")))throw ApiProblem.forbidden();}
     private String serialize(Object value){try{return json.writeValueAsString(value);}catch(Exception failure){throw new IllegalStateException(failure);}}

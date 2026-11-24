@@ -38,6 +38,15 @@ class ProblemHandler {
     ResponseEntity<?> duplicate(HttpServletRequest request) {
         return problem(new ApiProblem(409,"DUPLICATE_RESOURCE","当前有效记录已存在"),request);
     }
+    @ExceptionHandler(org.springframework.dao.DataAccessException.class)
+    ResponseEntity<?> unavailable(HttpServletRequest request) {
+        return problem(new ApiProblem(503,"BUSINESS_STORE_UNAVAILABLE","业务数据暂时不可用，请稍后重试"),request);
+    }
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<?> unexpected(Exception error,HttpServletRequest request) {
+        System.getLogger(ProblemHandler.class.getName()).log(System.Logger.Level.ERROR,"Request {0} failed: {1}",trace(request),error.getClass().getSimpleName());
+        return problem(new ApiProblem(500,"INTERNAL_ERROR","操作未完成，请保留追踪编号联系维护人员"),request);
+    }
     static String trace(HttpServletRequest request) {
         Object existing=request.getAttribute("capyiot.trace");
         if(existing!=null) return existing.toString();

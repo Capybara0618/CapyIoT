@@ -163,7 +163,11 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
         result.put("serialNumber",actor.permissions().contains("device.manage")?device.get("serial_number"):null);
         result.put("managementIp",device.get("management_ip")); result.put("criticality",device.get("criticality"));
         result.put("capabilities",parse(Objects.toString(device.get("capabilities_json"),"{}")));
-        var topology=topology(actor,id,null,Instant.now(),1); result.put("networkDependencies",topology.get("relations"));
+        var topology=topology(actor,id,null,Instant.now(),1);
+        @SuppressWarnings("unchecked") var relations=(List<Map<String,Object>>)topology.get("relations");
+        result.put("networkDependencies",relations.stream().filter(r->r.get("relationType").equals("NETWORK")).toList());
+        result.put("powerDependencies",relations.stream().filter(r->r.get("relationType").equals("POWER")).toList());
+        result.put("videoChannels",relations.stream().filter(r->r.get("relationType").equals("VIDEO")).toList());
         result.put("monitoringPointBindings",bindings(actor,id,null)); result.put("completeness",topology.get("completeness")); return result;
     }
     public JsonNode createDevice(AuthorizationContext actor,String key,CreateDevice c) {
@@ -216,6 +220,29 @@ public class AssetService implements AssetScopePort,DeviceQueryPort {
         Map<String,String> result=new HashMap<>(); String next=id; Set<String> seen=new HashSet<>();
         while(next!=null&&seen.add(next)) { var a=area(next); if(a.get("area_type").equals("BUILDING")) result.put("building",next); if(a.get("area_type").equals("FLOOR")) result.put("floor",next); next=(String)a.get("parent_area_id"); }
         return result;
+    }
+    public Map<String,Object> overview(AuthorizationContext actor) {
+        var rows=visibleDeviceIds(actor,"device.read").stream().map(this::summary).toList();
+        Map<String,Object> result=new LinkedHashMap<>();result.put("total",rows.size());
+        for(String state:List.of("ONLINE","OFFLINE","UNKNOWN"))result.put(state.toLowerCase(Locale.ROOT),rows.stream().filter(r->state.equals(r.get("connectivityStatus"))).count());
+        result.put("abnormal",rows.stream().filter(r->Set.of("FAULT","WARNING").contains(r.get("healthStatus"))).count());
+        result.put("stale",rows.stream().filter(r->"STALE".equals(r.get("dataFreshness"))).count());return result;
+    }
+    public Map<String,Object> events(AuthorizationContext actor,String deviceId,String type,String status,Instant from,Instant to,int page,int size) {
+        if(type!=null&&!Set.of("STATUS_OBSERVATION","DEVICE_FAULT","DEVICE_RECOVERED").contains(type))throw ApiProblem.invalid("事件类型无效；心跳不作为长期业务事件保存");
+        if(status!=null&&!Set.of("APPLIED","IGNORED_STALE","DUPLICATE").contains(status))throw ApiProblem.invalid("处理状态无效");
+        if(from!=null&&to!=null&&!from.isBefore(to))throw ApiProblem.invalid("时间范围无效");
+        Set<String> visible=new HashSet<>(visibleDeviceIds(actor,"event.read"));visible.retainAll(visibleDeviceIds(actor,"device.read"));
+        var rows=store.db.queryForList("SELECT event_id AS eventId,device_id AS deviceId,event_type AS eventType,stream_key AS streamKey,sequence_no AS sequence,session_epoch AS sessionEpoch,occurred_at AS occurredAt,received_at AS receivedAt,source,processing_status AS processingStatus,trace_id AS traceId FROM device_event WHERE schema_version='1' ORDER BY received_at DESC,id DESC").stream()
+            .filter(r->visible.contains(r.get("deviceId"))&&(deviceId==null||deviceId.equals(r.get("deviceId"))))
+            .filter(r->type==null||type.equals(r.get("eventType"))).filter(r->status==null||status.equals(r.get("processingStatus")))
+            .filter(r->from==null||!DbTime.instant(r.get("receivedAt")).isBefore(from)).filter(r->to==null||DbTime.instant(r.get("receivedAt")).isBefore(to)).map(Views::row).toList();
+        return Views.page(rows,page,size);
+    }
+    public Map<String,Object> event(AuthorizationContext actor,String id) {
+        var rows=store.db.queryForList("SELECT event_id AS eventId,device_id AS deviceId,event_type AS eventType,stream_key AS streamKey,sequence_no AS sequence,session_epoch AS sessionEpoch,occurred_at AS occurredAt,received_at AS receivedAt,source,processing_status AS processingStatus,trace_id AS traceId,payload_json AS payload FROM device_event WHERE event_id=? AND schema_version='1'",id);
+        if(rows.isEmpty())throw ApiProblem.missing();var result=Views.row(rows.getFirst());String device=result.get("deviceId").toString();
+        requireVisibleDevices(actor,"event.read",List.of(device));requireVisibleDevices(actor,"device.read",List.of(device));result.put("payload",parse(result.get("payload").toString()));return result;
     }
     private void endDeviceRelations(String id,String actor) {
         store.db.update("UPDATE monitoring_point SET version=version+1 WHERE monitoring_point_id IN(SELECT monitoring_point_id FROM monitoring_point_binding WHERE ipc_device_id=? AND valid_to IS NULL)",id);

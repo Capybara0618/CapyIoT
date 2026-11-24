@@ -26,6 +26,16 @@ public class PlatformService implements io.capyiot.core.ports.UserAssignmentPort
         this.db=db; this.tx=tx; this.assets=assets;
     }
     public record LoginCommand(String loginName,String password) {}
+    public List<Map<String,Object>> assignmentCandidates(List<io.capyiot.core.ports.DeviceQueryPort.DeviceRef> devices) {
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(var user:db.queryForList("SELECT user_id,display_name FROM app_user WHERE status='ACTIVE' ORDER BY display_name,user_id")) {
+            for(String role:List.of("REPAIR_TECH","ACCEPTANCE_STAFF"))try {
+                String id=user.get("user_id").toString();requireRoleForDevices(id,role,devices);
+                result.add(Map.of("userId",id,"displayName",user.get("display_name"),"roleCode",role));
+            }catch(ApiProblem ineligible){/* Only eligible personnel identities are disclosed. */}
+        }
+        return result;
+    }
     public record SessionIdentity(String userId,String loginName,String displayName,long authorizationVersion,
                                   String sessionId,String jti,Instant expiresAt,List<String> roleCodes) {}
     public SessionIdentity login(LoginCommand command) {
