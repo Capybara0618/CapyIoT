@@ -81,6 +81,7 @@ class WorkflowIntegrationTest {
             try (var output = exchange.getResponseBody()) { output.write(body); }
         });
         alarm.start();
+        registry.add("capyiot.legacy-auth-enabled",()->true);
         registry.add("capyiot.user-jwt-secret", () -> Base64.getEncoder().encodeToString(JWT_KEY));
         registry.add("capyiot.alarm-service-url", () -> "http://127.0.0.1:" + alarm.getAddress().getPort());
         registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);

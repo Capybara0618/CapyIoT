@@ -14,6 +14,9 @@ data:
   DEVICE_DB_URL: {{ printf "jdbc:mysql://%s:3306/device_db?connectionTimeZone=UTC" .Values.endpoints.mysql | quote }}
   ALARM_DB_URL: {{ printf "jdbc:mysql://%s:3306/alarm_db?connectionTimeZone=UTC" .Values.endpoints.mysql | quote }}
   WORKFLOW_DB_URL: {{ printf "jdbc:mysql://%s:3306/workflow_db?connectionTimeZone=UTC" .Values.endpoints.mysql | quote }}
+  PLATFORM_DB_URL: {{ printf "jdbc:mysql://%s:3306/platform_db?connectionTimeZone=UTC" .Values.endpoints.mysql | quote }}
+  CORE_SERVICE_URL: http://core-service:8085
+  USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
   DEVICE_SERVICE_URL: http://device-service:8082
   INGESTION_SERVICE_URL: http://device-ingestion:8081
   ALARM_SERVICE_URL: http://alarm-service:8083

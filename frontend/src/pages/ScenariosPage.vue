@@ -66,7 +66,7 @@ const error = ref('')
 const actionError = ref('')
 const previewDraft = ref(false)
 const now = ref(Date.now())
-const admin = computed(() => session.value?.user.role === 'ADMIN')
+const admin = computed(() => session.value?.user.roleCodes.includes('OPS_SUPERVISOR'))
 const current = computed(() => detail.value?.run)
 const active = computed(() => recent.value.find((run) => !run.endedAt))
 const selectedId = computed(() =>

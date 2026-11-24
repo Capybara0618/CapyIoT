@@ -9,7 +9,8 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -N dependency:copy \
 FROM eclipse-temurin:21-jre-alpine
 ARG SERVICE
 WORKDIR /app
-RUN addgroup -S capyiot && adduser -S capyiot -G capyiot
+RUN addgroup -S capyiot && adduser -S capyiot -G capyiot \
+    && mkdir /keys && chown capyiot:capyiot /keys && chmod 700 /keys
 COPY --from=build --chown=capyiot:capyiot /workspace/${SERVICE}/target/${SERVICE}-0.1.0-SNAPSHOT.jar app.jar
 COPY --from=build /agent/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
 COPY infra/java/start.sh /app/start.sh

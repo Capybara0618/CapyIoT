@@ -60,6 +60,7 @@ class DevicePipelineTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        registry.add("capyiot.legacy-auth-enabled",()->true);
         registry.add("capyiot.user-jwt-secret", () -> Base64.getEncoder().encodeToString(KEY));
         registry.add("capyiot.device-jwt-secret", () -> Base64.getEncoder().encodeToString(KEY));
         registry.add("spring.data.redis.host", REDIS::getHost);

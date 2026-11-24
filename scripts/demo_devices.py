@@ -32,7 +32,7 @@ def main() -> None:
             details = json.load(error)
             raise RuntimeError(f"HTTP {error.code}: {details.get('message', 'Request failed')}") from None
 
-    token = call("/auth/login", {"username": "admin", "password": values["DEMO_ADMIN_PASSWORD"]})["accessToken"]
+    token = call("/auth/login", {"loginName": "supervisor", "password": values["DEMO_ADMIN_PASSWORD"]})["accessToken"]
     saved = json.loads(args.output.read_text()) if args.output.exists() else []
     credentials = {device["deviceCode"]: device for device in saved}
     registered = {device["deviceCode"]: device for device in call("/devices?" + urlencode({"keyword": args.prefix, "size": 100}))["items"]}

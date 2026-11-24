@@ -15,7 +15,9 @@ python scripts/init_env.py
 docker compose up -d --build --wait --wait-timeout 300
 ```
 
-打开 <http://localhost:8088>。账号为 `admin`（平台管理员）或 `operator`（运维人员），随机生成的密码分别保存在本地 `.env` 的 `DEMO_ADMIN_PASSWORD` 和 `DEMO_OPERATOR_PASSWORD`。再次运行初始化脚本会保留现有配置。令牌有效期为一小时，退出后清除当前浏览器会话。
+打开 <http://localhost:8088>。`admin` 仅管理平台用户与授权，不自动获得业务权限；`supervisor` 负责设备和业务维护，二者的初始密码来自本地 `.env` 的 `DEMO_ADMIN_PASSWORD`。`operator`、`repairer`、`acceptor` 的初始密码来自 `DEMO_OPERATOR_PASSWORD`。再次初始化会保留已有配置与授权，不恢复已撤销的 Grant。
+
+登录使用持久化会话及 RS256 用户令牌，有效期一小时；退出、禁用账号和授权变更会使旧会话立即失效。Gateway 在持久化卷中保存签名私钥，`/.well-known/jwks.json` 只提供公钥。轮换时将新私钥放在 JWK Set 第一项，并保留旧公钥至少一个令牌有效期；更新密钥文件需原子替换，其他服务从 JWKS 刷新公钥。认证或授权服务不可用时拒绝继续访问。
 
 `.env` 包含本地凭据，请保存在本机。初始化脚本保留现有值并补齐新增配置。已初始化 MySQL 数据卷时，应保留原有数据库凭据。服务端只读取演示密码的 PBKDF2 哈希。
 

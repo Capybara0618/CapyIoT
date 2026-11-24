@@ -2,7 +2,7 @@
 {{- $dependencies := list
   (dict "name" "mysql" "port" 3306 "image" "mysql:8.4.11" "disk" "2Gi" "path" "/var/lib/mysql" "memory" "896Mi"
     "probe" (list "sh" "-ec" "MYSQL_PWD=$MYSQL_ROOT_PASSWORD mysql -uroot -h127.0.0.1 -N -e 'SELECT 1 FROM information_schema.schemata WHERE schema_name=\"workflow_db\"' | grep -q 1")
-    "secrets" (list "MYSQL_ROOT_PASSWORD" "DEVICE_DB_PASSWORD" "ALARM_DB_PASSWORD" "WORKFLOW_DB_PASSWORD"))
+    "secrets" (list "MYSQL_ROOT_PASSWORD" "DEVICE_DB_PASSWORD" "ALARM_DB_PASSWORD" "WORKFLOW_DB_PASSWORD" "PLATFORM_DB_PASSWORD"))
   (dict "name" "redis" "port" 6379 "image" "redis:7.4.8-alpine" "disk" "1Gi" "path" "/data" "memory" "192Mi"
     "args" (list "redis-server" "--appendonly" "yes") "probe" (list "redis-cli" "ping"))
   (dict "name" "kafka" "port" 29092 "image" "apache/kafka:4.1.1" "disk" "2Gi" "path" "/data" "memory" "1024Mi"

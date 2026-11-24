@@ -11,7 +11,7 @@ const router = useRouter()
 const health = ref<Health | null>(null)
 const checking = ref(false)
 const error = ref('')
-const role = computed(() => (session.value?.user.role === 'ADMIN' ? '平台管理员' : '运维人员'))
+const role = computed(() => session.value?.user.displayName ?? '当前用户')
 
 async function checkHealth() {
   checking.value = true
@@ -27,7 +27,7 @@ async function checkHealth() {
 }
 
 async function signOut() {
-  logout()
+  await logout()
   await router.replace('/login')
 }
 
@@ -58,7 +58,7 @@ onMounted(checkHealth)
       <header class="topbar">
         <div class="campus">
           <MapPin :size="16" /><span>演示园区</span
-          ><span class="campus-code">{{ session?.user.campusId }}</span>
+          ><span class="campus-code">{{ 'CAMPUS-A' }}</span>
         </div>
         <div class="topbar-actions">
           <div class="health-indicator" role="status" :title="error || health?.checkedAt">
@@ -84,12 +84,12 @@ onMounted(checkHealth)
           <details class="user-menu">
             <summary>
               <span class="avatar">{{
-                session?.user.username.slice(0, 1).toUpperCase()
+                session?.user.loginName.slice(0, 1).toUpperCase()
               }}</span><span>{{ role }}</span
               ><ChevronDown :size="14" />
             </summary>
             <div class="user-popover">
-              <span>{{ session?.user.username }}</span><button @click="signOut">
+              <span>{{ session?.user.loginName }}</span><button @click="signOut">
                 <LogOut :size="16" />退出登录
               </button>
             </div>

@@ -60,7 +60,7 @@ const actionDraft = reactive({
   id: 0,
   version: 0,
 })
-const admin = computed(() => session.value?.user.role === 'ADMIN')
+const admin = computed(() => session.value?.user.roleCodes.includes('OPS_SUPERVISOR'))
 const assignment = computed(() => ['ASSIGN', 'REASSIGN'].includes(actionDraft.action))
 const noteRequired = computed(() =>
   ['ADD_NOTE', 'COMPLETE_PROCESSING', 'VERIFY_RECOVERY', 'RETURN_TO_PROCESSING', 'REOPEN'].includes(
@@ -227,7 +227,7 @@ function openAction(action: WorkAction) {
     action,
     id: order.id,
     version: order.version,
-    assignee: session.value?.user.username ?? '',
+    assignee: session.value?.user.loginName ?? '',
     remark: '',
   })
   dialogError.value = ''

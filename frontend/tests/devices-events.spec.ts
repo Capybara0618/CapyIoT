@@ -15,12 +15,12 @@ const values = Object.fromEntries(
     }),
 )
 
-async function login(page: Page, username = 'admin') {
+async function login(page: Page, username = 'supervisor') {
   await page.goto('/login')
   await page.getByLabel('账号', { exact: true }).fill(username)
   await page
     .getByLabel('密码', { exact: true })
-    .fill(values[`DEMO_${username.toUpperCase()}_PASSWORD`])
+    .fill(values[username === 'supervisor' ? 'DEMO_ADMIN_PASSWORD' : 'DEMO_OPERATOR_PASSWORD'])
   await page.getByRole('button', { name: '进入工作台' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
 }

@@ -11,9 +11,13 @@ class GatewayRoutes {
     @Bean
     RouteLocator routes(RouteLocatorBuilder builder,
             @Value("${capyiot.services.device-url}") String deviceUrl,
+            @Value("${capyiot.services.core-url}") String coreUrl,
+            @Value("${capyiot.services.agent-url}") String agentUrl,
             @Value("${capyiot.services.alarm-url}") String alarmUrl,
             @Value("${capyiot.services.workflow-url}") String workflowUrl) {
         return builder.routes()
+                .route("foundation-api",route->route.path("/api/v1/auth/me","/api/v1/auth/logout","/api/v1/users","/api/v1/users/**","/api/v1/grants/**","/api/v1/audit-records").uri(coreUrl))
+                .route("agent-api",route->route.path("/api/v1/agent/**").metadata("response-timeout",-1).uri(agentUrl))
                 .route("device-health", route -> route.path("/api/v1/health")
                         .filters(filters -> filters.setPath("/internal/health"))
                         .uri(deviceUrl))

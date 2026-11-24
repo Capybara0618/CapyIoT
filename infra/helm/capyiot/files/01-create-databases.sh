@@ -7,6 +7,9 @@ for password in "$DEVICE_DB_PASSWORD" "$ALARM_DB_PASSWORD" "$WORKFLOW_DB_PASSWOR
     ''|*[!0-9a-fA-F]*) echo 'Database passwords must be hexadecimal' >&2; exit 1 ;;
   esac
 done
+if [ -n "${PLATFORM_DB_PASSWORD:-}" ]; then
+  case "$PLATFORM_DB_PASSWORD" in *[!0-9a-fA-F]*) echo 'Database passwords must be hexadecimal' >&2; exit 1 ;; esac
+fi
 
 # The image's client and server may have different compiled socket defaults.
 # Match the entrypoint's temporary server; TCP is disabled during initialization.
@@ -23,3 +26,12 @@ GRANT ALL PRIVILEGES ON device_db.* TO 'device_app'@'%';
 GRANT ALL PRIVILEGES ON alarm_db.* TO 'alarm_app'@'%';
 GRANT ALL PRIVILEGES ON workflow_db.* TO 'workflow_app'@'%';
 SQL
+
+# Optional only for the retained legacy Helm deployment. Compose V1 requires this credential.
+if [ -n "${PLATFORM_DB_PASSWORD:-}" ]; then
+MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql --protocol=socket --socket="$socket" -uroot <<SQL
+CREATE DATABASE IF NOT EXISTS platform_db CHARACTER SET utf8mb4;
+CREATE USER IF NOT EXISTS 'platform_app'@'%' IDENTIFIED BY '$PLATFORM_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON platform_db.* TO 'platform_app'@'%';
+SQL
+fi

@@ -11,5 +11,8 @@ var
 **/*.pyc
 **/*.log
 CapyIoT-Blueprint
+*Blueprint*.zip
+AGENTS.md
+agent.md
 docs
 **/design-references

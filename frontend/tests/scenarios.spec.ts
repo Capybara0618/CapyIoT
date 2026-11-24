@@ -15,12 +15,14 @@ const credentials = new Map(
     .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]),
 )
 
-async function login(page: Page, user: 'admin' | 'operator') {
+async function login(page: Page, user: 'supervisor' | 'operator') {
   await page.goto('/scenarios')
   await page.getByLabel('账号', { exact: true }).fill(user)
   await page
     .getByLabel('密码', { exact: true })
-    .fill(credentials.get(`DEMO_${user.toUpperCase()}_PASSWORD`)!)
+    .fill(
+      credentials.get(user === 'supervisor' ? 'DEMO_ADMIN_PASSWORD' : 'DEMO_OPERATOR_PASSWORD')!,
+    )
   await page.getByRole('button', { name: '进入工作台' }).click()
   await expect(page.getByRole('heading', { name: '场景模拟中心' })).toBeVisible()
 }
@@ -116,7 +118,7 @@ test('browser starts confirmed network incident and closes its work order after 
   context,
 }) => {
   test.setTimeout(140000)
-  await login(page, 'admin')
+  await login(page, 'supervisor')
   const run = await start(page, '交换机故障', 'DEMO-1-SW', 100)
   const path = `/scenario-runs/${run.id}`
   const operatorPage = await context.newPage()
@@ -202,7 +204,7 @@ test('temperature keeps the device online and stopping restores it after an SSE 
   context,
 }) => {
   test.setTimeout(70000)
-  await login(page, 'admin')
+  await login(page, 'supervisor')
   const run = await start(page, '温度越限', 'DEMO-3-SEN', 45)
   const path = `/scenario-runs/${run.id}`
   try {
@@ -243,7 +245,7 @@ test('two real heartbeat timeouts reuse the offline alarm within the flap window
   page,
 }) => {
   test.setTimeout(130000)
-  await login(page, 'admin')
+  await login(page, 'supervisor')
   const fixture = await detachedDevice(page)
   let path: string | undefined
   try {

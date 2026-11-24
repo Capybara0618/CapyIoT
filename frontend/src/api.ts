@@ -6,9 +6,13 @@ export interface ApiResponse<T> {
 }
 
 export interface UserInfo {
-  username: string
-  role: 'ADMIN' | 'OPERATOR'
-  campusId: string
+  userId: string
+  loginName: string
+  displayName: string
+  authorizationVersion: number
+  roleCodes: (
+    'SYS_ADMIN' | 'OPS_SUPERVISOR' | 'OPS_OPERATOR' | 'REPAIR_TECH' | 'ACCEPTANCE_STAFF'
+  )[]
 }
 
 export interface LoginResult {
@@ -36,6 +40,8 @@ export class ApiError extends Error {
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body) headers.set('Content-Type', 'application/json')
+  if (init.method && init.method !== 'GET' && !headers.has('Idempotency-Key'))
+    headers.set('Idempotency-Key', crypto.randomUUID())
   const token = sessionStorage.getItem('capyiot.token')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   let response: Response

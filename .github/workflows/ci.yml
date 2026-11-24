@@ -96,13 +96,13 @@ jobs:
         run: |
           python3 scripts/init_env.py
           docker compose --profile simulation build
-          for service in gateway device-ingestion device-service alarm-service workflow-service frontend simulator; do
+          for service in core-service gateway device-ingestion device-service alarm-service workflow-service frontend simulator; do
             docker tag "capyiot-$service:latest" "capyiot-$service:m5"
           done
       - name: Deploy CapyIoT and KEDA
         run: |
           kind create cluster --name "$CLUSTER" --image kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0 --wait 120s
-          kind load docker-image --name "$CLUSTER" capyiot-gateway:m5 capyiot-device-ingestion:m5 capyiot-device-service:m5 capyiot-alarm-service:m5 capyiot-workflow-service:m5 capyiot-frontend:m5 capyiot-simulator:m5
+          kind load docker-image --name "$CLUSTER" capyiot-core-service:m5 capyiot-gateway:m5 capyiot-device-ingestion:m5 capyiot-device-service:m5 capyiot-alarm-service:m5 capyiot-workflow-service:m5 capyiot-frontend:m5 capyiot-simulator:m5
           helm repo add kedacore https://kedacore.github.io/charts
           helm upgrade --install keda kedacore/keda --version 2.21.1 --namespace keda --create-namespace --wait --timeout 6m
           kubectl create namespace "$NAMESPACE"

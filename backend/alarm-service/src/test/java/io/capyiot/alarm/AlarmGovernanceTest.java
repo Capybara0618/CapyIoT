@@ -46,6 +46,7 @@ class AlarmGovernanceTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        registry.add("capyiot.legacy-auth-enabled",()->true);
         registry.add("capyiot.user-jwt-secret", () -> Base64.getEncoder().encodeToString(SIGNING_KEY));
     }
 

@@ -53,7 +53,7 @@ import EmptyState from '../components/EmptyState.vue'
 
 const route = useRoute()
 const router = useRouter()
-const admin = computed(() => session.value?.user.role === 'ADMIN')
+const admin = computed(() => session.value?.user.roleCodes.includes('OPS_SUPERVISOR'))
 const devices = ref<Device[]>([])
 const total = ref(0)
 const loading = ref(false)

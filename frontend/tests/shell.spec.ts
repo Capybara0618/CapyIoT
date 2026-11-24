@@ -15,7 +15,7 @@ const credentials = Object.fromEntries(
 test('login preserves a deep link, reports errors, and signs out', async ({ page }) => {
   await page.goto('/devices?connectivity=OFFLINE')
   await expect(page).toHaveURL(/\/login\?redirect=/)
-  await page.getByLabel('账号', { exact: true }).fill('admin')
+  await page.getByLabel('账号', { exact: true }).fill('supervisor')
   await page.getByLabel('密码', { exact: true }).fill('wrong-password')
   await page.getByRole('button', { name: '进入工作台' }).click()
   await expect(page.getByRole('alert')).toHaveText('账号或密码错误')
@@ -103,7 +103,13 @@ test('an invalid session returns to login when the API rejects it', async ({ pag
     const session = {
       accessToken: 'invalid',
       expiresAt: new Date(Date.now() + 60000).toISOString(),
-      user: { username: 'admin', role: 'ADMIN', campusId: 'CAMPUS-A' },
+      user: {
+        userId: 'USER-ADMIN',
+        loginName: 'admin',
+        displayName: '管理员',
+        authorizationVersion: 1,
+        roleCodes: ['SYS_ADMIN'],
+      },
     }
     sessionStorage.setItem('capyiot.token', session.accessToken)
     sessionStorage.setItem('capyiot.session', JSON.stringify(session))

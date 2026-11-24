@@ -122,7 +122,7 @@ class WorkOrderController {
 
     private static Actor actor(Jwt jwt) {
         String campus = jwt.getClaimAsString("campusId");
-        String username = jwt.getSubject();
+        String username = io.capyiot.security.LiveUserJwtDecoder.legacyLoginName(jwt);
         if (campus == null || campus.isBlank() || username == null || username.isBlank()) {
             throw WorkOrderProblem.forbidden("账号缺少园区授权");
         }

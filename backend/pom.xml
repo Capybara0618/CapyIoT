@@ -19,6 +19,7 @@
   </properties>
   <modules>
     <module>shared-contract</module>
+    <module>core-service</module>
     <module>gateway</module>
     <module>device-ingestion</module>
     <module>device-service</module>

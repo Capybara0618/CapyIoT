@@ -143,7 +143,7 @@ def main():
     trigger = scaled["spec"]["triggers"][0]["metadata"]
     assert int(trigger["lagThreshold"]) <= 12, "Use the smoke-test threshold (10) in this demo"
     assert scaled["spec"]["minReplicaCount"] == 1 and scaled["spec"]["maxReplicaCount"] >= 2
-    token = wait(lambda: api("/auth/login", {"username": "admin", "password": env["DEMO_ADMIN_PASSWORD"]}),
+    token = wait(lambda: api("/auth/login", {"loginName": "supervisor", "password": env["DEMO_ADMIN_PASSWORD"]}),
                  "gateway login")["accessToken"]
     output = root / "var" / "k8s-smoke-devices.json"
     subprocess.run([sys.executable, str(root / "scripts" / "demo_devices.py"), "--base-url", args.base_url,

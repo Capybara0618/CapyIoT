@@ -1,0 +1,50 @@
+server:
+  port: 8085
+  shutdown: graceful
+spring:
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-numbers-for-enums: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+    listener:
+      ack-mode: record
+  application:
+    name: core-service
+  datasource:
+    url: ${PLATFORM_DB_URL:jdbc:mysql://localhost:3306/platform_db?connectionTimeZone=UTC}
+    username: platform_app
+    password: ${PLATFORM_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    locations: classpath:db/platform
+capyiot:
+  foundation:
+    service-key: ${CORE_SERVICE_KEY}
+    jwks-uri: ${USER_JWKS_URI:http://localhost:8080/.well-known/jwks.json}
+    bootstrap:
+      enabled: ${PLATFORM_BOOTSTRAP_ENABLED:true}
+      admin-hash: ${DEMO_ADMIN_PASSWORD_HASH}
+      operator-hash: ${DEMO_OPERATOR_PASSWORD_HASH}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

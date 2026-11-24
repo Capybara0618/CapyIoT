@@ -23,6 +23,7 @@ services:
       DEVICE_DB_PASSWORD: ${DEVICE_DB_PASSWORD:?Missing device password}
       ALARM_DB_PASSWORD: ${ALARM_DB_PASSWORD:?Missing alarm password}
       WORKFLOW_DB_PASSWORD: ${WORKFLOW_DB_PASSWORD:?Missing workflow password}
+      PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD:?Missing platform password}
       TZ: UTC
     ports: ['127.0.0.1:3306:3306']
     volumes:
@@ -123,6 +124,9 @@ services:
       DEVICE_DB_URL: jdbc:mysql://mysql:3306/device_db?connectionTimeZone=UTC
       DEVICE_DB_PASSWORD: ${DEVICE_DB_PASSWORD:?Missing device password}
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
+      USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
+      CORE_SERVICE_URL: http://core-service:8085
+      CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
       DEVICE_JWT_SECRET: ${DEVICE_JWT_SECRET:?Run python scripts/init_env.py}
       TOPOLOGY_SYNC_TOKEN: ${TOPOLOGY_SYNC_TOKEN:?Run python scripts/init_env.py}
       REDIS_HOST: redis
@@ -154,6 +158,9 @@ services:
       ALARM_DB_URL: jdbc:mysql://mysql:3306/alarm_db?connectionTimeZone=UTC
       ALARM_DB_PASSWORD: ${ALARM_DB_PASSWORD:?Missing alarm password}
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
+      USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
+      CORE_SERVICE_URL: http://core-service:8085
+      CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
       TOPOLOGY_SYNC_TOKEN: ${TOPOLOGY_SYNC_TOKEN:?Run python scripts/init_env.py}
       DEVICE_SERVICE_URL: http://device-service:8082
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
@@ -177,6 +184,9 @@ services:
       WORKFLOW_DB_URL: jdbc:mysql://mysql:3306/workflow_db?connectionTimeZone=UTC
       WORKFLOW_DB_PASSWORD: ${WORKFLOW_DB_PASSWORD:?Missing workflow password}
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
+      USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
+      CORE_SERVICE_URL: http://core-service:8085
+      CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
       ALARM_SERVICE_URL: http://alarm-service:8083
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
@@ -189,6 +199,27 @@ services:
       timeout: 5s
       retries: 20
 
+  core-service:
+    <<: *app
+    build:
+      <<: *java-build
+      args: { SERVICE: core-service }
+    environment:
+      <<: *observability
+      PLATFORM_DB_URL: jdbc:mysql://mysql:3306/platform_db?connectionTimeZone=UTC
+      PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD:?Missing platform password}
+      CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
+      USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
+      DEMO_ADMIN_PASSWORD_HASH: ${DEMO_ADMIN_PASSWORD_HASH:?Missing demo admin hash}
+      DEMO_OPERATOR_PASSWORD_HASH: ${DEMO_OPERATOR_PASSWORD_HASH:?Missing demo operator hash}
+    depends_on:
+      mysql: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:8085/actuator/health/readiness | grep UP']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
   gateway:
     <<: *app
     build:
@@ -196,16 +227,23 @@ services:
       args: { SERVICE: gateway }
     environment:
       <<: *observability
+      USER_KEY_FILE: /keys/user-keys.json
+      USER_KEYS_GENERATE: 'true'
       PROMETHEUS_URL: http://prometheus:9090
       DEVICE_SERVICE_URL: http://device-service:8082
       INGESTION_SERVICE_URL: http://device-ingestion:8081
       ALARM_SERVICE_URL: http://alarm-service:8083
       WORKFLOW_SERVICE_URL: http://workflow-service:8084
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
+      USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
+      CORE_SERVICE_URL: http://core-service:8085
+      CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
       DEMO_ADMIN_PASSWORD_HASH: ${DEMO_ADMIN_PASSWORD_HASH:?Missing demo admin hash}
       DEMO_OPERATOR_PASSWORD_HASH: ${DEMO_OPERATOR_PASSWORD_HASH:?Missing demo operator hash}
     ports: ['127.0.0.1:8080:8080']
+    volumes: [gateway-keys:/keys]
     depends_on:
+      core-service: { condition: service_healthy }
       device-service: { condition: service_healthy }
       alarm-service: { condition: service_healthy }
       workflow-service: { condition: service_healthy }
@@ -276,6 +314,7 @@ networks:
   internal:
 
 volumes:
+  gateway-keys:
   mysql-data:
   redis-data:
   kafka-data:

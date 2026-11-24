@@ -24,6 +24,9 @@ spec:
       annotations:
         checksum/config: {{ include (print $root.Template.BasePath "/config.yaml") $root | sha256sum }}
     spec:
+      {{- if eq $name "gateway" }}
+      securityContext: { fsGroup: 1000 }
+      {{- end }}
       enableServiceLinks: false
       automountServiceAccountToken: {{ eq $name "gateway" }}
       {{- if eq $name "gateway" }}
@@ -44,7 +47,7 @@ spec:
           args:
             - |
               {{- range $waits }}
-              until nc -w 2 -z {{ . }} {{ get (dict "mysql" 3306 "redis" 6379 "kafka" 29092 "emqx" 1883 "gateway" 8080 "device-ingestion" 8081 "device-service" 8082 "alarm-service" 8083) . }}; do sleep 2; done
+              until nc -w 2 -z {{ . }} {{ get (dict "mysql" 3306 "redis" 6379 "kafka" 29092 "emqx" 1883 "gateway" 8080 "device-ingestion" 8081 "device-service" 8082 "alarm-service" 8083 "core-service" 8085) . }}; do sleep 2; done
               {{- end }}
           resources:
             requests: { cpu: 10m, memory: 8Mi }
@@ -73,6 +76,10 @@ spec:
             {{- end }}
             {{- if eq $name "gateway" }}
             - { name: K8S_ENABLED, value: "true" }
+            - { name: USER_KEY_FILE, value: /keys/user-keys.json }
+            - { name: USER_KEYS_GENERATE, value: "true" }
+          volumeMounts:
+            - { name: user-signing-keys, mountPath: /keys }
             {{- end }}
             {{- if eq $name "device-service" }}
             - { name: CAPYIOT_QUERY_CACHE_ENABLED, value: {{ $root.Values.queryCacheEnabled | quote }} }
@@ -105,6 +112,10 @@ spec:
       volumes:
         - name: nginx
           configMap: { name: capyiot-nginx }
+      {{- else if eq $name "gateway" }}
+      volumes:
+        - name: user-signing-keys
+          persistentVolumeClaim: { claimName: gateway-signing-keys }
       {{- else if and (eq $name "device-service") $root.Values.demo.scenarioSecret }}
       volumes:
         - name: scenario-credentials
@@ -132,3 +143,12 @@ spec:
     - { name: metrics, port: {{ $management }}, targetPort: {{ $management }} }
 {{- end }}
 {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gateway-signing-keys
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 64Mi }

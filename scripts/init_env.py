@@ -23,6 +23,8 @@ def main() -> None:
         "DEVICE_DB_PASSWORD": secrets.token_hex(24),
         "ALARM_DB_PASSWORD": secrets.token_hex(24),
         "WORKFLOW_DB_PASSWORD": secrets.token_hex(24),
+        "PLATFORM_DB_PASSWORD": secrets.token_hex(24),
+        "CORE_SERVICE_KEY": secrets.token_urlsafe(48),
         "JWT_SECRET": base64.b64encode(secrets.token_bytes(48)).decode(),
         "DEMO_ADMIN_PASSWORD": admin_password,
         "DEMO_ADMIN_PASSWORD_HASH": password_hash(admin_password),

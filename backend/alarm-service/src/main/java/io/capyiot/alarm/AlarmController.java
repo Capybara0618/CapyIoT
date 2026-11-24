@@ -88,7 +88,7 @@ class AlarmController {
 
     @PostMapping("/alarms/{id}/acknowledge")
     ApiResponse<AlarmQueries.Alarm> acknowledge(@AuthenticationPrincipal Jwt jwt, @PathVariable long id) {
-        return response(queries.acknowledge(campus(jwt), id, jwt.getSubject()));
+        return response(queries.acknowledge(campus(jwt), id, io.capyiot.security.LiveUserJwtDecoder.legacyLoginName(jwt)));
     }
 
     @GetMapping("/alarm-rules")
@@ -107,7 +107,7 @@ class AlarmController {
 
     @PostMapping("/alarms/outbox/{id}/retry")
     ApiResponse<Boolean> retry(@AuthenticationPrincipal Jwt jwt, @PathVariable long id) {
-        if (!relay.retry(campus(jwt), id, jwt.getSubject())) {
+        if (!relay.retry(campus(jwt), id, io.capyiot.security.LiveUserJwtDecoder.legacyLoginName(jwt))) {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "待补发事件不存在");
         }
         return response(true);

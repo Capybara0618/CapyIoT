@@ -57,7 +57,7 @@ class ScenarioController {
     @PostMapping("/scenario-runs")
     @ResponseStatus(HttpStatus.ACCEPTED)
     ApiResponse<ScenarioRuns.Run> start(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody ScenarioRuns.Start params) {
-        return ok(runs.start(campus(jwt), jwt.getSubject(), params));
+        return ok(runs.start(campus(jwt), io.capyiot.security.LiveUserJwtDecoder.legacyLoginName(jwt), params));
     }
 
     @GetMapping("/scenario-runs/{id}")
@@ -70,11 +70,11 @@ class ScenarioController {
 
     @PostMapping("/scenario-runs/{id}/stop")
     ApiResponse<ScenarioRuns.Run> stop(@AuthenticationPrincipal Jwt jwt, @PathVariable String id) {
-        return ok(runs.requestEnd(campus(jwt), id, jwt.getSubject(), ScenarioRuns.EndMode.STOP));
+        return ok(runs.requestEnd(campus(jwt), id, io.capyiot.security.LiveUserJwtDecoder.legacyLoginName(jwt), ScenarioRuns.EndMode.STOP));
     }
 
     @PostMapping("/scenario-runs/{id}/recover")
     ApiResponse<ScenarioRuns.Run> recover(@AuthenticationPrincipal Jwt jwt, @PathVariable String id) {
-        return ok(runs.requestEnd(campus(jwt), id, jwt.getSubject(), ScenarioRuns.EndMode.RECOVER));
+        return ok(runs.requestEnd(campus(jwt), id, io.capyiot.security.LiveUserJwtDecoder.legacyLoginName(jwt), ScenarioRuns.EndMode.RECOVER));
     }
 }

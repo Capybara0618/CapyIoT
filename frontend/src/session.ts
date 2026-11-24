@@ -9,9 +9,9 @@ function readSession(): LoginResult | null {
     if (
       typeof saved?.accessToken === 'string' &&
       Date.parse(saved.expiresAt) > Date.now() &&
-      typeof saved.user?.username === 'string' &&
-      typeof saved.user?.campusId === 'string' &&
-      ['ADMIN', 'OPERATOR'].includes(saved.user?.role)
+      typeof saved.user?.userId === 'string' &&
+      typeof saved.user?.loginName === 'string' &&
+      Array.isArray(saved.user?.roleCodes)
     )
       return saved
   } catch {
@@ -27,15 +27,23 @@ export const session = ref<LoginResult | null>(readSession())
 export async function login(username: string, password: string) {
   const result = await request<LoginResult>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ loginName: username, password }),
   })
   sessionStorage.setItem('capyiot.token', result.accessToken)
   sessionStorage.setItem('capyiot.session', JSON.stringify(result))
   session.value = result
 }
 
-export function logout() {
+export function clearSession() {
   sessionStorage.removeItem('capyiot.token')
   sessionStorage.removeItem('capyiot.session')
   session.value = null
+}
+
+export async function logout() {
+  try {
+    await request('/auth/logout', { method: 'POST' })
+  } finally {
+    clearSession()
+  }
 }

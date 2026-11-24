@@ -26,7 +26,13 @@ class DeviceSecurity {
     PasswordEncoder passwords() { return Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8(); }
 
     @Bean
-    JwtDecoder userTokens(@Value("${capyiot.user-jwt-secret}") String secret) {
+    JwtDecoder userTokens(@Value("${capyiot.user-jwt-secret}") String secret,
+                      @Value("${USER_JWKS_URI:}") String jwks,
+                      @Value("${CORE_SERVICE_URL:http://localhost:8085}") String core,
+                      @Value("${CORE_SERVICE_KEY:}") String serviceKey,
+                      @Value("${capyiot.legacy-auth-enabled:false}") boolean legacy) {
+        if(!jwks.isBlank()) return new io.capyiot.security.LiveUserJwtDecoder(jwks,core,serviceKey);
+        if(!legacy) throw new IllegalStateException("User JWKS configuration is required; HMAC is a legacy test fixture only");
         byte[] bytes = Base64.getDecoder().decode(secret);
         if (bytes.length < 32) throw new IllegalArgumentException("User JWT key is too short");
         var decoder = NimbusJwtDecoder.withSecretKey(new SecretKeySpec(bytes, "HmacSHA256"))

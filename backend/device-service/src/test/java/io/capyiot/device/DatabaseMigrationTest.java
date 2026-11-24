@@ -29,6 +29,7 @@ class DatabaseMigrationTest {
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         String key = java.util.Base64.getEncoder().encodeToString("test-only-device-key-at-least-32-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        registry.add("capyiot.legacy-auth-enabled",()->true);
         registry.add("capyiot.user-jwt-secret", () -> key);
         registry.add("capyiot.device-jwt-secret", () -> key);
     }

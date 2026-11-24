@@ -9,7 +9,7 @@ import {
   FlaskConical,
   Activity,
 } from 'lucide-vue-next'
-import { logout, session } from './session'
+import { clearSession, session } from './session'
 import LoginPage from './pages/LoginPage.vue'
 import DevicesPage from './pages/DevicesPage.vue'
 import EventsPage from './pages/EventsPage.vue'
@@ -91,7 +91,7 @@ export const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (session.value && !(Date.parse(session.value.expiresAt) > Date.now())) logout()
+  if (session.value && !(Date.parse(session.value.expiresAt) > Date.now())) clearSession()
   if (!session.value && to.path !== '/login')
     return { path: '/login', query: { redirect: to.fullPath } }
   if (session.value && to.path === '/login') return '/dashboard'
@@ -100,7 +100,7 @@ router.beforeEach((to) => {
 })
 
 window.addEventListener('capyiot:unauthorized', () => {
-  logout()
+  clearSession()
   if (router.currentRoute.value.path === '/login') return
   void router.replace({ path: '/login', query: { redirect: router.currentRoute.value.fullPath } })
 })
