@@ -294,14 +294,17 @@ services:
       context: .
       dockerfile: simulator/Dockerfile
     environment:
-      API_BASE_URL: http://gateway:8080
-      MQTT_URL: tcp://emqx:1883
+      API_BASE_URL: https://frontend:8443
+      MQTT_URL: ssl://emqx:8883
+      MQTT_CA_FILE: /tls/ca.pem
       DEVICE_FILE: /data/devices.json
     volumes:
-      - ./var/demo-devices.json:/data/devices.json:ro
+      - ./var/video-devices.json:/data/devices.json:ro
+      - ./var/tls/ca.pem:/tls/ca.pem:ro
     depends_on:
       gateway: { condition: service_healthy }
       device-ingestion: { condition: service_healthy }
+      frontend: { condition: service_healthy }
     networks: [internal]
 
   prometheus:

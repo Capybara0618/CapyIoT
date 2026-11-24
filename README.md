@@ -12,12 +12,32 @@
 
 ```sh
 python scripts/init_env.py
+python scripts/init_tls.py
 docker compose up -d --build --wait --wait-timeout 300
 ```
 
 打开 <http://localhost:8088>。`admin` 仅管理平台用户与授权，不自动获得业务权限；`supervisor` 负责设备和业务维护，二者的初始密码来自本地 `.env` 的 `DEMO_ADMIN_PASSWORD`。`operator`、`repairer`、`acceptor` 的初始密码来自 `DEMO_OPERATOR_PASSWORD`。再次初始化会保留已有配置与授权，不恢复已撤销的 Grant。
 
 登录使用持久化会话及 RS256 用户令牌，有效期一小时；退出、禁用账号和授权变更会使旧会话立即失效。Gateway 在持久化卷中保存签名私钥，`/.well-known/jwks.json` 只提供公钥。轮换时将新私钥放在 JWK Set 第一项，并保留旧公钥至少一个令牌有效期；更新密钥文件需原子替换，其他服务从 JWKS 刷新公钥。认证或授权服务不可用时拒绝继续访问。
+
+## 视频设备模拟接入
+
+当前业务逐步迁移至 IPC、NVR、交换机的运维场景。下面的模拟器用于生成设备协议消息，不是 AI Agent，也不代表已接入实体硬件。协议和部署改造尚待统一联调验收。
+
+初始化 TLS 需要 OpenSSL。`var/tls/ca.pem` 是本地开发 CA，设备客户端必须信任它；不关闭证书或主机名校验。HTTPS 入口为 `https://localhost:8443`，MQTTS 入口为 `ssl://localhost:8883`，设备网络不开放明文 1883。密钥和设备凭据只保存在被 Git 忽略的 `var/`。
+
+```sh
+python scripts/video_devices.py
+docker compose --profile simulation build simulator
+docker compose --profile simulation run --rm simulator --rounds 3
+docker compose --profile simulation run --rm simulator --scenario switch-outage --rounds 10 --fault-seconds 60
+```
+
+注册脚本通过正式 REST API 创建一台交换机、两台 IPC、一台 NVR、点位及网络/PoE/录像通道关系，最后投入使用。设备密钥只签发一次并立即保存；脚本不会自动重置已有设备凭据、替换点位绑定或重新启用停用设备。缺失凭据时须显式轮换。
+
+每台虚拟设备使用自己的 MQTT clientId，通过 HTTPS 换取 15 分钟设备 JWT，放入 CONNECT password；Token 不出现在业务消息、配置文件或日志。续签保留 sessionId 和各 streamKey 的独立序号，重连使用新 CONNECT 凭据。发布失败保留内存中的原事件重试，进程退出后不承诺未发数据持久化。`--duplicate-first true` 可重复发送同一事件；`switch-outage` 暂停两台下游 IPC 的心跳，交换机和 NVR 上报对应资源故障，再恢复同一资源。
+
+旧模拟协议仅通过 `--protocol legacy` 显式启用，供隔离的历史迁移环境使用；当前安全 Broker 不接受它。下文温度、门禁、旧自动建单与旧场景接口属于历史功能，不作为新版主业务入口。
 
 `.env` 包含本地凭据，请保存在本机。初始化脚本保留现有值并补齐新增配置。已初始化 MySQL 数据卷时，应保留原有数据库凭据。服务端只读取演示密码的 PBKDF2 哈希。
 

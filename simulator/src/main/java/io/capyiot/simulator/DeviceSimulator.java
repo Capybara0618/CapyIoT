@@ -34,6 +34,12 @@ public class DeviceSimulator {
 
     public static void main(String[] args) throws Exception {
         Map<String, String> options = options(args);
+        String protocol = options.getOrDefault("protocol", "v1");
+        if (protocol.equals("v1")) {
+            VideoDeviceSimulator.run(options);
+            return;
+        }
+        if (!protocol.equals("legacy")) throw new IllegalArgumentException("Protocol must be v1 or legacy");
         String api = options.getOrDefault("api-url", System.getenv().getOrDefault("API_BASE_URL", "http://localhost:8088"));
         String broker = options.getOrDefault("mqtt-url", System.getenv().getOrDefault("MQTT_URL", "tcp://localhost:1883"));
         String file = options.getOrDefault("devices", System.getenv().getOrDefault("DEVICE_FILE", "var/demo-devices.json"));
