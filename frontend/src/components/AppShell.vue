@@ -12,6 +12,13 @@ const health = ref<Health | null>(null)
 const checking = ref(false)
 const error = ref('')
 const role = computed(() => session.value?.user.displayName ?? '当前用户')
+const visiblePages = computed(() =>
+  pages.filter((page) => {
+    const admin = session.value?.user.roleCodes.includes('SYS_ADMIN')
+    const business = session.value?.user.roleCodes.some((role) => role !== 'SYS_ADMIN')
+    return page.path === '/administration' ? admin : page.path === '/dashboard' || business
+  }),
+)
 
 async function checkHealth() {
   checking.value = true
@@ -43,7 +50,7 @@ onMounted(checkHealth)
       </RouterLink>
       <nav>
         <RouterLink
-          v-for="page in pages"
+          v-for="page in visiblePages"
           :key="page.path"
           :to="page.path"
           :class="{ active: route.path === page.path }"

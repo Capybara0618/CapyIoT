@@ -289,18 +289,17 @@ public class FaultService implements HealthQueryPort,IncidentGatePort {
         store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)",park);
         store.tx.executeWithoutResult(status->{
             store.db.queryForObject("SELECT scope_id FROM command_lock WHERE scope_id=? FOR UPDATE",String.class,park);
-            var anomalies=store.db.queryForList("SELECT a.* FROM anomaly a WHERE a.park_id=? AND a.status='ACTIVE' AND a.anomaly_type='DEVICE_CONNECTION_LOST' AND a.last_observed_at>TIMESTAMPADD(SECOND,?,CURRENT_TIMESTAMP(3)) AND NOT EXISTS(SELECT 1 FROM incident_anomaly_link l WHERE l.anomaly_id=a.anomaly_id AND l.unlinked_at IS NULL)",park,-correlationSeconds);
-            Map<String,Map<String,Object>> byDevice=new HashMap<>();anomalies.forEach(a->byDevice.put(a.get("device_id").toString(),a));
+            var anomalies=store.db.queryForList("SELECT a.* FROM anomaly a WHERE a.park_id=? AND a.status='ACTIVE' AND a.anomaly_type IN('DEVICE_CONNECTION_LOST','SWITCH_DEVICE_ERROR','SWITCH_OVERHEAT') AND a.last_observed_at>TIMESTAMPADD(SECOND,?,CURRENT_TIMESTAMP(3)) AND NOT EXISTS(SELECT 1 FROM incident_anomaly_link l WHERE l.anomaly_id=a.anomaly_id AND l.unlinked_at IS NULL)",park,-correlationSeconds);
             for(var root:anomalies){String rootId=root.get("device_id").toString();if(!network.stream().anyMatch(edge->rootId.equals(edge.get("upstreamSwitchId"))))continue;
                 var group=new ArrayList<Map<String,Object>>();group.add(root);
                 for(var candidate:anomalies){String candidateId=candidate.get("device_id").toString();
-                    if(!candidateId.equals(rootId)&&rootId.equals(parent.get(candidateId)))group.add(candidate);
+                    if(candidate.get("anomaly_type").equals("DEVICE_CONNECTION_LOST")&&!candidateId.equals(rootId)&&rootId.equals(parent.get(candidateId)))group.add(candidate);
                 }
                 if(group.size()<3)continue;
                 String correlation="NETWORK/"+root.get("anomaly_id");
                 if(Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM incident WHERE park_id=? AND primary_correlation_key=?",Boolean.class,park,correlation)))continue;
                 if(group.stream().anyMatch(a->Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM incident_anomaly_link WHERE anomaly_id=? AND unlinked_at IS NULL",Boolean.class,a.get("anomaly_id")))))continue;
-                String id=createIncident(park,"交换机及下联设备通信异常（待研判）","P2","共同上游、上游自身失联和相近时间证据；并非已确认根因",group,rootId,"fault-correlation",correlation);
+                String id=createIncident(park,"交换机及下联设备通信异常（待研判）","P2","共同上游、交换机自身异常与下联设备失联的相近时间证据；并非已确认根因",group,rootId,"fault-correlation",correlation);
                 store.db.update("INSERT INTO correlation_candidate(candidate_id,incident_id,candidate_root_device_id,related_anomaly_ids_json,confidence,evidence_path_json,generated_at,expires_at) VALUES(?,?,?,?,0.9500,?,?,?)",UUID.randomUUID().toString(),id,rootId,serialize(group.stream().map(a->a.get("anomaly_id")).toList()),serialize(network.stream().filter(edge->group.stream().anyMatch(a->a.get("device_id").equals(edge.get("downstreamDeviceId")))).toList()),DbTime.sql(at),DbTime.sql(at.plusSeconds(300)));
             }
         });

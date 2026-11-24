@@ -8,29 +8,35 @@ import {
   ClipboardList,
   FlaskConical,
   Activity,
+  ShieldCheck,
 } from 'lucide-vue-next'
 import { clearSession, session } from './session'
 import LoginPage from './pages/LoginPage.vue'
-import DevicesPage from './pages/DevicesPage.vue'
-import EventsPage from './pages/EventsPage.vue'
 
 const featurePages = {
-  '/devices': DevicesPage,
-  '/events': EventsPage,
-  '/dashboard': () => import('./pages/DashboardPage.vue'),
-  '/topology': () => import('./pages/TopologyPage.vue'),
-  '/alarms': () => import('./pages/AlarmsPage.vue'),
-  '/workorders': () => import('./pages/WorkOrdersPage.vue'),
-  '/scenarios': () => import('./pages/ScenariosPage.vue'),
+  '/devices': () => import('./pages/VideoAssetsPage.vue'),
+  '/events': () => import('./pages/VideoEventsPage.vue'),
+  '/dashboard': () => import('./pages/VideoDashboardPage.vue'),
+  '/topology': () => import('./pages/VideoTopologyPage.vue'),
+  '/alarms': () => import('./pages/VideoIncidentsPage.vue'),
+  '/workorders': () => import('./pages/VideoWorkOrdersPage.vue'),
+  '/scenarios': () => import('./pages/VideoConnectionPage.vue'),
   '/observability': () => import('./pages/ObservabilityPage.vue'),
+  '/administration': () => import('./pages/AdministrationPage.vue'),
 }
 
 export const pages = [
   {
+    path: '/administration',
+    title: '账号与授权',
+    icon: ShieldCheck,
+    description: '平台账号、角色与数据范围管理',
+  },
+  {
     path: '/dashboard',
     title: '运营驾驶舱',
     icon: LayoutDashboard,
-    description: '园区设备、告警与处置概览',
+    description: '视频设备、故障研判与维修任务概览',
   },
   {
     path: '/devices',
@@ -46,15 +52,15 @@ export const pages = [
   },
   {
     path: '/events',
-    title: '实时事件中心',
+    title: '设备事件中心',
     icon: Radio,
     description: '设备事件与处理链路查询',
   },
   {
     path: '/alarms',
-    title: '告警治理中心',
+    title: '异常与故障中心',
     icon: BellRing,
-    description: '主子告警、关联证据与处置',
+    description: '设备异常、故障研判与证据核查',
   },
   {
     path: '/workorders',
@@ -64,9 +70,9 @@ export const pages = [
   },
   {
     path: '/scenarios',
-    title: '场景模拟中心',
+    title: '设备接入说明',
     icon: FlaskConical,
-    description: '园区故障场景与恢复演示',
+    description: '虚拟设备接入和运维流程',
   },
   {
     path: '/observability',

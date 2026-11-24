@@ -184,13 +184,13 @@ final class VideoDeviceSimulator {
                                 d.status("VIDEO_CHANNEL", "channel:" + channel, "RECORDING_STATUS", fault ? "NOT_RECORDING" : "RECORDING");
                             }
                             if (fault && !d.faultQueued && (d == root || d.type.equals("NVR"))) {
-                                d.fault(d == root ? "SWITCH_PORT" : "VIDEO_CHANNEL", d == root ? "port:1" : "channel:1",
-                                        d == root ? "SWITCH_PORT_LINK_DOWN" : "NVR_RECORDING_STOPPED", false);
+                                d.fault(d == root ? "DEVICE" : "VIDEO_CHANNEL", d == root ? "device" : "channel:1",
+                                        d == root ? "SWITCH_DEVICE_ERROR" : "NVR_RECORDING_STOPPED", false);
                                 d.faultQueued = true;
                             }
                             if (!fault && d.faultQueued && !d.recoveryQueued) {
-                                d.fault(d == root ? "SWITCH_PORT" : "VIDEO_CHANNEL", d == root ? "port:1" : "channel:1",
-                                        d == root ? "SWITCH_PORT_LINK_DOWN" : "NVR_RECORDING_STOPPED", true);
+                                d.fault(d == root ? "DEVICE" : "VIDEO_CHANNEL", d == root ? "device" : "channel:1",
+                                        d == root ? "SWITCH_DEVICE_ERROR" : "NVR_RECORDING_STOPPED", true);
                                 d.recoveryQueued = true;
                             }
                         }

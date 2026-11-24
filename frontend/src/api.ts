@@ -39,11 +39,19 @@ export class ApiError extends Error {
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  if (path.startsWith('/devices') || path.startsWith('/locations'))
+  if (
+    !headers.has('X-CapyIoT-Legacy-View') &&
+    (path.startsWith('/devices') || path.startsWith('/locations'))
+  )
     headers.set('X-CapyIoT-Legacy-View', 'true')
   if (init.body) headers.set('Content-Type', 'application/json')
   if (init.method && init.method !== 'GET' && !headers.has('Idempotency-Key'))
     headers.set('Idempotency-Key', crypto.randomUUID())
+  if (init.method && init.method !== 'GET') {
+    if (!headers.has('X-Request-Id')) headers.set('X-Request-Id', crypto.randomUUID())
+    if (!headers.has('X-Correlation-Id'))
+      headers.set('X-Correlation-Id', headers.get('X-Request-Id')!)
+  }
   const token = sessionStorage.getItem('capyiot.token')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   let response: Response
@@ -51,7 +59,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     response = await fetch(`/api/v1${path}`, {
       ...init,
       headers,
-      signal: AbortSignal.timeout(10000),
+      signal: init.signal ?? AbortSignal.timeout(10000),
     })
   } catch {
     throw new ApiError('请求未完成，请检查服务连接后重试', 0)
