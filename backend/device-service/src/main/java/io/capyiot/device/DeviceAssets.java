@@ -52,6 +52,9 @@ class DeviceAssets {
         asset.updatedAt = asset.createdAt;
         asset.version = 0L;
         mapper.insert(asset);
+        jdbc.update("UPDATE device SET device_type=?,device_secret_hash=?,asset_status='IN_SERVICE',legacy_only=? WHERE id=?",
+                asset.type.equals("CAMERA") ? "IPC" : asset.type.equals("SWITCH") ? "SWITCH" : null,
+                asset.passwordHash, !Set.of("CAMERA","SWITCH").contains(asset.type), asset.id);
         jdbc.update("INSERT INTO device_state_snapshot(device_id) VALUES (?)", asset.id);
         setParent(campusId, asset.id, emptyToNull(request.upstreamNodeId()));
         topology.publishChange(campusId, asset.id);
@@ -91,14 +94,17 @@ class DeviceAssets {
             case "buildings" -> {
                 if (!campusId.equals(request.parentId())) throw DeviceProblem.badRequest("园区归属无效");
                 jdbc.update("INSERT INTO building(id,campus_id,name) VALUES (?,?,?)", id, campusId, request.name().trim());
+                jdbc.update("INSERT INTO area(id,name,park_id,area_type,area_code) VALUES (?,?,?,'BUILDING',?)",id,request.name().trim(),campusId,id);
             }
             case "floors" -> {
                 requireCount("SELECT COUNT(*) FROM building WHERE id=? AND campus_id=?", request.parentId(), campusId);
                 jdbc.update("INSERT INTO floor(id,building_id,name) VALUES (?,?,?)", id, request.parentId(), request.name().trim());
+                jdbc.update("INSERT INTO area(id,name,park_id,parent_area_id,area_type,area_code) VALUES (?,?,?,?,'FLOOR',?)",id,request.name().trim(),campusId,request.parentId(),id);
             }
             case "areas" -> {
                 requireCount("SELECT COUNT(*) FROM floor f JOIN building b ON b.id=f.building_id WHERE f.id=? AND b.campus_id=?", request.parentId(), campusId);
-                jdbc.update("INSERT INTO area(id,floor_id,name) VALUES (?,?,?)", id, request.parentId(), request.name().trim());
+                jdbc.update("INSERT INTO area(id,floor_id,name,park_id,parent_area_id,area_type,area_code) VALUES (?,?,?,?,?,'AREA',?)",
+                        id, request.parentId(), request.name().trim(),campusId,request.parentId(),id);
             }
             default -> throw DeviceProblem.notFound("空间类型不存在");
         }

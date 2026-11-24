@@ -39,6 +39,8 @@ export class ApiError extends Error {
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
+  if (path.startsWith('/devices') || path.startsWith('/locations'))
+    headers.set('X-CapyIoT-Legacy-View', 'true')
   if (init.body) headers.set('Content-Type', 'application/json')
   if (init.method && init.method !== 'GET' && !headers.has('Idempotency-Key'))
     headers.set('Idempotency-Key', crypto.randomUUID())

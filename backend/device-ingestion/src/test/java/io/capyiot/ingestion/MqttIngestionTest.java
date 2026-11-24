@@ -46,6 +46,7 @@ class MqttIngestionTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        registry.add("capyiot.legacy-ingress-enabled",()->true);
         registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
         registry.add("capyiot.mqtt-url", () -> "tcp://" + MQTT.getHost() + ":" + MQTT.getMappedPort(1883));
         registry.add("capyiot.mqtt-client-id", () -> "ingestion-integration-test");

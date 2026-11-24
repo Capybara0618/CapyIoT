@@ -15,7 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import jakarta.validation.constraints.*;
 
 @Service
-public class PlatformService {
+public class PlatformService implements io.capyiot.core.ports.UserAssignmentPort {
     private final JdbcTemplate db;
     private final TransactionTemplate tx;
     private final ObjectProvider<AssetScopePort> assets;
@@ -94,6 +94,11 @@ public class PlatformService {
         actor.requirePlatform("platform.user.read");
         var rows=db.queryForList("SELECT user_id AS userId,login_name AS loginName,display_name AS displayName,contact,status,authorization_version AS authorizationVersion,version FROM app_user WHERE user_id=?",id);
         if(rows.isEmpty()) throw ApiProblem.missing(); var result=rows.getFirst();result.put("grants",grants(id));return result;
+    }
+    @Override public void requireRoleForDevices(String userId,String role,Collection<io.capyiot.core.ports.DeviceQueryPort.DeviceRef> devices){
+        if(!Boolean.TRUE.equals(db.queryForObject("SELECT COUNT(*)>0 FROM app_user WHERE user_id=? AND status='ACTIVE'",Boolean.class,userId)))throw ApiProblem.invalid("责任人员账号不可用");
+        var grants=grants(userId);
+        if(devices.stream().anyMatch(device->grants.stream().noneMatch(grant->grant.roleCode().equals(role)&&Objects.equals(grant.parkId(),device.parkId())&&grant.scopeType().equals("ASSIGNED_TO_ME"))))throw ApiProblem.invalid("责任人员缺少对应园区的履职角色");
     }
     public record CreateUser(@NotBlank @Size(max=64) String loginName,@NotBlank @Size(min=6,max=256) String password,
                              @NotBlank @Size(max=100) String displayName,@Size(max=255) String contact) {}

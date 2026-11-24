@@ -83,10 +83,15 @@ services:
     environment:
       EMQX_NODE__NAME: emqx@127.0.0.1
       EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:?Missing EMQX node cookie}
-      EMQX_DASHBOARD__LISTENERS__HTTP__BIND: '0'
     hostname: emqx
-    ports: ['127.0.0.1:1883:1883']
-    volumes: [emqx-data:/opt/emqx/data]
+    ports: ['127.0.0.1:8883:8883']
+    volumes:
+      - emqx-data:/opt/emqx/data
+      - ./infra/emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+      - ./var/tls/ca.pem:/opt/emqx/etc/local-tls/ca.pem:ro
+      - ./var/tls/server.pem:/opt/emqx/etc/local-tls/server.pem:ro
+      - ./var/tls/server.key:/opt/emqx/etc/local-tls/server.key:ro
+      - ./var/emqx/api-keys:/opt/emqx/etc/local-api-keys:ro
     healthcheck:
       test: ['CMD', '/opt/emqx/bin/emqx', 'ctl', 'status']
       interval: 10s
@@ -103,8 +108,12 @@ services:
     environment:
       <<: *observability
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      MQTT_URL: tcp://emqx:1883
+      MQTT_URL: ssl://emqx:8883
+      MQTT_CA_FILE: /tls/ca.pem
+      CORE_SERVICE_URL: http://core-service:8085
+      CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
       DEVICE_JWT_SECRET: ${DEVICE_JWT_SECRET:?Run python scripts/init_env.py}
+    volumes: [./var/tls/ca.pem:/tls/ca.pem:ro]
     depends_on:
       kafka: { condition: service_healthy }
       emqx: { condition: service_healthy }
@@ -209,9 +218,20 @@ services:
       PLATFORM_DB_URL: jdbc:mysql://mysql:3306/platform_db?connectionTimeZone=UTC
       PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD:?Missing platform password}
       CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
+      CAPYIOT_ASSETS_ENABLED: 'true'
+      CAPYIOT_DEVICE_RUNTIME_ENABLED: 'true'
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      CAPYIOT_DEVICE_KEY_FILE: /keys/device-keys.json
+      CAPYIOT_DEVICE_KEYS_GENERATE: 'true'
+      EMQX_MANAGEMENT_URL: http://emqx:18083
+      EMQX_API_KEY: ${EMQX_API_KEY:?Missing broker API key}
+      EMQX_API_SECRET: ${EMQX_API_SECRET:?Missing broker API secret}
+      DEVICE_DB_URL: jdbc:mysql://mysql:3306/device_db?connectionTimeZone=UTC
+      DEVICE_DB_PASSWORD: ${DEVICE_DB_PASSWORD:?Missing device password}
       USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
       DEMO_ADMIN_PASSWORD_HASH: ${DEMO_ADMIN_PASSWORD_HASH:?Missing demo admin hash}
       DEMO_OPERATOR_PASSWORD_HASH: ${DEMO_OPERATOR_PASSWORD_HASH:?Missing demo operator hash}
+    volumes: [device-keys:/keys]
     depends_on:
       mysql: { condition: service_healthy }
     healthcheck:
@@ -227,17 +247,17 @@ services:
       args: { SERVICE: gateway }
     environment:
       <<: *observability
-      USER_KEY_FILE: /keys/user-keys.json
-      USER_KEYS_GENERATE: 'true'
       PROMETHEUS_URL: http://prometheus:9090
       DEVICE_SERVICE_URL: http://device-service:8082
       INGESTION_SERVICE_URL: http://device-ingestion:8081
       ALARM_SERVICE_URL: http://alarm-service:8083
       WORKFLOW_SERVICE_URL: http://workflow-service:8084
-      JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
-      USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
       CORE_SERVICE_URL: http://core-service:8085
       CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
+      USER_KEY_FILE: /keys/user-keys.json
+      USER_KEYS_GENERATE: 'true'
+      JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
+      USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
       DEMO_ADMIN_PASSWORD_HASH: ${DEMO_ADMIN_PASSWORD_HASH:?Missing demo admin hash}
       DEMO_OPERATOR_PASSWORD_HASH: ${DEMO_OPERATOR_PASSWORD_HASH:?Missing demo operator hash}
     ports: ['127.0.0.1:8080:8080']
@@ -255,7 +275,10 @@ services:
 
   frontend:
     build: ./frontend
-    ports: ['127.0.0.1:8088:8080']
+    ports: ['127.0.0.1:8088:8080','127.0.0.1:8443:8443']
+    volumes:
+      - ./var/tls/server.pem:/etc/nginx/local-tls/server.pem:ro
+      - ./var/tls/server.key:/etc/nginx/local-tls/server.key:ro
     depends_on:
       gateway: { condition: service_healthy }
     healthcheck:
@@ -314,6 +337,7 @@ networks:
   internal:
 
 volumes:
+  device-keys:
   gateway-keys:
   mysql-data:
   redis-data:

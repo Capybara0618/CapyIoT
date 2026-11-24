@@ -31,6 +31,7 @@ import org.springframework.security.oauth2.jwt.*;
 import org.springframework.stereotype.Component;
 
 @Component("mqttHealthIndicator")
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="capyiot.legacy-ingress-enabled",havingValue="true")
 class MqttIngestion implements SmartLifecycle, HealthIndicator {
     private static final Logger LOG = LoggerFactory.getLogger(MqttIngestion.class);
     private final KafkaTemplate<String, String> kafka;

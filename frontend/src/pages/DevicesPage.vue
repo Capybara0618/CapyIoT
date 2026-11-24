@@ -451,7 +451,11 @@ onBeforeUnmount(() => {
       <label
         >设备类型<ElSelect v-model="filters.type" placeholder="全部类型" clearable
           ><ElOption
-            v-for="(label, value) in deviceTypes"
+            v-for="(label, value) in {
+              CAMERA: deviceTypes.CAMERA,
+              NVR: deviceTypes.NVR,
+              SWITCH: deviceTypes.SWITCH,
+            }"
             :key="value"
             :label="label"
             :value="value" /></ElSelect
@@ -676,7 +680,11 @@ onBeforeUnmount(() => {
           ><ElFormItem label="设备类型" prop="type"
             ><ElSelect v-model="draft.type" :disabled="!!editing"
               ><ElOption
-                v-for="(label, value) in deviceTypes"
+                v-for="(label, value) in {
+                  CAMERA: deviceTypes.CAMERA,
+                  NVR: deviceTypes.NVR,
+                  SWITCH: deviceTypes.SWITCH,
+                }"
                 :key="value"
                 :label="label"
                 :value="value" /></ElSelect

@@ -18,6 +18,12 @@ class GatewayRoutes {
         return builder.routes()
                 .route("foundation-api",route->route.path("/api/v1/auth/me","/api/v1/auth/logout","/api/v1/users","/api/v1/users/**","/api/v1/grants/**","/api/v1/audit-records").uri(coreUrl))
                 .route("agent-api",route->route.path("/api/v1/agent/**").metadata("response-timeout",-1).uri(agentUrl))
+                .route("legacy-device-history",route->route.path("/api/v1/devices/activity","/api/v1/devices/cursor").uri(deviceUrl))
+                .route("core-assets",route->route.path("/api/v1/parks","/api/v1/areas","/api/v1/areas/**","/api/v1/monitoring-points","/api/v1/monitoring-points/**",
+                        "/api/v1/monitoring-point-bindings/**","/api/v1/network-dependencies","/api/v1/network-dependencies/**","/api/v1/power-dependencies","/api/v1/power-dependencies/**",
+                        "/api/v1/video-channel-associations","/api/v1/video-channel-associations/**","/api/v1/topology/context","/api/v1/devices/*/status-history",
+                        "/api/v1/device-sessions","/api/v1/devices/*/credential/rotate","/api/v1/devices","/api/v1/devices/*","/api/v1/locations").uri(coreUrl))
+                .route("core-faults",route->route.path("/api/v1/anomalies","/api/v1/anomalies/**","/api/v1/incidents","/api/v1/incidents/**").uri(coreUrl))
                 .route("device-health", route -> route.path("/api/v1/health")
                         .filters(filters -> filters.setPath("/internal/health"))
                         .uri(deviceUrl))

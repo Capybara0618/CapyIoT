@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.capyiot.local/device-event/v1.json",
+  "title": "CapyIoT Device Event V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "schemaVersion", "deviceId", "sessionId", "eventType", "streamKey", "sequence", "occurredAt", "payload"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "schemaVersion": { "const": 1 },
+    "deviceId": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "eventType": { "enum": ["HEARTBEAT", "STATUS_OBSERVATION", "DEVICE_FAULT", "DEVICE_RECOVERED"] },
+    "streamKey": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "occurredAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "eventType": { "const": "HEARTBEAT" } }, "required": ["eventType"] },
+      "then": { "properties": { "streamKey": { "const": "HEARTBEAT" }, "payload": { "$ref": "#/$defs/heartbeat" } } }
+    },
+    {
+      "if": { "properties": { "eventType": { "const": "STATUS_OBSERVATION" } }, "required": ["eventType"] },
+      "then": { "properties": { "streamKey": { "pattern": "^STATUS/" }, "payload": { "$ref": "#/$defs/statusObservation" } } }
+    },
+    {
+      "if": { "properties": { "eventType": { "const": "DEVICE_FAULT" } }, "required": ["eventType"] },
+      "then": { "properties": { "streamKey": { "pattern": "^EVENT/" }, "payload": { "$ref": "#/$defs/deviceFault" } } }
+    },
+    {
+      "if": { "properties": { "eventType": { "const": "DEVICE_RECOVERED" } }, "required": ["eventType"] },
+      "then": { "properties": { "streamKey": { "pattern": "^EVENT/" }, "payload": { "$ref": "#/$defs/deviceRecovered" } } }
+    }
+  ],
+  "$defs": {
+    "heartbeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootId"],
+      "properties": {
+        "bootId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "uptimeSeconds": { "type": "integer", "minimum": 0 },
+        "firmwareVersion": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "statusObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceKey", "observationType", "value", "quality"],
+      "properties": {
+        "resourceType": { "enum": ["DEVICE", "VIDEO_CHANNEL", "SWITCH_PORT"] },
+        "resourceKey": { "type": "string", "pattern": "^(device|channel:[1-9][0-9]*|port:[A-Za-z0-9._-]{1,48})$" },
+        "observationType": { "enum": ["OPERATING_MODE", "VIDEO_SIGNAL", "RECORDING_STATUS", "LINK_STATUS", "POE_STATUS"] },
+        "value": { "enum": ["NORMAL", "LOW_POWER", "UNKNOWN", "PRESENT", "LOST", "RECORDING", "NOT_RECORDING", "UP", "DOWN", "POWERED", "UNPOWERED", "FAULT"] },
+        "quality": { "enum": ["GOOD", "UNCERTAIN", "BAD"] },
+        "monitoringPointId": { "type": "string", "maxLength": 64 },
+        "vendorCode": { "type": "string", "maxLength": 64 },
+        "vendorMessage": { "type": "string", "maxLength": 256 }
+      }
+    },
+    "deviceFault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceKey", "faultCode"],
+      "properties": {
+        "resourceType": { "enum": ["DEVICE", "VIDEO_CHANNEL", "SWITCH_PORT"] },
+        "resourceKey": { "type": "string", "pattern": "^(device|channel:[1-9][0-9]*|port:[A-Za-z0-9._-]{1,48})$" },
+        "faultCode": { "enum": ["CAMERA_NO_VIDEO", "CAMERA_STREAM_UNAVAILABLE", "CAMERA_OVERHEAT", "CAMERA_DEVICE_ERROR", "NVR_RECORDING_STOPPED", "NVR_CHANNEL_LOST", "NVR_STORAGE_FULL", "NVR_DISK_FAULT", "NVR_DEVICE_ERROR", "SWITCH_PORT_LINK_DOWN", "SWITCH_POE_FAULT", "SWITCH_DEVICE_ERROR", "SWITCH_OVERHEAT"] },
+        "vendorCode": { "type": "string", "maxLength": 64 },
+        "vendorMessage": { "type": "string", "maxLength": 256 }
+      }
+    },
+    "deviceRecovered": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceKey", "faultCode"],
+      "properties": {
+        "resourceType": { "enum": ["DEVICE", "VIDEO_CHANNEL", "SWITCH_PORT"] },
+        "resourceKey": { "type": "string", "pattern": "^(device|channel:[1-9][0-9]*|port:[A-Za-z0-9._-]{1,48})$" },
+        "faultCode": { "enum": ["CAMERA_NO_VIDEO", "CAMERA_STREAM_UNAVAILABLE", "CAMERA_OVERHEAT", "CAMERA_DEVICE_ERROR", "NVR_RECORDING_STOPPED", "NVR_CHANNEL_LOST", "NVR_STORAGE_FULL", "NVR_DISK_FAULT", "NVR_DEVICE_ERROR", "SWITCH_PORT_LINK_DOWN", "SWITCH_POE_FAULT", "SWITCH_DEVICE_ERROR", "SWITCH_OVERHEAT"] },
+        "relatedFaultEventId": { "type": "string", "format": "uuid" },
+        "recoveryEvidence": { "type": "string", "maxLength": 512 },
+        "vendorCode": { "type": "string", "maxLength": 64 },
+        "vendorMessage": { "type": "string", "maxLength": 256 }
+      }
+    }
+  }
+}

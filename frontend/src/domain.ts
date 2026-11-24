@@ -1,5 +1,6 @@
 export const deviceTypes = {
   CAMERA: '摄像头',
+  NVR: '网络录像机',
   ACCESS_CONTROL: '门禁',
   SWITCH: '网络交换机',
   SENSOR: '环境传感器',
@@ -20,8 +21,8 @@ export interface Device {
   areaName: string | null
   upstreamNodeId: string | null
   upstreamNodeName: string | null
-  connectivityStatus: 'ONLINE' | 'OFFLINE'
-  healthStatus: 'NORMAL' | 'ABNORMAL'
+  connectivityStatus: 'UNKNOWN' | 'ONLINE' | 'OFFLINE'
+  healthStatus: 'UNKNOWN' | 'NORMAL' | 'ABNORMAL'
   lastHeartbeatAt: string | null
   createdAt: string
   updatedAt: string
@@ -72,6 +73,7 @@ export const eventTypes = {
   SENSOR_READING: '传感器上报',
 } as const
 export const eventStatuses: Record<string, string> = {
+  APPLIED: '已处理',
   PROCESSED: '已处理',
   IGNORED_STALE: '忽略旧序号',
   IGNORED_SESSION: '忽略旧会话',

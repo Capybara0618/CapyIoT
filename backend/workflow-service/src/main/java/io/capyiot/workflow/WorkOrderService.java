@@ -172,10 +172,13 @@ class WorkOrderService {
         Priority selected = priority == null ? ("CRITICAL".equals(source.severity()) ? Priority.HIGH : Priority.MEDIUM) : priority;
         jdbc.update("""
                 INSERT INTO work_order(campus_id,source_alarm_id,source_business_key,source_alarm_no,title,priority,status,
-                    assignee,created_by,version) VALUES (?,?,?,?,?,?,?,?,?,?)
+                    assignee,created_by,version,work_order_no,legacy_priority) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """, campus, source.id(), campus + ":" + source.id(), source.alarmNo(), cleanTitle, selected.name(),
-                assignee == null ? "OPEN" : "ASSIGNED", assignee, actor, assignee == null ? 0 : 1);
+                assignee == null ? "OPEN" : "ASSIGNED", assignee, actor, assignee == null ? 0 : 1,
+                "LEGACY-" + UUID.randomUUID(), selected.name());
         Order order = store.bySource(campus, source.id());
+        jdbc.update("UPDATE work_order SET work_order_no=? WHERE campus_id=? AND id=?",
+                "WO-" + String.format(java.util.Locale.ROOT, "%06d", order.id()), campus, order.id());
         history(order.id(), 0, "CREATE", null, Status.OPEN, actor, null, null);
         if (assignee != null) history(order.id(), 1, "ASSIGN", Status.OPEN, Status.ASSIGNED, actor, assignee, null);
         publish(campus, order, trace);

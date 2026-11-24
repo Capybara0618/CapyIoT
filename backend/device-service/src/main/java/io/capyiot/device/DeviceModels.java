@@ -6,7 +6,7 @@ import java.util.List;
 
 public final class DeviceModels {
     private DeviceModels() {}
-    public enum Type { CAMERA, ACCESS_CONTROL, SWITCH, SENSOR }
+    public enum Type { CAMERA, NVR, ACCESS_CONTROL, SWITCH, SENSOR }
     public record CreateDevice(
             @NotBlank @Pattern(regexp = "[A-Z0-9][A-Z0-9_-]{2,63}") String deviceCode,
             @NotNull Type type, @NotBlank @Size(max = 100) String name,

@@ -25,6 +25,8 @@ def main() -> None:
         "WORKFLOW_DB_PASSWORD": secrets.token_hex(24),
         "PLATFORM_DB_PASSWORD": secrets.token_hex(24),
         "CORE_SERVICE_KEY": secrets.token_urlsafe(48),
+        "EMQX_API_KEY": secrets.token_hex(12),
+        "EMQX_API_SECRET": secrets.token_hex(32),
         "JWT_SECRET": base64.b64encode(secrets.token_bytes(48)).decode(),
         "DEMO_ADMIN_PASSWORD": admin_password,
         "DEMO_ADMIN_PASSWORD_HASH": password_hash(admin_password),
@@ -46,9 +48,19 @@ def main() -> None:
         with destination.open("a", encoding="utf-8", newline="\n") as config:
             for key, value in missing.items():
                 config.write(f"{key}={value}\n")
+        prepare_broker(root, destination)
         print(f"Existing credentials preserved. Added {len(missing)} new configuration keys.")
         return
+    prepare_broker(root, destination)
     print("Created .env. Read DEMO_ADMIN_PASSWORD or DEMO_OPERATOR_PASSWORD there to log in.")
+
+
+def prepare_broker(root: Path, destination: Path) -> None:
+    values = dict(line.split("=", 1) for line in destination.read_text(encoding="utf-8").splitlines()
+                  if "=" in line and not line.startswith("#"))
+    folder = root / "var" / "emqx"
+    folder.mkdir(exist_ok=True)
+    (folder / "api-keys").write_text(values["EMQX_API_KEY"] + ":" + values["EMQX_API_SECRET"] + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
