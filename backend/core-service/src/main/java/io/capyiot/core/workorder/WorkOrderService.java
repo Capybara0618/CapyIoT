@@ -34,7 +34,8 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
     }
     @Override public List<OrderRef> forIncident(String id){return store.db.query("SELECT id,work_order_no,incident_id,status,version FROM work_order WHERE incident_id=? ORDER BY id",(rs,n)->new OrderRef(rs.getLong(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getLong(5)),id);}
     @Override public Optional<OrderRef> forReservation(String id){return store.db.query("SELECT w.id,w.work_order_no,w.incident_id,w.status,w.version FROM work_order w JOIN work_order_request r ON r.order_id=w.id WHERE r.reservation_id=?",(rs,n)->new OrderRef(rs.getLong(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getLong(5)),id).stream().findFirst();}
-    public JsonNode create(AuthorizationContext actor,String key,String requestId,Create c){
+    private record Checked(List<DeviceQueryPort.DeviceRef> refs,String park,IncidentGatePort.IncidentRef incident,String priority) {}
+    private Checked checked(AuthorizationContext actor,Create c) {
         actor.require("workorder.create");
         if(c.deviceItems()==null||c.deviceItems().isEmpty()||c.deviceItems().stream().filter(i->i.deviceRole()==DeviceRole.MAIN).count()!=1)throw ApiProblem.invalid("工单必须且只能有一个 MAIN 设备");
         var ids=c.deviceItems().stream().map(DeviceItem::deviceId).toList();if(new HashSet<>(ids).size()!=ids.size())throw ApiProblem.invalid("维修设备不能重复");
@@ -45,6 +46,16 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
         if(incident!=null&&!incident.parkId().equals(park))throw ApiProblem.invalid("工单与故障不在同一园区");
         String priority=c.priority()==null?incident==null?null:incident.priority():c.priority().name();if(priority==null)throw ApiProblem.invalid("独立工单必须指定优先级");
         if(incident!=null&&!priority.equals(incident.priority())){actor.require("incident.priority.change");PlatformService.requireReason(c.priorityReason());}
+        if(incident!=null&&!Set.of("OPEN","PROCESSING").contains(incident.status()))throw ApiProblem.conflict("故障尚未确认或已结束，不可创建维修工单");
+        return new Checked(refs,park,incident,priority);
+    }
+    public Map<String,Object> validateDraft(AuthorizationContext actor,Create c) {
+        actor.require("agent.draft.prepare");
+        var valid=checked(actor,c);
+        return Map.of("parkId",valid.park(),"priority",valid.priority());
+    }
+    public JsonNode create(AuthorizationContext actor,String key,String requestId,Create c){
+        var valid=checked(actor,c);var refs=valid.refs();String park=valid.park();var incident=valid.incident();String priority=valid.priority();
         var prior=commands.replay(park,key,actor.userId(),"WorkOrderCreated",c);if(prior.isPresent())return prior.get();
         String hash=commands.fingerprint(Map.of("actor",actor.userId(),"type","WorkOrderCreated","command",c));
         var reservation=incident==null?null:gate.reserve(actor,incident.incidentId(),"CREATE",key,requestId,hash);

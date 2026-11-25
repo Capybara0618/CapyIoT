@@ -153,7 +153,11 @@ class QueryRuntime:
                     await emit(
                         "answer.delta", {"contentDelta": json.dumps(serialized, ensure_ascii=False)}
                     )
-                    await emit("run.completed", {"status": status, "answerMessageId": message})
+                    if terminal["draftId"]:
+                        draft = await run_in_threadpool(self.repository.draft, current.user_id, terminal["draftId"])
+                        if draft["status"] == "PENDING_CONFIRMATION":
+                            await emit("draft.ready", {"draftId": draft["draftId"], "draftRevision": draft["revision"], "draftStatus": draft["status"], "contentHash": draft["contentHash"], "draftSummary": draft["summary"]})
+                    await emit("run.completed", {"status": terminal["status"], "answerMessageId": message})
             except asyncio.CancelledError:
                 await run_in_threadpool(
                     self.repository.finish_run,

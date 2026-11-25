@@ -45,6 +45,7 @@ class Settings(DatabaseSettings):
     max_tool_calls: int = Field(default=10, ge=1, le=20)
     max_output_tokens: int = Field(default=4096, ge=128, le=8192)
     run_output_token_budget: int = Field(default=8192, ge=512, le=32768)
+    draft_lifetime_seconds: int = Field(default=1800, ge=60, le=86400)
     max_input_chars: int = Field(default=12000, ge=100, le=40000)
     max_concurrent_runs: int = Field(default=4, ge=1, le=16)
     jwks_ttl_seconds: int = Field(default=300, ge=5, le=600)

@@ -9,6 +9,7 @@ from app.auth import current_principal
 from app.core_client import Principal
 from app.errors import ServiceError
 from app.schemas import ConversationHistory, ConversationPage, ConversationView, Envelope, RunView
+from app.schemas import DraftView
 
 router = APIRouter(prefix="/api/v1/agent")
 User = Annotated[Principal, Depends(current_principal)]
@@ -118,3 +119,8 @@ async def cancel(run_id: str, user: User, request: Request):
         request,
         await request.app.state.runtime.visible_run(user, run_id, request.state.correlation_id),
     )
+
+
+@router.get("/drafts/{draft_id}", response_model=Envelope[DraftView])
+async def draft(draft_id: str, user: User, request: Request):
+    return ok(request, await request.app.state.drafts.visible(user, draft_id, request.state.correlation_id))

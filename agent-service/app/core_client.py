@@ -236,3 +236,9 @@ class CoreApiClient:
         return await self._request(
             "/workorders", principal.token, correlation, body=payload, key=idempotency_key
         )
+
+    async def validate_work_order(self, principal, correlation, payload):
+        principal.require("agent.draft.prepare")
+        principal.require("workorder.create")
+        return await self._request("/workorders/validate", principal.token, correlation,
+                                   body=payload, key="validate-" + correlation)

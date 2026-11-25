@@ -63,3 +63,28 @@ class RunView(BaseModel):
     version: int
     contentStatus: str
     evidenceReferences: list[dict]
+
+
+class ExecutionView(BaseModel):
+    executionId: str
+    status: str
+    workOrderId: str | None
+    workOrderNo: str | None
+    errorCode: str | None
+    updatedAt: UtcTime | None
+
+
+class DraftView(BaseModel):
+    draftId: str
+    runId: str
+    revision: int
+    contentHash: str
+    status: str
+    sourceType: str
+    actionType: str
+    payload: dict
+    relatedEvidenceReferences: list[dict]
+    summary: str
+    expiresAt: UtcTime
+    confirmedAt: UtcTime | None
+    execution: ExecutionView | None

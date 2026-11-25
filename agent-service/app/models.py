@@ -155,6 +155,7 @@ class Draft(Base):
     run_id: Mapped[str] = mapped_column(ForeignKey("agent_run.run_id"))
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversation.conversation_id"))
     owner_user_id: Mapped[str] = mapped_column(String(64), index=True)
+    origin_tool_call_id: Mapped[str | None] = mapped_column(String(128), unique=True)
     action_type: Mapped[str] = mapped_column(String(32), default="WORK_ORDER")
     source_type: Mapped[str] = mapped_column(String(32), default="USER_REQUEST")
     payload_json: Mapped[dict] = mapped_column(JSON)
@@ -182,6 +183,7 @@ class DraftRevision(Base):
     __tablename__ = "operation_draft_revision"
     draft_id: Mapped[str] = mapped_column(ForeignKey("operation_draft.draft_id"), primary_key=True)
     revision: Mapped[int] = mapped_column(primary_key=True)
+    origin_tool_call_id: Mapped[str | None] = mapped_column(String(128), unique=True)
     content_json: Mapped[dict] = mapped_column(JSON)
     content_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = stamp()
@@ -202,6 +204,7 @@ class Confirmation(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128))
     __table_args__ = (
         UniqueConstraint("draft_id", "draft_revision", "action"),
+        UniqueConstraint("actor_user_id", "idempotency_key", name="uq_confirmation_actor_key"),
         CheckConstraint("action IN ('CONFIRM','REJECT')"),
     )
 
@@ -217,6 +220,7 @@ class Execution(Base):
     request_hash: Mapped[str] = mapped_column(String(64))
     target_object_type: Mapped[str | None] = mapped_column(String(32))
     target_object_id: Mapped[str | None] = mapped_column(String(64))
+    target_object_no: Mapped[str | None] = mapped_column(String(64))
     started_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     finished_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     error_code: Mapped[str | None] = mapped_column(String(64))
@@ -247,6 +251,7 @@ class CommandOutbox(Base):
     attempt_count: Mapped[int] = mapped_column(default=0)
     next_retry_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     lease_until: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
+    lease_token: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = stamp()
     last_error: Mapped[str | None] = mapped_column(String(1000))
     __table_args__ = (

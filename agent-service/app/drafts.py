@@ -1,0 +1,145 @@
+"""Agent-owned proposals. Formal business state is always validated by Java."""
+
+import uuid
+from datetime import timedelta
+
+from pydantic import ValidationError
+from pydantic_ai import Tool
+from sqlalchemy import select
+from starlette.concurrency import run_in_threadpool
+
+from app.draft_schemas import PrepareWorkOrder
+from app.errors import ServiceError
+from app.models import AgentRun, Draft, DraftRevision, Execution
+from app.repository import Repository, fingerprint, now
+from app.tool_schemas import ToolResult
+
+
+class DraftRepository(Repository):
+    def propose(self, owner, run_id, origin, payload, evidence_ids, park_id, lifetime):
+        with self.sessions.begin() as session:
+            run = self.owned(session, AgentRun, owner, run_id, lock=True)
+            if run.status != "RUNNING":
+                raise ServiceError("RUN_CANCELLED", 409, "运行已停止")
+            old_revision = session.scalar(select(DraftRevision).where(DraftRevision.origin_tool_call_id == origin))
+            previous = session.get(Draft, old_revision.draft_id) if old_revision else None
+            digest = fingerprint({"payload": payload, "evidenceReferenceIds": evidence_ids})
+            if previous:
+                if previous.owner_user_id != owner or old_revision.content_hash != digest or previous.revision != old_revision.revision:
+                    raise ServiceError("IDEMPOTENCY_KEY_REUSED", 409, "草稿工具调用内容冲突")
+                return self.draft_view(session, previous)
+            # A material edit within the same Run is a new immutable revision, never an overwrite.
+            row = session.scalar(select(Draft).where(Draft.run_id == run_id).with_for_update())
+            if row and row.status != "PENDING_CONFIRMATION":
+                raise ServiceError("INVALID_STATE_TRANSITION", 409, "已处理的草稿不可修改")
+            if row is None:
+                row = Draft(
+                    draft_id=str(uuid.uuid4()), run_id=run_id,
+                    conversation_id=run.conversation_id, owner_user_id=owner,
+                    revision=1, version=0,
+                )
+                session.add(row)
+            else:
+                row.revision += 1
+                row.version += 1
+            row.origin_tool_call_id = origin
+            row.payload_json, row.related_evidence_ids_json = payload, evidence_ids
+            row.content_hash, row.target_park_id = digest, park_id
+            row.status, row.presented_at = "PENDING_CONFIRMATION", now()
+            row.expires_at = now() + timedelta(seconds=lifetime)
+            session.flush()
+            session.add(DraftRevision(
+                draft_id=row.draft_id, revision=row.revision,
+                content_json={"payload": payload, "evidenceReferenceIds": evidence_ids},
+                content_hash=digest, created_by_run_id=run_id, origin_tool_call_id=origin,
+            ))
+            return self.draft_view(session, row)
+
+    @staticmethod
+    def draft_view(session, row):
+        execution = session.scalar(select(Execution).where(Execution.draft_id == row.draft_id))
+        return {
+            "draftId": row.draft_id, "runId": row.run_id,
+            "revision": row.revision, "contentHash": row.content_hash,
+            "status": row.status, "sourceType": row.source_type, "actionType": row.action_type,
+            "payload": row.payload_json, "relatedEvidenceReferences": row.related_evidence_ids_json,
+            "summary": row.payload_json.get("title", "维修工单草稿"),
+            "expiresAt": row.expires_at, "confirmedAt": row.confirmed_at,
+            "execution": None if execution is None else {
+                "executionId": execution.execution_id, "status": execution.status,
+                "workOrderId": execution.target_object_id,
+                "workOrderNo": execution.target_object_no,
+                "errorCode": execution.error_code,
+                "updatedAt": execution.finished_at or execution.started_at or row.confirmed_at,
+            },
+        }
+
+    def draft(self, owner, identity):
+        with self.sessions.begin() as session:
+            row = self.owned(session, Draft, owner, identity, lock=True)
+            if row.status == "PENDING_CONFIRMATION" and row.expires_at <= now():
+                row.status, row.version = "EXPIRED", row.version + 1
+                self.end_waiting(session, row)
+            return self.draft_view(session, row)
+
+    @staticmethod
+    def end_waiting(session, draft):
+        run = session.get(AgentRun, draft.run_id)
+        if run.status == "WAITING_CONFIRMATION":
+            run.status, run.finished_at, run.version = "SUCCEEDED", now(), run.version + 1
+
+
+class DraftService:
+    def __init__(self, settings, repository, tools, core):
+        self.settings, self.repository, self.tools, self.core = settings, repository, tools, core
+
+    async def validate(self, principal, payload, evidence_ids, run_id, correlation):
+        principal.require("agent.draft.prepare")
+        principal.require("workorder.create")
+        rows = await run_in_threadpool(self.repository.evidence, principal.user_id, run_id)
+        selected = [row for row in rows if row["evidenceId"] in evidence_ids]
+        if len(selected) != len(evidence_ids) or (
+            selected and not await self.tools.revalidate(selected, principal, self.core, correlation)
+        ):
+            raise ServiceError("DRAFT_EVIDENCE_INVALID", 409, "草稿证据已变化或不可访问，请重新查询")
+        return await self.core.validate_work_order(principal, correlation, payload)
+
+    async def visible(self, principal, draft_id, correlation):
+        view = await run_in_threadpool(self.repository.draft, principal.user_id, draft_id)
+        # Current DataScope is checked on every read, including terminal proposals.
+        for item in view["payload"]["deviceItems"]:
+            await self.core.read("get_device_detail", principal, correlation, identity=item["deviceId"])
+        if view["payload"].get("incidentId"):
+            await self.core.read("get_incident_detail", principal, correlation, identity=view["payload"]["incidentId"])
+        if view["relatedEvidenceReferences"]:
+            rows = await run_in_threadpool(self.repository.evidence, principal.user_id, view["runId"])
+            selected = [row for row in rows if row["evidenceId"] in view["relatedEvidenceReferences"]]
+            if not await self.tools.revalidate(selected, principal, self.core, correlation):
+                raise ServiceError("DRAFT_EVIDENCE_INVALID", 409, "草稿证据已变化或不可访问")
+            view["relatedEvidenceReferences"] = [{k: v for k, v in row.items() if k not in {"arguments", "authorizationVersion", "resultHash"}} for row in selected]
+        return view
+
+    async def prepare(self, arguments, deps, origin):
+        parsed = PrepareWorkOrder.model_validate(arguments)
+        safe = parsed.model_dump(mode="json")
+        call_id = await run_in_threadpool(self.repository.start_tool, deps.principal.user_id, deps.run_id, "prepare_work_order", safe, self.settings.max_tool_calls)
+        await deps.emit("tool.started", {"toolCallId": call_id, "toolName": "prepare_work_order"})
+        try:
+            checked = await self.validate(deps.principal, parsed.command(), parsed.evidenceReferenceIds, deps.run_id, deps.correlation_id)
+            payload = parsed.command()
+            payload["priority"] = checked["priority"]
+            view = await run_in_threadpool(self.repository.propose, deps.principal.user_id, deps.run_id, deps.run_id + ":" + origin, payload, parsed.evidenceReferenceIds, checked["parkId"], self.settings.draft_lifetime_seconds)
+            result = ToolResult(toolName="prepare_work_order", status="SUCCEEDED", data={"draftId": view["draftId"], "revision": view["revision"], "contentHash": view["contentHash"], "status": view["status"], "summary": view["summary"], "expiresAt": view["expiresAt"].isoformat() + "Z"})
+        except ServiceError as error:
+            result = ToolResult(toolName="prepare_work_order", status="REJECTED", errorCode=error.code, safeMessage="草稿未生成，请检查权限、设备、故障和证据；未创建正式工单")
+        await run_in_threadpool(self.repository.finish_tool, deps.principal.user_id, deps.run_id, call_id, result)
+        await deps.emit("tool.completed", {"toolCallId": call_id, "toolName": "prepare_work_order", "status": result.status})
+        return result.model_dump(mode="json")
+
+    def tool(self):
+        async def invoke(ctx, **arguments):
+            try:
+                return await self.prepare(arguments, ctx.deps, ctx.tool_call_id)
+            except ValidationError:
+                return {"status": "REJECTED", "errorCode": "INVALID_ARGUMENT", "safeMessage": "工单草稿参数无效"}
+        return Tool.from_schema(invoke, name="prepare_work_order", description="仅在用户要求创建维修工单时生成待人工确认的草稿，绝不创建正式工单。", json_schema=PrepareWorkOrder.model_json_schema(), takes_ctx=True, sequential=True)
