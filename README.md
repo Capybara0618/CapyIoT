@@ -127,6 +127,8 @@ Agent 使用独立的一次性迁移容器执行 Alembic，再启动服务。`/h
 
 ### 工单草稿与人工确认
 
+2026-11-25 已完成阶段四编码与验收：107 项 Python 测试、41 项 Core + 6 项共享契约测试、7 项浏览器检查通过。独立平台验证九工具只读回归和模拟故障→草稿→拒绝/版本冲突/并发确认→Java 多设备正式工单闭环；成功检查仅在源码哈希相同时复用。真实 `deepseek-flash` 另完成一次设备证据查询与草稿生成，确认前无新增工单，确认后正式创建成功且重复确认不重复创建。真实模型结果限于已测样本，不代表广泛准确性或性能容量验收。
+
 当前支持 9 个只读工具和 1 个草稿工具。用户主动要求创建维修工单后，Agent 核查设备与来源故障并保存草稿，SSE 发出 `draft.ready`；Run 进入 `WAITING_CONFIRMATION`。通过工单中心的“审阅 Agent 草稿”入口，或 `/agent-drafts/<draftId>` 链接查看设备范围、Incident 来源、优先级、描述、预期结果和证据。完整对话 UI 仍属后续阶段。
 
 `GET /api/v1/agent/drafts/{draftId}` 只允许 owner 读取，并重验当前业务数据权限。确认或拒绝分别使用 `POST /api/v1/agent/drafts/{draftId}/confirm`、`/reject`，请求均须携带 `Idempotency-Key` 及用户实际审阅的 `{draftRevision,contentHash}`；拒绝可附 `reason`。确认需要 `agent.draft.confirm` 和 `workorder.create`，版本冲突返回 409，过期返回 410，业务状态变化使草稿失效。确认接口返回 202；用户不确认或拒绝时不创建正式工单。
@@ -141,7 +143,7 @@ docker compose --profile agent exec agent-service python -m app.delegation --fil
 
 派发默认每秒领取一条命令、60 秒租约、最多 3 次尝试。Java 成功但响应丢失、租约中断等情况进入 `RECONCILIATION_REQUIRED`，沿用原幂等键回查回执；禁止换键重建。超过自动尝试上限后保留结果未知状态，需由运维核对，不声称创建失败或自动解除。确认后撤权会被 Java 拒绝；若此前结果已未知，撤权不能被当作“没有创建”的证明。草稿页可查询执行状态并跳转正式工单。
 
-阶段四统一验证入口为 `python scripts/verify_stage4.py`：Python、Java、前端检查后，在独立 Compose 中运行九工具只读回归及草稿/拒绝/并发确认/真实委托 Java 创建场景，再运行浏览器用例。使用确定性的本地模型替身，不消耗真实模型额度。支持 `--resume-report <本地报告>`，仅源码哈希相同的成功检查可复用；部署及业务场景重新执行。模型替身覆盖链路与确定性行为，真实 DeepSeek 的工具选择须另行实测。
+阶段四统一验证入口为 `python scripts/verify_stage4.py`：Python、Java、前端检查后，在独立 Compose 中运行九工具只读回归及草稿/拒绝/并发确认/真实委托 Java 创建场景，再运行浏览器用例。使用确定性的本地模型替身，不消耗真实模型额度。支持 `--resume-report <本地报告>`，仅源码哈希相同的成功检查可复用；部署及业务场景重新执行。Windows 可复用已安装的 Chrome；其他环境可加 `--install-browser` 安装 Chromium，或设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`。模型替身覆盖链路与确定性行为；上述真实模型样本另行实测。
 
 ### 平台监控
 
