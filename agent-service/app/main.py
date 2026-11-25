@@ -17,6 +17,7 @@ from app.auth import UserAuthenticator
 from app.core_client import CoreApiClient
 from app.repository import Repository
 from app.api import router
+from app.agent import OpsAgent
 
 LOG = logging.getLogger("capyiot.agent")
 
@@ -33,11 +34,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.core = CoreApiClient(app.state.http, config.core_base_url)
         app.state.auth = UserAuthenticator(app.state.http, config, app.state.core)
         app.state.repository = Repository(app.state.database.sessions)
+        # Business tools are deliberately not registered until phase 3.
+        app.state.ops_agent = OpsAgent(config)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("httpcore").setLevel(logging.WARNING)
         try:
             yield
         finally:
+            await app.state.ops_agent.close()
             await app.state.http.aclose()
             await asyncio.to_thread(app.state.database.close)
 
