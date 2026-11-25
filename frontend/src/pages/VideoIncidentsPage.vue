@@ -420,9 +420,7 @@ onMounted(() =>
       <button class="link" @click="anomaly = null">收起</button>
       <div v-for="e in anomaly.evidenceReferences" :key="e.evidenceId" class="video-timeline">
         <p>{{ e.evidenceId }}</p>
-        <p class="video-muted">
-          来源事件 {{ e.eventId }} · 接收于 {{ formatTime(e.receivedAt) }}
-        </p>
+        <p class="video-muted">来源事件 {{ e.eventId }} · 接收于 {{ formatTime(e.receivedAt) }}</p>
         <pre>{{ JSON.stringify(e.summaryJson, null, 2) }}</pre>
       </div>
     </section>

@@ -71,6 +71,15 @@ class AssetIntegrationTest {
     String device(String code,DeviceType type) { return create(code,type,"AREA-1-1",Map.of()).path("device").path("deviceId").asText(); }
     String point(String code) { return assets.createPoint(supervisor,UUID.randomUUID().toString(),new CreatePoint(code,code,"AREA-1-1",null)).path("monitoringPointId").asText(); }
     String key() { return UUID.randomUUID().toString(); }
+    @Test void newCanonicalLocationTreeDoesNotInventLegacyForeignKeys() {
+        String suffix=UUID.randomUUID().toString();
+        String building=assets.createArea(supervisor,key(),new CreateArea(null,AreaType.BUILDING,"B-"+suffix,"新楼栋")).path("areaId").asText();
+        String floor=assets.createArea(supervisor,key(),new CreateArea(building,AreaType.FLOOR,"F-"+suffix,"新楼层")).path("areaId").asText();
+        String area=assets.createArea(supervisor,key(),new CreateArea(floor,AreaType.AREA,"A-"+suffix,"新区域")).path("areaId").asText();
+        String id=create("IPC-NEW",DeviceType.IPC,area,Map.of()).path("device").path("deviceId").asText();
+        var stored=store.db.queryForMap("SELECT area_id,building_id,floor_id FROM device WHERE id=?",id);
+        assertEquals(area,stored.get("area_id"));assertNull(stored.get("building_id"));assertNull(stored.get("floor_id"));
+    }
     @Test void registrationHasUnknownStateAndOneTimeCredentialWithIdempotentReplay() {
         var c=new CreateDevice("IPC-1",DeviceType.IPC,"IPC","AREA-1-1",null,null,null,null,null,Map.of());
         var first=assets.createDevice(supervisor,"register-1",c); String id=first.path("device").path("deviceId").asText(),secret=first.path("deviceSecret").asText();
@@ -216,6 +225,8 @@ class AssetIntegrationTest {
         assertEquals(List.of("capyiot-emqx"),jwt.getJWTClaimsSet().getAudience());assertEquals(id,jwt.getJWTClaimsSet().getSubject());
         assertEquals("capyiot-emqx",jwt.getPayload().toJSONObject().get("aud"));
         assertEquals("boot-1",jwt.getJWTClaimsSet().getStringClaim("sid"));
+        long lifetime=java.time.Duration.between(jwt.getJWTClaimsSet().getIssueTime().toInstant(),jwt.getJWTClaimsSet().getExpirationTime().toInstant()).toSeconds();
+        assertTrue(lifetime>=899&&lifetime<=900);
         assertTrue(jwt.getJWTClaimsSet().getClaim("acl").toString().contains("/sessions/boot-1/events"));
         var next=sessions.create(new DeviceSessions.SessionCommand(id,secret,"boot-2"));assertEquals(first.sessionEpoch()+1,next.sessionEpoch());
         assertThrows(ApiProblem.class,()->sessions.current(id,"boot-1"));

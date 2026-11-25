@@ -40,7 +40,13 @@ interface Deployment {
   scaling: { configured: boolean; ready: boolean; active: boolean; min: number; max: number } | null
 }
 const definitions = [
-  { id: 'lag', label: 'Kafka 消费积压', unit: '条', color: '#97641b', hint: '当前业务消费者；无采样时不显示估计值' },
+  {
+    id: 'lag',
+    label: 'Kafka 消费积压',
+    unit: '条',
+    color: '#97641b',
+    hint: '当前业务消费者；无采样时不显示估计值',
+  },
   {
     id: 'tps',
     label: '设备事件处理速率',

@@ -16,7 +16,9 @@ const visiblePages = computed(() =>
   pages.filter((page) => {
     const admin = session.value?.user.roleCodes.includes('SYS_ADMIN')
     const business = session.value?.user.roleCodes.some((role) => role !== 'SYS_ADMIN')
-    return ['/administration', '/observability'].includes(page.path) ? admin : page.path === '/dashboard' || business
+    return ['/administration', '/observability'].includes(page.path)
+      ? admin
+      : page.path === '/dashboard' || business
   }),
 )
 

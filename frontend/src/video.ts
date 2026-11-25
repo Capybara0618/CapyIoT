@@ -184,7 +184,10 @@ export function core<T>(path: string, init: RequestInit = {}) {
   return request<T>(path, { ...init, headers })
 }
 const pending = new Map<string, string>()
-window.addEventListener('capyiot:session-changed', () => { me.value = null; pending.clear() })
+window.addEventListener('capyiot:session-changed', () => {
+  me.value = null
+  pending.clear()
+})
 export async function command<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
   const content = JSON.stringify(body),
     signature = method + path + content

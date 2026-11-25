@@ -60,6 +60,17 @@ class BusinessFlowIntegrationTest {
         return faults.create(supervisor,key(),new FaultModels.Create("设备通信故障",List.of(anomaly),FaultModels.Priority.P3,"人工研判需维修")).path("incidentId").asText();}
     WorkOrderModels.Create create(String device,String incident){return new WorkOrderModels.Create(incident==null?WorkOrderModels.Source.MANUAL:WorkOrderModels.Source.INCIDENT,incident,List.of(new WorkOrderModels.DeviceItem(device,WorkOrderModels.DeviceRole.MAIN,"检查通信链路")),"维修通信链路","现场排查设备通信","NETWORK",incident==null?WorkOrderModels.Priority.P3:null,null,"设备通信恢复",null);}
     long version(long id){return db.queryForObject("SELECT version FROM workflow_test.work_order WHERE id=?",Long.class,id);}
+    @Test void assignmentScopeCannotRevealAnotherPointInTheSameArea(){
+        String first=device("IPC-OWN",AssetModels.DeviceType.IPC),second=device("IPC-OTHER",AssetModels.DeviceType.IPC);
+        String p1=assets.createPoint(supervisor,key(),new AssetModels.CreatePoint("P-OWN","任务点位","AREA-1-1",null)).path("monitoringPointId").asText();
+        String p2=assets.createPoint(supervisor,key(),new AssetModels.CreatePoint("P-OTHER","其他点位","AREA-1-1",null)).path("monitoringPointId").asText();
+        assets.bind(supervisor,key(),p1,new AssetModels.BindPoint(first,"登记",0L,0L));assets.bind(supervisor,key(),p2,new AssetModels.BindPoint(second,"登记",0L,0L));
+        long order=Long.parseLong(orders.create(operator,key(),key(),create(first,null)).path("workOrderId").asText());
+        orders.assign(supervisor,key(),order,new WorkOrderModels.Assign("USER-REPAIRER","USER-ACCEPTOR",0L,null),false);
+        var points=assets.points(repairer,"CAMPUS-A");assertEquals(1,points.size());assertEquals(p1,points.getFirst().get("monitoringPointId"));
+        assertThrows(ApiProblem.class,()->assets.bindings(repairer,null,p2));
+        assertThrows(ApiProblem.class,()->assets.detail(repairer,second));
+    }
     @Test void anomalyOccurrenceRecoveryAndNewOccurrenceKeepEvidenceAndIndependentIds(){
         String id=device("IPC-1",AssetModels.DeviceType.IPC);JsonNode lost=observation(id,"DeviceConnectionLost",1);faults.observation(lost);faults.observation(lost);
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM fault_test.anomaly",Integer.class));assertEquals(1L,db.queryForObject("SELECT observation_count FROM fault_test.anomaly",Long.class));

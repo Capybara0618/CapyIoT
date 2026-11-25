@@ -154,8 +154,12 @@ onMounted(() =>
       <h2>{{ selected.displayName }} · 角色与范围</h2>
       <div class="video-actions">
         <button :disabled="busy" @click="toggleUser">
-          {{ selected.status === 'ACTIVE' ? '停用账号' : '启用账号' }}</button
-        ><button class="link" @click="selected = null">收起</button>
+          {{ selected.status === 'ACTIVE' ? '停用账号' : '启用账号' }}</button><button
+          class="link"
+          @click="selected = null"
+        >
+          收起
+        </button>
       </div>
       <div v-for="g in selected.grants" :key="g.grantId" class="video-timeline">
         <p>{{ roleNames[g.roleCode] }} · {{ g.scopeType }} · {{ g.parkId ?? '平台' }}</p>
