@@ -37,7 +37,7 @@ def main() -> None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         temporary = args.output.with_suffix(".tmp")
         # The secret is returned once. Save it before commissioning or creating relations.
-        with temporary.open("w", encoding="utf-8", opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
+        with open(temporary, "w", encoding="utf-8", opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
             json.dump(list(credentials.values()), output, ensure_ascii=False, indent=2)
         os.chmod(temporary, 0o600)
         temporary.replace(args.output)
