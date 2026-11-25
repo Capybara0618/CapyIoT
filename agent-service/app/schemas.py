@@ -33,23 +33,9 @@ class ConversationPage(BaseModel):
     size: int
 
 
-class MessageView(BaseModel):
-    messageId: str
-    sequence: int
-    messageSeq: int
-    role: Literal["USER", "ASSISTANT"]
-    content: str | None
-    contentStatus: str
-    createdAt: UtcTime
-    runId: str | None
-
-
-class ConversationHistory(ConversationView):
-    messages: list[MessageView]
-
-
 class RunView(BaseModel):
     runId: str
+    requestKey: str | None = None
     conversationId: str
     status: str
     startedAt: UtcTime
@@ -63,6 +49,29 @@ class RunView(BaseModel):
     version: int
     contentStatus: str
     evidenceReferences: list[dict]
+
+
+
+class MessageView(BaseModel):
+    messageId: str
+    sequence: int
+    messageSeq: int
+    role: Literal["USER", "ASSISTANT"]
+    content: str | None
+    contentStatus: str
+    createdAt: UtcTime
+    runId: str | None
+    run: RunView | None = None
+
+
+class ConversationHistory(ConversationView):
+    messages: list[MessageView]
+    hasMoreBefore: bool = False
+    hasMoreAfter: bool = False
+    firstSequence: int | None = None
+    lastSequence: int | None = None
+
+
 
 
 class ExecutionView(BaseModel):

@@ -75,7 +75,7 @@ class Repository:
             rows = session.scalars(
                 select(Conversation)
                 .where(Conversation.owner_user_id == owner)
-                .order_by(Conversation.created_at.desc(), Conversation.conversation_id)
+                .order_by(func.coalesce(Conversation.last_message_at, Conversation.created_at).desc(), Conversation.conversation_id)
                 .offset((page - 1) * size)
                 .limit(size)
             )
@@ -86,32 +86,34 @@ class Repository:
                 "size": size,
             }
 
-    def history(self, owner, identity, after=0, size=20):
+    def history(self, owner, identity, after=0, size=20, before=None, latest=False):
         with self.sessions() as session:
             conversation = self.owned(session, Conversation, owner, identity)
-            rows = session.scalars(
-                select(Message)
-                .where(Message.conversation_id == identity, Message.message_seq > after)
-                .order_by(Message.message_seq)
-                .limit(size)
-            ).all()
+            backwards = latest or before is not None
+            query = select(Message).where(Message.conversation_id == identity)
+            if before is not None:
+                query = query.where(Message.message_seq < before)
+            elif not latest:
+                query = query.where(Message.message_seq > after)
+            query = query.order_by(Message.message_seq.desc() if backwards else Message.message_seq)
+            rows = session.scalars(query.limit(size + 1)).all()
+            more = len(rows) > size
+            rows = rows[:size]
+            if backwards:
+                rows.reverse()
+            first, last = (rows[0].message_seq, rows[-1].message_seq) if rows else (None, None)
             return {
                 **self.conversation_view(conversation),
-                "messages": [
-                    {
-                        "messageId": row.message_id,
-                        "sequence": row.message_seq,
-                        "role": row.role,
-                        # Until phase 3 implements current evidence authorization, fail closed for stored answers.
-                        "content": row.content if row.role == "USER" else None,
-                        "contentStatus": row.content_status
-                        if row.role == "USER"
-                        else "REDACTED_BY_CURRENT_AUTHORIZATION",
-                        "createdAt": row.created_at,
-                        "runId": row.run_id,
-                    }
-                    for row in rows
-                ],
+                "hasMoreBefore": more if backwards else bool(first and first > 1),
+                "hasMoreAfter": bool(last and session.scalar(select(Message.message_id).where(Message.conversation_id == identity, Message.message_seq > last).limit(1))) if backwards else more,
+                "firstSequence": first, "lastSequence": last,
+                "messages": [{
+                    "messageId": row.message_id, "sequence": row.message_seq,
+                    "role": row.role,
+                    "content": row.content if row.role == "USER" else None,
+                    "contentStatus": row.content_status if row.role == "USER" else "REDACTED_BY_CURRENT_AUTHORIZATION",
+                    "createdAt": row.created_at, "runId": row.run_id,
+                } for row in rows],
             }
 
     def start_run(self, owner, conversation_id, content, key, correlation):
@@ -279,6 +281,7 @@ class Repository:
             )
             return {
                 "runId": identity,
+                "requestKey": run.idempotency_key,
                 "conversationId": run.conversation_id,
                 "status": run.status,
                 "startedAt": run.started_at,

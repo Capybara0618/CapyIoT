@@ -63,11 +63,15 @@ async def history(
     request: Request,
     after: int = Query(0, ge=0),
     size: int = Query(20, ge=1, le=50),
+    before: int | None = Query(None, ge=1),
+    latest: bool = False,
 ):
+    if after and (before is not None or latest) or latest and before is not None:
+        raise ServiceError("INVALID_ARGUMENT", 400, "历史游标方向不能混用")
     return ok(
         request,
         await request.app.state.runtime.history(
-            user, conversation_id, request.state.correlation_id, after, size
+            user, conversation_id, request.state.correlation_id, after, size, before, latest
         ),
     )
 

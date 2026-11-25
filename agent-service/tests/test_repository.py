@@ -330,7 +330,33 @@ def test_query_run_stream_persists_answer_and_rechecks_historical_evidence(datab
             "data"
         ]
         assert history["messages"][-1]["content"] is None
+        assert all(message["run"]["answer"] is None for message in history["messages"])
+        assert all(not message["run"]["evidenceReferences"] for message in history["messages"])
+        assert history["messages"][0]["run"]["requestKey"] == "stream-one"
         client.portal.call(http.aclose)
+
+
+def test_latest_history_and_backwards_cursor_preserve_chronology_and_failed_runs(database):
+    repo, owner = Repository(database.sessions), uuid.uuid4().hex
+    conversation = repo.create_conversation(owner, "历史分页")["conversationId"]
+    ids = []
+    for number in range(6):
+        run, _ = repo.start_run(owner, conversation, f"问题 {number}", f"request-{number}", "trace")
+        repo.begin_run(owner, run, 60)
+        repo.finish_run(owner, run, "FAILED", error_code="MODEL_UNAVAILABLE")
+        ids.append(run)
+    latest = repo.history(owner, conversation, size=2, latest=True)
+    assert [m["sequence"] for m in latest["messages"]] == [5, 6]
+    assert latest["hasMoreBefore"] and not latest["hasMoreAfter"]
+    older = repo.history(owner, conversation, size=2, before=latest["firstSequence"])
+    assert [m["sequence"] for m in older["messages"]] == [3, 4]
+    assert older["hasMoreAfter"] and older["hasMoreBefore"]
+    original = repo.history(owner, conversation, after=0, size=2)
+    assert [m["sequence"] for m in original["messages"]] == [1, 2]
+    assert not original["hasMoreBefore"] and original["hasMoreAfter"]
+    assert repo.run_view(owner, ids[-1])["requestKey"] == "request-5"
+    with pytest.raises(ServiceError):
+        repo.history("another-user", conversation, latest=True)
 
 
 async def test_stream_disconnect_cancels_model_and_keeps_completed_tool_evidence(

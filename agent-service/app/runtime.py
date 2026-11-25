@@ -48,17 +48,21 @@ class QueryRuntime:
             view["contentStatus"], view["evidenceReferences"] = "VISIBLE", []
         return view
 
-    async def history(self, principal, conversation_id, correlation, after, size):
-        view = await run_in_threadpool(
-            self.repository.history, principal.user_id, conversation_id, after, size
-        )
+    async def history(self, principal, conversation_id, correlation, after, size, before=None, latest=False):
+        view = await run_in_threadpool(self.repository.history, principal.user_id, conversation_id, after, size, before, latest)
+        # One authorization recheck per Run, shared by the user/assistant pair.
+        limit = asyncio.Semaphore(3)
+        async def current(run_id):
+            async with limit:
+                return run_id, await self.visible_run(principal, run_id, correlation)
+        ids = {message["runId"] for message in view["messages"] if message["runId"]}
+        runs = dict(await asyncio.gather(*(current(run_id) for run_id in ids)))
         for message in view["messages"]:
             message["messageSeq"] = message["sequence"]
-            if message["role"] == "ASSISTANT" and message["runId"]:
-                run = await self.visible_run(principal, message["runId"], correlation)
-                message["content"] = (
-                    json.dumps(run["answer"], ensure_ascii=False) if run["answer"] else None
-                )
+            run = runs.get(message["runId"])
+            message["run"] = run
+            if message["role"] == "ASSISTANT" and run:
+                message["content"] = json.dumps(run["answer"], ensure_ascii=False) if run["answer"] else None
                 message["contentStatus"] = run["contentStatus"]
         return view
 
