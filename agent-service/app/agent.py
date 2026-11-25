@@ -1,6 +1,8 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable
+import re
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -51,6 +53,10 @@ class Answer(BaseModel):
     unknowns: list[str] = Field(max_length=20)
 
 
+async def no_event(_event, _data):
+    pass
+
+
 @dataclass
 class AgentDeps:
     principal: Principal
@@ -58,6 +64,9 @@ class AgentDeps:
     run_id: str
     correlation_id: str
     evidence_ids: set[str] = field(default_factory=set)
+    incomplete: bool = False
+    emit: Callable[[str, dict], Awaitable[None]] = field(default=no_event, repr=False)
+    confirmed_root_evidence: set[str] = field(default_factory=set)
 
 
 class OpsAgent:
@@ -110,11 +119,13 @@ class OpsAgent:
             for claim in (*output.facts, *output.inferences):
                 if not set(claim.evidenceIds).issubset(ctx.deps.evidence_ids):
                     raise ModelRetry("证据引用不存在或尚未授权查询，请移除该陈述并说明未知信息")
+                if re.search(r"已确认.*根因|已证实.*根因|确定根因|根因是|确认为.*根因|\bCONFIRMED\b", claim.statement) and not set(claim.evidenceIds).intersection(ctx.deps.confirmed_root_evidence):
+                    raise ModelRetry("只能描述候选根因或推断，未取得后端 CONFIRMED 根因证据")
             if not output.facts and not output.unknowns:
                 raise ModelRetry("缺少已核查事实时必须说明未知信息")
             return output
 
-    async def run(self, content: str, deps: AgentDeps) -> Answer:
+    async def run(self, content: str, deps: AgentDeps, *, history=None) -> Answer:
         deps.principal.require("agent.use")
         if not content.strip() or len(content) > self.settings.max_input_chars:
             raise ServiceError("INVALID_ARGUMENT", 400, "消息为空或超出输入上限")
@@ -124,6 +135,7 @@ class OpsAgent:
                     result = await self.agent.run(
                         content,
                         deps=deps,
+                        message_history=history,
                         usage_limits=UsageLimits(
                             request_limit=self.settings.max_model_requests,
                             tool_calls_limit=self.settings.max_tool_calls,

@@ -144,7 +144,11 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
         return result;
     }
     public Map<String,Object> maintenance(AuthorizationContext actor,String device,int page,int size){
-        devices.requireVisibleDevices(actor,"workorder.read",List.of(device));var result=new LinkedHashMap<>(list(actor,device,null,null,null,null,null,null,null,page,size));
+        return maintenance(actor,device,null,null,page,size);
+    }
+    public Map<String,Object> maintenance(AuthorizationContext actor,String device,Instant from,Instant to,int page,int size){
+        if(from!=null&&to!=null&&!from.isBefore(to))throw ApiProblem.invalid("时间范围无效");
+        devices.requireVisibleDevices(actor,"workorder.read",List.of(device));var result=new LinkedHashMap<>(list(actor,device,null,null,null,null,null,from,to,page,size));
         @SuppressWarnings("unchecked") var items=(List<Map<String,Object>>)result.get("items");
         result.put("items",items.stream().map(item->detail(actor,Long.parseLong(item.get("workOrderId").toString()))).toList());return result;
     }

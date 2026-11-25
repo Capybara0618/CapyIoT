@@ -77,6 +77,7 @@ class AgentRun(Base):
     failure_code: Mapped[str | None] = mapped_column(String(64))
     answer_message_id: Mapped[str | None] = mapped_column(String(64))
     version: Mapped[int] = mapped_column(BigInteger, default=0)
+    lease_until: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     __table_args__ = (
         UniqueConstraint("owner_user_id", "idempotency_key"),
         CheckConstraint(
@@ -144,6 +145,8 @@ class Evidence(Base):
     evidence_summary: Mapped[str] = mapped_column(String(2000))
     freshness_status: Mapped[str] = mapped_column(String(32))
     source_link: Mapped[str | None] = mapped_column(String(256))
+    query_json: Mapped[dict | None] = mapped_column(JSON)
+    result_hash: Mapped[str | None] = mapped_column(String(64))
 
 
 class Draft(Base):

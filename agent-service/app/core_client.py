@@ -155,6 +155,7 @@ class CoreApiClient:
                     "deviceType",
                     "assetStatus",
                     "connectivityStatus",
+                    "monitoringPointId", "operatingMode", "dataFreshness",
                     "areaId",
                     "areaScope",
                     "page",
@@ -170,12 +171,12 @@ class CoreApiClient:
             "query_anomalies": (
                 "/anomalies",
                 "anomaly.read",
-                {"deviceId", "status", "severity", "anomalyType", "page", "size"},
+                {"deviceId", "status", "severity", "anomalyType", "page", "size", "from", "to"},
             ),
             "query_incidents": (
                 "/incidents",
                 "incident.read",
-                {"deviceId", "status", "priority", "page", "size"},
+                {"deviceId", "areaId", "status", "priority", "page", "size", "from", "to"},
             ),
             "get_incident_detail": ("/incidents/{id}", "incident.read", set()),
             "get_topology_context": (
@@ -186,13 +187,14 @@ class CoreApiClient:
             "query_work_orders": (
                 "/workorders",
                 "workorder.read",
-                {"deviceId", "incidentId", "status", "priority", "page", "size"},
+                {"deviceId", "incidentId", "status", "priority", "assignedRepairerId", "designatedAcceptorId", "page", "size", "from", "to"},
             ),
             "get_maintenance_history": (
                 "/devices/{id}/maintenance-history",
                 "workorder.read",
-                {"page", "size"},
+                {"page", "size", "from", "to"},
             ),
+            "_get_work_order": ("/workorders/{id}", "workorder.read", set()),
         }
         if operation not in routes:
             raise ServiceError("TOOL_NOT_ALLOWED", 403, "该业务操作未开放")
