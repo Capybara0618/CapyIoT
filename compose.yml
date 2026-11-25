@@ -271,6 +271,7 @@ services:
       CORE_SERVICE_URL: http://core-service:8085
       CORE_SERVICE_KEY: ${CORE_SERVICE_KEY:?Missing core service key}
       USER_KEY_FILE: /keys/user-keys.json
+      AGENT_SERVICE_URL: http://agent-service:8086
       USER_KEYS_GENERATE: 'true'
       JWT_SECRET: ${JWT_SECRET:?Missing JWT secret}
       USER_JWKS_URI: http://gateway:8080/.well-known/jwks.json
@@ -305,6 +306,30 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks: [internal]
+
+  agent-service:
+    profiles: [agent]
+    build: ./agent-service
+    environment: &agent-environment
+      AGENT_DB_HOST: mysql
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-}
+      AGENT_CORE_BASE_URL: http://core-service:8085
+      AGENT_JWKS_URL: http://gateway:8080/.well-known/jwks.json
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+    depends_on:
+      mysql: { condition: service_healthy }
+      core-service: { condition: service_healthy }
+      gateway: { condition: service_healthy }
+    restart: unless-stopped
+    mem_limit: 512m
+    healthcheck:
+      test: ['CMD', '/app/.venv/bin/python', '-c', 'import urllib.request; urllib.request.urlopen("http://localhost:8086/health/ready",timeout=20)']
+      interval: 20s
+      timeout: 20s
+      retries: 5
     networks: [internal]
 
   simulator:

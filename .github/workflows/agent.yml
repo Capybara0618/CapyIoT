@@ -1,0 +1,17 @@
+name: Agent foundation verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.8"
+      - run: uv sync --project agent-service --locked
+      - run: uv run --project agent-service ruff check agent-service
+      - run: uv run --project agent-service pytest agent-service/tests
