@@ -175,7 +175,7 @@ public class DeviceSimulator {
     private static Map<String, String> options(String[] args) {
         if (args.length % 2 != 0) throw new IllegalArgumentException("Arguments use --name value pairs");
         var allowed = Set.of("api-url", "mqtt-url", "devices", "start-seq", "interval-ms", "rounds",
-                "duplicate-first", "scenario", "prefix");
+                "duplicate-first", "scenario", "prefix", "protocol", "ca-file", "fault-seconds");
         var options = new HashMap<String, String>();
         for (int i = 0; i < args.length; i += 2) {
             if (!args[i].startsWith("--") || !allowed.contains(args[i].substring(2))) throw new IllegalArgumentException("Unknown simulator argument");
