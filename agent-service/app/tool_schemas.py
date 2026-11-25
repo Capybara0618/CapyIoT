@@ -2,7 +2,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 Text = Annotated[str, Field(max_length=1000)]
@@ -20,6 +20,13 @@ class Pagination(Input):
 class TimeRange(Input):
     from_: datetime | None = Field(default=None, alias="from")
     to: datetime | None = None
+
+    @field_validator("from_", "to", mode="before")
+    @classmethod
+    def timestamp_input(cls, value):
+        if value is not None and not isinstance(value, (str, datetime)):
+            raise ValueError("时间须为 RFC3339 UTC 字符串")
+        return value
 
     @model_validator(mode="after")
     def utc_range(self):
@@ -83,6 +90,11 @@ class TopologyQuery(Input):
     monitoringPointId: ID | None = None
     asOf: datetime | None = None
     depth: int = Field(default=2, ge=1, le=3, strict=True)
+
+    @field_validator("asOf", mode="before")
+    @classmethod
+    def timestamp_input(cls, value):
+        return TimeRange.timestamp_input(value)
 
     @model_validator(mode="after")
     def target(self):

@@ -1,9 +1,9 @@
 services:
   core-service:
     environment:
-      CAPYIOT_DEVICE_RUNTIME_ENABLED: 'false'
-      CAPYIOT_FAULT_RUNTIME_ENABLED: 'false'
-      CAPYIOT_DOMAIN_RUNTIME_ENABLED: 'false'
+      CAPYIOT_DEVICE_RUNTIME_ENABLED: ${VERIFY_AGENT_DEVICE_RUNTIME:-false}
+      CAPYIOT_FAULT_RUNTIME_ENABLED: ${VERIFY_AGENT_FAULT_RUNTIME:-false}
+      CAPYIOT_DOMAIN_RUNTIME_ENABLED: ${VERIFY_AGENT_DOMAIN_RUNTIME:-false}
   model-fixture:
     image: python:3.12.12-slim-bookworm
     command: ['python', '/fixture/model_fixture.py']
