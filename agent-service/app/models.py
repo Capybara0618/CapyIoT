@@ -202,6 +202,8 @@ class Confirmation(Base):
     request_id: Mapped[str] = mapped_column(String(128))
     authorization_result: Mapped[str] = mapped_column(String(32))
     idempotency_key: Mapped[str] = mapped_column(String(128))
+    request_hash: Mapped[str | None] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(String(1000))
     __table_args__ = (
         UniqueConstraint("draft_id", "draft_revision", "action"),
         UniqueConstraint("actor_user_id", "idempotency_key", name="uq_confirmation_actor_key"),

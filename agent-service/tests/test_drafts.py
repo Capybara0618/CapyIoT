@@ -1,9 +1,11 @@
 import uuid
 from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy import event
 
 from app.draft_schemas import PrepareWorkOrder
 from app.drafts import DraftRepository
@@ -71,3 +73,67 @@ def test_unconfirmed_expiry_keeps_business_unexecuted(database):
         session.get(Draft, draft["draftId"]).expires_at = now() - timedelta(seconds=1)
     assert repo.draft(owner, draft["draftId"])["status"] == "EXPIRED"
     assert repo.run_view(owner, run)["executionStatus"] == "NOT_EXECUTED"
+
+
+def decide(repo, owner, draft, action="CONFIRM", key="confirm-1"):
+    return repo.decide(owner, draft["draftId"], draft["revision"], draft["contentHash"], action, key, "trace")
+
+
+def test_repeated_and_concurrent_confirmation_queue_one_command(database):
+    repo, owner, run = running(database)
+    draft = propose(repo, owner, run)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda _: decide(repo, owner, draft), range(4)))
+    ids = {r["execution"]["executionId"] for r in results}
+    assert len(ids) == 1
+    with database.sessions() as session:
+        for model in (Confirmation, Execution, CommandOutbox):
+            assert len(session.scalars(select(model).where(model.draft_id == draft["draftId"])).all()) == 1
+        execution = session.scalar(select(Execution).where(Execution.draft_id == draft["draftId"]))
+        command = session.scalar(select(CommandOutbox).where(CommandOutbox.draft_id == draft["draftId"]))
+        assert execution.idempotency_key == command.idempotency_key
+        assert "token" not in str(command.payload_json).lower()
+    assert decide(repo, owner, draft, key="another-key")["execution"]["executionId"] in ids
+    with pytest.raises(ServiceError):
+        decide(repo, owner, draft, "REJECT", "reject-after-confirm")
+
+
+def test_confirmation_transaction_rolls_back_all_three_records(database):
+    repo, owner, run = running(database)
+    draft = propose(repo, owner, run)
+    def interrupt(*_):
+        raise RuntimeError("simulate process failure before outbox insert")
+    event.listen(CommandOutbox, "before_insert", interrupt)
+    try:
+        with pytest.raises(RuntimeError):
+            decide(repo, owner, draft)
+    finally:
+        event.remove(CommandOutbox, "before_insert", interrupt)
+    assert repo.draft(owner, draft["draftId"])["status"] == "PENDING_CONFIRMATION"
+    with database.sessions() as session:
+        for model in (Confirmation, Execution, CommandOutbox):
+            assert not session.scalars(select(model).where(model.draft_id == draft["draftId"])).all()
+
+
+def test_rejection_expiry_revision_and_key_reuse(database):
+    repo, owner, run = running(database)
+    old = propose(repo, owner, run)
+    draft = propose(repo, owner, run, "edited", description="补充现场排查")
+    with pytest.raises(ServiceError) as error:
+        decide(repo, owner, old)
+    assert error.value.code == "DRAFT_REVISION_MISMATCH"
+    assert decide(repo, owner, draft, "REJECT")["execution"] is None
+    assert decide(repo, owner, draft, "REJECT")["status"] == "REJECTED"
+    conversation = repo.create_conversation(owner, "another")
+    run2, _ = repo.start_run(owner, conversation["conversationId"], "维修", "new-run", "trace")
+    repo.begin_run(owner, run2, 60)
+    next_draft = propose(repo, owner, run2)
+    with pytest.raises(ServiceError) as error:
+        decide(repo, owner, next_draft)
+    assert error.value.code == "IDEMPOTENCY_KEY_REUSED"
+    with database.sessions.begin() as session:
+        session.get(Draft, next_draft["draftId"]).expires_at = now() - timedelta(seconds=1)
+    with pytest.raises(ServiceError) as error:
+        decide(repo, owner, next_draft, key="expired")
+    assert error.value.code == "DRAFT_EXPIRED"
+    assert repo.draft(owner, next_draft["draftId"])["status"] == "EXPIRED"

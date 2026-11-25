@@ -28,7 +28,7 @@ class Database:
             version = connection.execute(
                 text("SELECT version_num FROM alembic_version")
             ).scalar_one()
-            if version != "0003_draft_dispatch":
+            if version != "0004_confirmation_request":
                 raise RuntimeError("Agent schema migration is required")
 
     def close(self):
