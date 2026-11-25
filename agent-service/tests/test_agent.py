@@ -61,7 +61,6 @@ async def test_total_deadline_and_cancellation_stop_the_model(settings):
 
 async def test_real_provider_wiring_uses_configured_model_and_key_without_network(settings):
     # Exercise the real provider/SDK serializer with a local HTTP transport; no DeepSeek call.
-    agent = OpsAgent(settings)
     requests = []
     def transport(request):
         import json
@@ -76,14 +75,13 @@ async def test_real_provider_wiring_uses_configured_model_and_key_without_networ
                 "role": "assistant", "content": None, "tool_calls": [{"id": "call-one", "type": "function", "function": {
                     "name": name, "arguments": json.dumps(arguments)}}]}}], "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}})
     # The SDK accepts HTTPX in v2; this test transport is intentionally local-only.
-    old = agent.provider.client
     from openai import AsyncOpenAI
-    agent.provider._client = AsyncOpenAI(api_key="offline-fixture-only", base_url="https://api.deepseek.com",
-        max_retries=0, http_client=httpx.AsyncClient(transport=httpx.MockTransport(transport)))
-    # The model captured the provider, not a second independently configured SDK instance.
+    from pydantic_ai.providers.deepseek import DeepSeekProvider
+    provider = DeepSeekProvider(openai_client=AsyncOpenAI(api_key="offline-fixture-only", base_url="https://model-fixture.invalid",
+        max_retries=0, http_client=httpx.AsyncClient(transport=httpx.MockTransport(transport))))
+    agent = OpsAgent(settings, provider=provider)
     try:
         result = await agent.run("设备是否离线", deps())
         assert result.unknowns and len(requests) == 1
     finally:
-        await old.close()
         await agent.close()

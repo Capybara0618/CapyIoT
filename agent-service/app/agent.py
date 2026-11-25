@@ -44,17 +44,16 @@ class AgentDeps:
 
 
 class OpsAgent:
-    def __init__(self, settings: Settings, *, model: Model | None = None, tools: tuple[Tool, ...] = ()):
+    def __init__(self, settings: Settings, *, model: Model | None = None, tools: tuple[Tool, ...] = (), provider: DeepSeekProvider | None = None):
         self.settings = settings
         if any(tool.name not in ALLOWLIST for tool in tools) or len({tool.name for tool in tools}) != len(tools):
             raise ValueError("Only explicitly registered CapyIoT business tools are allowed")
         self.provider = None
         if model is None:
             # Dedicated provider client; never share the Core user's token or its HTTP pool.
-            sdk = AsyncOpenAI(api_key=settings.deepseek_api_key.get_secret_value(),
-                              base_url=settings.deepseek_base_url, max_retries=0,
-                              timeout=settings.http_timeout_seconds)
-            self.provider = DeepSeekProvider(openai_client=sdk)
+            self.provider = provider or DeepSeekProvider(openai_client=AsyncOpenAI(
+                api_key=settings.deepseek_api_key.get_secret_value(), base_url=settings.deepseek_base_url,
+                max_retries=0, timeout=settings.http_timeout_seconds))
             model = OpenAIChatModel(settings.deepseek_model, provider=self.provider)
         prompt = Path(__file__).with_name("prompts").joinpath("system.md").read_text(encoding="utf-8")
         self.agent = Agent(model, deps_type=AgentDeps, output_type=Answer, instructions=prompt,

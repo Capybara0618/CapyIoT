@@ -12,6 +12,4 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.10.8"
-      - run: uv sync --project agent-service --locked
-      - run: uv run --project agent-service ruff check agent-service
-      - run: uv run --project agent-service pytest agent-service/tests
+      - run: python3 scripts/verify_stage2.py

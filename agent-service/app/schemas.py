@@ -1,0 +1,44 @@
+from datetime import UTC, datetime
+from typing import Annotated, Generic, Literal, TypeVar
+
+from pydantic import BaseModel, PlainSerializer
+
+UtcTime = Annotated[datetime, PlainSerializer(lambda value: value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z"))]
+T = TypeVar("T")
+
+
+class Envelope(BaseModel, Generic[T]):
+    code: Literal["OK"]
+    message: str
+    data: T
+    traceId: str
+
+
+class ConversationView(BaseModel):
+    conversationId: str
+    title: str
+    status: Literal["ACTIVE", "ARCHIVED"]
+    createdAt: UtcTime
+    lastMessageAt: UtcTime | None
+    version: int
+
+
+class ConversationPage(BaseModel):
+    items: list[ConversationView]
+    total: int
+    page: int
+    size: int
+
+
+class MessageView(BaseModel):
+    messageId: str
+    sequence: int
+    role: Literal["USER", "ASSISTANT"]
+    content: str | None
+    contentStatus: str
+    createdAt: UtcTime
+    runId: str | None
+
+
+class ConversationHistory(ConversationView):
+    messages: list[MessageView]
