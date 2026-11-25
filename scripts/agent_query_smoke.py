@@ -73,6 +73,7 @@ def main():
 
     try:
         supervisor = login("supervisor")
+        initial_order_count = call("/workorders")["total"]
         deadline = time.monotonic() + 120
         while not call("/incidents?status=PENDING_REVIEW")["items"]:
             if time.monotonic() > deadline:
@@ -117,7 +118,7 @@ def main():
         )
         if replay["runId"] != run:
             raise AssertionError("Idempotent replay created a different Run")
-        if call("/workorders")["total"]:
+        if call("/workorders")["total"] != initial_order_count:
             raise AssertionError("A read-only query created business work")
         login("operator")
         call("/agent/runs/" + run, expected=(404,))
@@ -206,6 +207,10 @@ def main():
         )
         token = supervisor
         call("/agent/runs/" + run, expected=(401, 403))
+        # Restore the original role/scope so subsequent stage checks can use the isolated platform.
+        login("admin")
+        original = me["scopeSummaries"][0]
+        call("/users/" + me["userId"] + "/grants", {"roleCode": original["roleCode"], "scopeType": original["scopeType"], "parkId": original["parkId"], "rootAreaIds": original.get("rootAreaIds", []), "assignmentRelation": original.get("assignmentRelation")}, key=str(uuid.uuid4()))
         print(
             "Agent query checks passed: nine live Core tools, evidence, candidate-only analysis, read-only business, persisted answer, replay, scope isolation, disconnect cancellation and restart."
         )

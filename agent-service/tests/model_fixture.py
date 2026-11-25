@@ -21,6 +21,8 @@ class Handler(BaseHTTPRequestHandler):
         messages = request["messages"]
         last_user = max(i for i, message in enumerate(messages) if message["role"] == "user")
         content = messages[last_user]["content"]
+        intent = " ".join(str(m.get("content", "")) for m in messages if m["role"] == "user" and "运行剩余预算" not in str(m.get("content", "")))
+        draft_mode = "draft-fixture" in intent
         if "slow-fixture" in str(content):
             time.sleep(5)
         if "fail-fixture" in str(content):
@@ -54,19 +56,40 @@ class Handler(BaseHTTPRequestHandler):
             ("query_work_orders", {"deviceId": root}),
             ("get_maintenance_history", {"deviceId": root}),
         ]
+        if draft_mode:
+            import re
+            incident_match = re.search(r"INCIDENT ([A-Za-z0-9_-]+)", intent)
+            evidence = [ref["evidenceId"] for result in results for ref in result.get("evidenceReferences", [])]
+            sequence = [("query_devices", {"keyword": "VIDEO"})]
+            if incident_match:
+                sequence.append(("get_incident_detail", {"incidentId": incident_match.group(1)}))
+            sequence.append(("prepare_work_order", {
+                "sourceType": "INCIDENT" if incident_match else "MANUAL",
+                "incidentId": incident_match.group(1) if incident_match else None,
+                "deviceItems": [
+                    {"deviceId": root, "deviceRole": "MAIN", "issueDescription": "交换机连接异常待排查"},
+                    {"deviceId": ipc, "deviceRole": "RELATED", "issueDescription": "关联摄像机录像核查"},
+                ],
+                "title": "A区视频设备维修草稿", "description": "根据模拟设备状态核查网络连接与供电，实际原因待现场确认",
+                "expectedResult": "设备连接恢复并核查录像", "workCategory": "设备故障维修",
+                "priority": None if incident_match else "P3", "evidenceReferenceIds": evidence,
+            }))
         if len(results) < len(sequence):
             name, arguments = sequence[len(results)]
         else:
             name = next(
                 tool["function"]["name"]
                 for tool in request["tools"]
-                if tool["function"]["name"] not in ({pair[0] for pair in sequence} | {"prepare_work_order"})
+                if tool["function"]["name"] not in {"query_devices", "query_incidents", "get_device_detail", "get_incident_detail", "get_topology_context", "get_device_status_history", "query_anomalies", "query_work_orders", "get_maintenance_history", "prepare_work_order"}
             )
 
             def refs(tool):
                 return [r["evidenceId"] for r in by_name[tool]["evidenceReferences"]]
 
-            arguments = {
+            if draft_mode:
+                arguments = {"facts": [{"statement": "已查询设备状态，草稿仍需人工审阅确认", "evidenceIds": refs("query_devices")}], "inferences": [], "recommendations": ["请在草稿审阅页核对后确认；尚未创建正式工单"], "unknowns": ["现场实际原因尚待核查"]}
+            else:
+                arguments = {
                 "facts": [
                     {
                         "statement": "已查询当前可见摄像机的连接状态与状态历史",
