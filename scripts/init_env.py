@@ -24,6 +24,7 @@ def main() -> None:
         "ALARM_DB_PASSWORD": secrets.token_hex(24),
         "WORKFLOW_DB_PASSWORD": secrets.token_hex(24),
         "PLATFORM_DB_PASSWORD": secrets.token_hex(24),
+        "AGENT_DB_PASSWORD": secrets.token_hex(24),
         "CORE_SERVICE_KEY": secrets.token_urlsafe(48),
         "EMQX_API_KEY": secrets.token_hex(12),
         "EMQX_API_SECRET": secrets.token_hex(32),

@@ -35,3 +35,13 @@ CREATE USER IF NOT EXISTS 'platform_app'@'%' IDENTIFIED BY '$PLATFORM_DB_PASSWOR
 GRANT ALL PRIVILEGES ON platform_db.* TO 'platform_app'@'%';
 SQL
 fi
+
+# Agent is optional for legacy deployments and uses only its own schema/account.
+if [ -n "${AGENT_DB_PASSWORD:-}" ]; then
+  case "$AGENT_DB_PASSWORD" in *[!0-9a-fA-F]*) echo 'Database passwords must be hexadecimal' >&2; exit 1 ;; esac
+MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql --protocol=socket --socket="$socket" -uroot <<SQL
+CREATE DATABASE IF NOT EXISTS agent_db CHARACTER SET utf8mb4;
+CREATE USER IF NOT EXISTS 'agent_app'@'%' IDENTIFIED BY '$AGENT_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON agent_db.* TO 'agent_app'@'%';
+SQL
+fi
