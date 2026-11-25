@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resume-report", type=Path)
+    parser.add_argument("--install-browser", action="store_true")
     args = parser.parse_args()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     folder = ROOT / "var/verification" / ("draft-" + stamp)
@@ -40,6 +41,10 @@ def main():
         if candidates:
             env["JAVA_HOME"] = str(candidates[0])
             env["PATH"] = str(candidates[0] / "bin") + os.pathsep + env["PATH"]
+    if os.name == "nt" and not env.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"):
+        chrome = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Google/Chrome/Application/chrome.exe"
+        if chrome.is_file():
+            env["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"] = str(chrome)
     compose = [
         "docker",
         "compose",
@@ -144,6 +149,8 @@ def main():
         npm = "npm.cmd" if os.name == "nt" else "npm"
         for check in ("lint", "typecheck", "build"):
             step("frontend-" + check, [npm, "run", check], ROOT / "frontend", ("frontend/",))
+        if args.install_browser:
+            step("browser-install", [npm, "exec", "--", "playwright", "install", "--with-deps", "chromium"], ROOT / "frontend")
         step("local-credentials", [sys.executable, "scripts/init_env.py"])
         step("local-tls", [sys.executable, "scripts/init_tls.py"])
         step("compose-config", compose + ["config", "--quiet"])
@@ -181,7 +188,7 @@ def main():
         )
         step("agent-query", [sys.executable, "scripts/agent_query_smoke.py"])
         step("agent-draft", [sys.executable, "scripts/agent_draft_smoke.py"])
-        step("browser", [npm, "run", "test:e2e"], ROOT / "frontend")
+        step("browser", [npm, "run", "test:e2e", "--", "--timeout=90000"], ROOT / "frontend")
         report["status"] = "PASSED"
     except Exception as error:
         report["status"], report["error"] = "FAILED", str(error)

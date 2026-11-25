@@ -119,11 +119,29 @@ Agent 使用独立的一次性迁移容器执行 Alembic，再启动服务。`/h
 
 历史答案与有界对话上下文在读取时重新查询 Core 校验：授权版本、可见来源对象或结果范围变化时保守隐藏旧答案；没有可重验来源的旧答案也保持隐藏。历史对话不能充当权限凭证。消息响应只发送经过 Schema 与引用校验的回答，`answer.delta` 当前为一次完整结构化回答片段，不承诺模型 Token 级实时输出或重放。客户端断开即取消运行；已完成工具记录和证据保留。中断的只读 Run 达到期限后可查询到超时终态。
 
-阶段三不注册 `prepare_work_order`，不创建草稿、正式工单或修改根因。草稿确认、服务委托签名与正式命令派发留阶段四实现。
+阶段三建立只读查询链路；阶段四新增的 `prepare_work_order` 只保存 Agent 草稿，模型没有创建正式工单或修改根因的工具。
 
 全部阶段二编码完成后，通过 `python scripts/verify_stage2.py` 显式执行离线统一验证；它使用独立 MySQL/Compose 数据卷和本地模型元数据替身，结束后关闭测试环境、保留原始报告在 `var/verification/`。测试覆盖真实 Provider 的离线 HTTP 序列化，但不能证明真实 DeepSeek 的工具调用、流式输出及模型兼容性；这些须在配置模型后另行联调。CI 仍只手动触发。
 
 阶段三统一验证入口为 `python scripts/verify_stage3.py`：串行执行 Python 测试、Core/共享契约回归，以及虚拟交换机故障→真实 Java API→九个 Agent 工具→可追溯回答的整链路验收。只有模型使用确定性的离线替身，其余接入、数据与用户权限来自独立部署的真实平台。支持 `--resume-report <本地报告>`，仅按输入哈希复用成功构建检查，部署与查询场景始终重新执行。这个离线场景验证系统链路，不代表真实模型的推理质量或 DeepSeek 兼容性已经验证。
+
+### 工单草稿与人工确认
+
+当前支持 9 个只读工具和 1 个草稿工具。用户主动要求创建维修工单后，Agent 核查设备与来源故障并保存草稿，SSE 发出 `draft.ready`；Run 进入 `WAITING_CONFIRMATION`。通过工单中心的“审阅 Agent 草稿”入口，或 `/agent-drafts/<draftId>` 链接查看设备范围、Incident 来源、优先级、描述、预期结果和证据。完整对话 UI 仍属后续阶段。
+
+`GET /api/v1/agent/drafts/{draftId}` 只允许 owner 读取，并重验当前业务数据权限。确认或拒绝分别使用 `POST /api/v1/agent/drafts/{draftId}/confirm`、`/reject`，请求均须携带 `Idempotency-Key` 及用户实际审阅的 `{draftRevision,contentHash}`；拒绝可附 `reason`。确认需要 `agent.draft.confirm` 和 `workorder.create`，版本冲突返回 409，过期返回 410，业务状态变化使草稿失效。确认接口返回 202；用户不确认或拒绝时不创建正式工单。
+
+确认事务仅在 agent_db 原子写入确认、执行记录和命令 Outbox。进程内 Dispatcher 领取命令后，使用独立 RS256 服务密钥签发 60 秒委托 JWT，绑定确认人、草稿版本、请求 Hash 和原幂等键。Java 校验签名/请求绑定并重新加载当前用户授权，最终检查同园区、设备状态、Incident Gate 和优先级规则，再创建正式工单。多设备明细和幂等回执在 Java 自有事务中保存。用户 Token 与委托 JWT 都不持久化。
+
+Compose 的 `agent` profile 启用 Dispatcher，并在独立 `agent-keys` 数据卷中首次生成服务密钥。直接运行服务时，需配置 `AGENT_DISPATCH_ENABLED=true`、`AGENT_DELEGATION_KEY_FILE`；仅本地首次初始化可设置 `AGENT_DELEGATION_KEYS_GENERATE=true`。未启用派发时确认接口返回 503，不会静默积压确认。公钥地址为 Agent 内部 `/.well-known/agent-jwks.json`，Core 必须配置可信的 Agent JWKS 地址。密钥轮换命令如下；轮换保留最近公钥供短时旧凭证验证，不打印私钥：
+
+```sh
+docker compose --profile agent exec agent-service python -m app.delegation --file /keys/agent-keys.json --rotate
+```
+
+派发默认每秒领取一条命令、60 秒租约、最多 3 次尝试。Java 成功但响应丢失、租约中断等情况进入 `RECONCILIATION_REQUIRED`，沿用原幂等键回查回执；禁止换键重建。超过自动尝试上限后保留结果未知状态，需由运维核对，不声称创建失败或自动解除。确认后撤权会被 Java 拒绝；若此前结果已未知，撤权不能被当作“没有创建”的证明。草稿页可查询执行状态并跳转正式工单。
+
+阶段四统一验证入口为 `python scripts/verify_stage4.py`：Python、Java、前端检查后，在独立 Compose 中运行九工具只读回归及草稿/拒绝/并发确认/真实委托 Java 创建场景，再运行浏览器用例。使用确定性的本地模型替身，不消耗真实模型额度。支持 `--resume-report <本地报告>`，仅源码哈希相同的成功检查可复用；部署及业务场景重新执行。模型替身覆盖链路与确定性行为，真实 DeepSeek 的工具选择须另行实测。
 
 ### 平台监控
 

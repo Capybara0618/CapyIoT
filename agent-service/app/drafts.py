@@ -327,12 +327,23 @@ class DraftService:
     async def prepare(self, arguments, deps, origin):
         parsed = PrepareWorkOrder.model_validate(arguments)
         safe = parsed.model_dump(mode="json")
+        # Full descriptions/100-device proposals do not fit a 1000-character audit summary.
+        # The digest still binds all validated arguments, while the revision stores full content.
+        audit = {
+            "sourceType": parsed.sourceType,
+            "incidentId": parsed.incidentId,
+            "title": parsed.title,
+            "deviceIdsPreview": [item.deviceId for item in parsed.deviceItems[:4]],
+            "deviceCount": len(parsed.deviceItems),
+            "evidenceCount": len(parsed.evidenceReferenceIds),
+            "argumentsHash": fingerprint(safe),
+        }
         call_id = await run_in_threadpool(
             self.repository.start_tool,
             deps.principal.user_id,
             deps.run_id,
             "prepare_work_order",
-            safe,
+            audit,
             self.settings.max_tool_calls,
         )
         await deps.emit("tool.started", {"toolCallId": call_id, "toolName": "prepare_work_order"})
@@ -372,6 +383,7 @@ class DraftService:
             result = ToolResult(
                 toolName="prepare_work_order",
                 status="REJECTED",
+                authorization="DENIED" if error.status in {401, 403, 404} else "CURRENT_USER_SCOPE",
                 errorCode=error.code,
                 safeMessage="草稿未生成，请检查权限、设备、故障和证据；未创建正式工单",
             )
