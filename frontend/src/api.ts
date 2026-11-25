@@ -3,6 +3,7 @@ export interface ApiResponse<T> {
   message: string
   data: T
   traceId: string
+  details?: Record<string, unknown>
 }
 
 export interface UserInfo {
@@ -32,6 +33,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public code = '',
+    public details: Record<string, unknown> = {},
   ) {
     super(message)
   }
@@ -71,7 +74,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
       sessionStorage.removeItem('capyiot.session')
       window.dispatchEvent(new Event('capyiot:unauthorized'))
     }
-    throw new ApiError(result?.message ?? '请求失败，请稍后重试', response.status)
+    throw new ApiError(result?.message ?? '请求失败，请稍后重试', response.status, result?.code, result?.details)
   }
   if (!result || result.code !== 'OK') throw new ApiError('服务响应格式异常', response.status)
   return result.data
