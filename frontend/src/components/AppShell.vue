@@ -55,7 +55,11 @@ onMounted(checkHealth)
           v-for="page in visiblePages"
           :key="page.path"
           :to="page.path"
-          :class="{ active: route.path === page.path || (page.path === '/assistant' && route.path.startsWith('/assistant/')) }"
+          :class="{
+            active:
+              route.path === page.path ||
+              (page.path === '/assistant' && route.path.startsWith('/assistant/')),
+          }"
         >
           <component :is="page.icon" :size="19" :stroke-width="1.7" />
           <span>{{ page.title }}</span>

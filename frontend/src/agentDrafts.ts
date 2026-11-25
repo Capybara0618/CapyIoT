@@ -37,7 +37,7 @@ export interface AgentDraft {
 }
 
 export const loadDraft = (id: string, signal?: AbortSignal) =>
-  request<AgentDraft>('/agent/drafts/' + encodeURIComponent(id), {signal})
+  request<AgentDraft>('/agent/drafts/' + encodeURIComponent(id), { signal })
 export const decideDraft = (
   draft: AgentDraft,
   action: 'confirm' | 'reject',

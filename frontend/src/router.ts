@@ -28,7 +28,12 @@ const featurePages = {
 }
 
 export const pages = [
-  { path: '/assistant', title: 'AI 运维助手', icon: MessagesSquare, description: '查询业务证据，核查故障线索，审阅维修工单草稿' },
+  {
+    path: '/assistant',
+    title: 'AI 运维助手',
+    icon: MessagesSquare,
+    description: '查询业务证据，核查故障线索，审阅维修工单草稿',
+  },
   {
     path: '/administration',
     title: '账号与授权',

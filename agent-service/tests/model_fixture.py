@@ -21,7 +21,14 @@ class Handler(BaseHTTPRequestHandler):
         messages = request["messages"]
         last_user = max(i for i, message in enumerate(messages) if message["role"] == "user")
         content = messages[last_user]["content"]
-        intent = next((str(m.get("content", "")) for m in reversed(messages) if m["role"] == "user" and "运行剩余预算" not in str(m.get("content", ""))), "")
+        intent = next(
+            (
+                str(m.get("content", ""))
+                for m in reversed(messages)
+                if m["role"] == "user" and "运行剩余预算" not in str(m.get("content", ""))
+            ),
+            "",
+        )
         draft_mode = "draft-fixture" in intent
         if "slow-fixture" in str(content):
             time.sleep(5)

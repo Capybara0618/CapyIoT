@@ -75,7 +75,10 @@ class Repository:
             rows = session.scalars(
                 select(Conversation)
                 .where(Conversation.owner_user_id == owner)
-                .order_by(func.coalesce(Conversation.last_message_at, Conversation.created_at).desc(), Conversation.conversation_id)
+                .order_by(
+                    func.coalesce(Conversation.last_message_at, Conversation.created_at).desc(),
+                    Conversation.conversation_id,
+                )
                 .offset((page - 1) * size)
                 .limit(size)
             )
@@ -105,15 +108,32 @@ class Repository:
             return {
                 **self.conversation_view(conversation),
                 "hasMoreBefore": more if backwards else bool(first and first > 1),
-                "hasMoreAfter": bool(last and session.scalar(select(Message.message_id).where(Message.conversation_id == identity, Message.message_seq > last).limit(1))) if backwards else more,
-                "firstSequence": first, "lastSequence": last,
-                "messages": [{
-                    "messageId": row.message_id, "sequence": row.message_seq,
-                    "role": row.role,
-                    "content": row.content if row.role == "USER" else None,
-                    "contentStatus": row.content_status if row.role == "USER" else "REDACTED_BY_CURRENT_AUTHORIZATION",
-                    "createdAt": row.created_at, "runId": row.run_id,
-                } for row in rows],
+                "hasMoreAfter": bool(
+                    last
+                    and session.scalar(
+                        select(Message.message_id)
+                        .where(Message.conversation_id == identity, Message.message_seq > last)
+                        .limit(1)
+                    )
+                )
+                if backwards
+                else more,
+                "firstSequence": first,
+                "lastSequence": last,
+                "messages": [
+                    {
+                        "messageId": row.message_id,
+                        "sequence": row.message_seq,
+                        "role": row.role,
+                        "content": row.content if row.role == "USER" else None,
+                        "contentStatus": row.content_status
+                        if row.role == "USER"
+                        else "REDACTED_BY_CURRENT_AUTHORIZATION",
+                        "createdAt": row.created_at,
+                        "runId": row.run_id,
+                    }
+                    for row in rows
+                ],
             }
 
     def start_run(self, owner, conversation_id, content, key, correlation):

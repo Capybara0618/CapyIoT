@@ -51,7 +51,6 @@ class RunView(BaseModel):
     evidenceReferences: list[dict]
 
 
-
 class MessageView(BaseModel):
     messageId: str
     sequence: int
@@ -70,8 +69,6 @@ class ConversationHistory(ConversationView):
     hasMoreAfter: bool = False
     firstSequence: int | None = None
     lastSequence: int | None = None
-
-
 
 
 class ExecutionView(BaseModel):
