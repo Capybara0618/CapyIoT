@@ -1,6 +1,6 @@
 import asyncio
-import logging
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -67,7 +67,11 @@ class CoreApiClient:
                     self.base_url + "/api/v1" + route,
                     headers=headers,
                     params=params,
-                    content=None if body is None else json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(),
+                    content=None
+                    if body is None
+                    else json.dumps(
+                        body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                    ).encode(),
                 ) as response:
                     if response.status_code >= 500 and method == "GET" and attempt == 0:
                         await asyncio.sleep(0.1)
@@ -240,11 +244,26 @@ class CoreApiClient:
     async def validate_work_order(self, principal, correlation, payload):
         principal.require("agent.draft.prepare")
         principal.require("workorder.create")
-        return await self._request("/workorders/validate", principal.token, correlation,
-                                   body=payload, key="validate-" + correlation)
+        return await self._request(
+            "/workorders/validate",
+            principal.token,
+            correlation,
+            body=payload,
+            key="validate-" + correlation,
+        )
 
     async def dispatch_work_order(self, command, token):
-        return await self._request("/workorders", token, command["commandId"], body=command["payload"], key=command["idempotencyKey"])
+        return await self._request(
+            "/workorders",
+            token,
+            command["commandId"],
+            body=command["payload"],
+            key=command["idempotencyKey"],
+        )
 
     async def command_receipt(self, command, token):
-        return await self._request("/workorders/commands/" + identifier(command["idempotencyKey"]), token, command["commandId"])
+        return await self._request(
+            "/workorders/commands/" + identifier(command["idempotencyKey"]),
+            token,
+            command["commandId"],
+        )

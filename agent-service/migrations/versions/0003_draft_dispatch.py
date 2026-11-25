@@ -13,7 +13,9 @@ def upgrade():
     op.add_column("operation_draft", sa.Column("origin_tool_call_id", sa.String(128)))
     op.create_unique_constraint("uq_draft_origin", "operation_draft", ["origin_tool_call_id"])
     op.add_column("operation_draft_revision", sa.Column("origin_tool_call_id", sa.String(128)))
-    op.create_unique_constraint("uq_revision_origin", "operation_draft_revision", ["origin_tool_call_id"])
+    op.create_unique_constraint(
+        "uq_revision_origin", "operation_draft_revision", ["origin_tool_call_id"]
+    )
     op.add_column("agent_command_outbox", sa.Column("lease_token", sa.String(64)))
     op.add_column("execution_record", sa.Column("target_object_no", sa.String(64)))
     op.create_unique_constraint(

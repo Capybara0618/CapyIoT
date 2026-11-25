@@ -33,11 +33,21 @@ class DelegationSigner:
         private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         entry = {
             "kid": uuid.uuid4().hex,
-            "privateKey": private.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode(),
-            "publicKey": private.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode(),
+            "privateKey": private.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            ).decode(),
+            "publicKey": private.public_key()
+            .public_bytes(
+                serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+            .decode(),
         }
         # Keep overlap public keys; retired private keys are removed from the active file.
-        keys = [entry] + [{"kid": k["kid"], "publicKey": k["publicKey"]} for k in previous["keys"][:2]]
+        keys = [entry] + [
+            {"kid": k["kid"], "publicKey": k["publicKey"]} for k in previous["keys"][:2]
+        ]
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp = self.path.with_name(self.path.name + "." + uuid.uuid4().hex + ".tmp")
         try:
@@ -62,19 +72,35 @@ class DelegationSigner:
     def issue(self, command):
         _, active, private = self.load()
         stamp = int(time.time())
-        return jwt.encode({
-            "iss": "capyiot-agent-service", "sub": "capyiot-agent-service", "aud": "capyiot-core",
-            "iat": stamp, "nbf": stamp, "exp": stamp + 60, "jti": uuid.uuid4().hex,
-            "actorUserId": command["actorUserId"], "confirmationId": command["confirmationId"],
-            "draftId": command["draftId"], "draftRevision": command["draftRevision"],
-            "requestHash": command["requestHash"], "idempotencyKey": command["idempotencyKey"],
-            "command": "CREATE_WORK_ORDER",
-        }, private, algorithm="RS256", headers={"kid": active["kid"]})
+        return jwt.encode(
+            {
+                "iss": "capyiot-agent-service",
+                "sub": "capyiot-agent-service",
+                "aud": "capyiot-core",
+                "iat": stamp,
+                "nbf": stamp,
+                "exp": stamp + 60,
+                "jti": uuid.uuid4().hex,
+                "actorUserId": command["actorUserId"],
+                "confirmationId": command["confirmationId"],
+                "draftId": command["draftId"],
+                "draftRevision": command["draftRevision"],
+                "requestHash": command["requestHash"],
+                "idempotencyKey": command["idempotencyKey"],
+                "command": "CREATE_WORK_ORDER",
+            },
+            private,
+            algorithm="RS256",
+            headers={"kid": active["kid"]},
+        )
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Create/rotate the local Agent signing key; no key is printed")
+
+    parser = argparse.ArgumentParser(
+        description="Create/rotate the local Agent signing key; no key is printed"
+    )
     parser.add_argument("--file", required=True)
     parser.add_argument("--rotate", action="store_true")
     args = parser.parse_args()

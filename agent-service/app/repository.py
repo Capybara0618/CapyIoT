@@ -13,8 +13,8 @@ from app.models import (
     Conversation,
     Draft,
     DraftRevision,
-    Execution,
     Evidence,
+    Execution,
     Message,
     ToolCall,
 )
@@ -272,7 +272,11 @@ class Repository:
                 run.version += 1
             answer = session.get(Message, run.answer_message_id) if run.answer_message_id else None
             draft = session.scalar(select(Draft).where(Draft.run_id == identity))
-            execution = session.scalar(select(Execution).where(Execution.draft_id == draft.draft_id)) if draft else None
+            execution = (
+                session.scalar(select(Execution).where(Execution.draft_id == draft.draft_id))
+                if draft
+                else None
+            )
             return {
                 "runId": identity,
                 "conversationId": run.conversation_id,
@@ -321,7 +325,9 @@ class Repository:
                 run.answer_message_id = message.message_id
                 conversation.last_message_at, conversation.version = now(), conversation.version + 1
             if status in {"SUCCEEDED", "PARTIAL_SUCCEEDED"} and session.scalar(
-                select(Draft).where(Draft.run_id == identity, Draft.status == "PENDING_CONFIRMATION")
+                select(Draft).where(
+                    Draft.run_id == identity, Draft.status == "PENDING_CONFIRMATION"
+                )
             ):
                 status = "WAITING_CONFIRMATION"
             run.status, run.failure_code, run.finished_at = status, error_code, now()

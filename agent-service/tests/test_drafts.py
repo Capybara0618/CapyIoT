@@ -1,33 +1,49 @@
 import uuid
-from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import select
-from sqlalchemy import event
+from sqlalchemy import event, select
+from test_repository import database as database
 
 from app.draft_schemas import PrepareWorkOrder
 from app.drafts import DraftRepository
 from app.errors import ServiceError
-from app.models import Draft, DraftRevision, Execution, Confirmation, CommandOutbox
+from app.models import CommandOutbox, Confirmation, Draft, DraftRevision, Execution
 from app.repository import now
-from test_repository import database as database
 
 
 def payload(**updates):
     return {
-        "sourceType": "MANUAL", "deviceItems": [{"deviceId": "ipc-1", "deviceRole": "MAIN", "issueDescription": "持续离线"}],
-        "title": "入口设备排查", "description": "核查连接与供电", "expectedResult": "恢复录像并核查", "priority": "P3",
+        "sourceType": "MANUAL",
+        "deviceItems": [
+            {"deviceId": "ipc-1", "deviceRole": "MAIN", "issueDescription": "持续离线"}
+        ],
+        "title": "入口设备排查",
+        "description": "核查连接与供电",
+        "expectedResult": "恢复录像并核查",
+        "priority": "P3",
         **updates,
     }
 
 
-@pytest.mark.parametrize("updates", [
-    {"assignedRepairerId": "attacker"}, {"createdBy": "attacker"}, {"sourceType": "LEGACY_ALARM"},
-    {"sourceType": "INCIDENT"}, {"incidentId": "inc-1"}, {"priority": None},
-    {"deviceItems": [{"deviceId": "ipc-1", "deviceRole": "RELATED", "issueDescription": "核查"}]},
-])
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"assignedRepairerId": "attacker"},
+        {"createdBy": "attacker"},
+        {"sourceType": "LEGACY_ALARM"},
+        {"sourceType": "INCIDENT"},
+        {"incidentId": "inc-1"},
+        {"priority": None},
+        {
+            "deviceItems": [
+                {"deviceId": "ipc-1", "deviceRole": "RELATED", "issueDescription": "核查"}
+            ]
+        },
+    ],
+)
 def test_draft_arguments_reject_unauthorized_fields_and_invalid_shapes(updates):
     with pytest.raises(ValidationError):
         PrepareWorkOrder.model_validate(payload(**updates))
@@ -36,7 +52,9 @@ def test_draft_arguments_reject_unauthorized_fields_and_invalid_shapes(updates):
 def running(database):
     repo, owner = DraftRepository(database.sessions), uuid.uuid4().hex
     conversation = repo.create_conversation(owner, "工单草稿")
-    run, _ = repo.start_run(owner, conversation["conversationId"], "请生成维修草稿", uuid.uuid4().hex, "trace")
+    run, _ = repo.start_run(
+        owner, conversation["conversationId"], "请生成维修草稿", uuid.uuid4().hex, "trace"
+    )
     repo.begin_run(owner, run, 60)
     return repo, owner, run
 
@@ -59,15 +77,29 @@ def test_draft_tool_idempotency_revision_and_owner(database):
         repo.draft("another-owner", first["draftId"])
     assert error.value.status == 404
     with database.sessions() as session:
-        assert len(session.scalars(select(DraftRevision).where(DraftRevision.draft_id == first["draftId"])).all()) == 2
+        assert (
+            len(
+                session.scalars(
+                    select(DraftRevision).where(DraftRevision.draft_id == first["draftId"])
+                ).all()
+            )
+            == 2
+        )
         for model in (Execution, Confirmation, CommandOutbox):
-            assert not session.scalars(select(model).where(model.draft_id == first["draftId"])).all()
+            assert not session.scalars(
+                select(model).where(model.draft_id == first["draftId"])
+            ).all()
 
 
 def test_unconfirmed_expiry_keeps_business_unexecuted(database):
     repo, owner, run = running(database)
     draft = propose(repo, owner, run)
-    repo.finish_run(owner, run, "SUCCEEDED", {"facts": [], "inferences": [], "recommendations": [], "unknowns": ["待确认"]})
+    repo.finish_run(
+        owner,
+        run,
+        "SUCCEEDED",
+        {"facts": [], "inferences": [], "recommendations": [], "unknowns": ["待确认"]},
+    )
     assert repo.run_view(owner, run)["status"] == "WAITING_CONFIRMATION"
     with database.sessions.begin() as session:
         session.get(Draft, draft["draftId"]).expires_at = now() - timedelta(seconds=1)
@@ -76,7 +108,9 @@ def test_unconfirmed_expiry_keeps_business_unexecuted(database):
 
 
 def decide(repo, owner, draft, action="CONFIRM", key="confirm-1"):
-    return repo.decide(owner, draft["draftId"], draft["revision"], draft["contentHash"], action, key, "trace")
+    return repo.decide(
+        owner, draft["draftId"], draft["revision"], draft["contentHash"], action, key, "trace"
+    )
 
 
 def test_repeated_and_concurrent_confirmation_queue_one_command(database):
@@ -88,9 +122,14 @@ def test_repeated_and_concurrent_confirmation_queue_one_command(database):
     assert len(ids) == 1
     with database.sessions() as session:
         for model in (Confirmation, Execution, CommandOutbox):
-            assert len(session.scalars(select(model).where(model.draft_id == draft["draftId"])).all()) == 1
+            assert (
+                len(session.scalars(select(model).where(model.draft_id == draft["draftId"])).all())
+                == 1
+            )
         execution = session.scalar(select(Execution).where(Execution.draft_id == draft["draftId"]))
-        command = session.scalar(select(CommandOutbox).where(CommandOutbox.draft_id == draft["draftId"]))
+        command = session.scalar(
+            select(CommandOutbox).where(CommandOutbox.draft_id == draft["draftId"])
+        )
         assert execution.idempotency_key == command.idempotency_key
         assert "token" not in str(command.payload_json).lower()
     assert decide(repo, owner, draft, key="another-key")["execution"]["executionId"] in ids
@@ -101,8 +140,10 @@ def test_repeated_and_concurrent_confirmation_queue_one_command(database):
 def test_confirmation_transaction_rolls_back_all_three_records(database):
     repo, owner, run = running(database)
     draft = propose(repo, owner, run)
+
     def interrupt(*_):
         raise RuntimeError("simulate process failure before outbox insert")
+
     event.listen(CommandOutbox, "before_insert", interrupt)
     try:
         with pytest.raises(RuntimeError):
@@ -112,7 +153,9 @@ def test_confirmation_transaction_rolls_back_all_three_records(database):
     assert repo.draft(owner, draft["draftId"])["status"] == "PENDING_CONFIRMATION"
     with database.sessions() as session:
         for model in (Confirmation, Execution, CommandOutbox):
-            assert not session.scalars(select(model).where(model.draft_id == draft["draftId"])).all()
+            assert not session.scalars(
+                select(model).where(model.draft_id == draft["draftId"])
+            ).all()
 
 
 def test_rejection_expiry_revision_and_key_reuse(database):
@@ -137,3 +180,48 @@ def test_rejection_expiry_revision_and_key_reuse(database):
         decide(repo, owner, next_draft, key="expired")
     assert error.value.code == "DRAFT_EXPIRED"
     assert repo.draft(owner, next_draft["draftId"])["status"] == "EXPIRED"
+
+
+async def test_changed_business_state_invalidates_before_confirmation(database, settings):
+    from app.core_client import Principal
+    from app.draft_schemas import DraftDecision
+    from app.drafts import DraftService
+
+    repo, owner, run = running(database)
+    draft = propose(repo, owner, run)
+
+    class Core:
+        async def read(self, *_, **__):
+            return {"deviceId": "ipc-1", "name": "入口摄像机"}
+
+        async def validate_work_order(self, *_):
+            raise ServiceError("CONFLICT", 409, "设备业务状态已变化")
+
+    principal = Principal(
+        owner,
+        "session",
+        1,
+        frozenset(
+            {
+                "agent.use",
+                "device.read",
+                "workorder.create",
+                "agent.draft.prepare",
+                "agent.draft.confirm",
+            }
+        ),
+        "not-persisted",
+    )
+    service = DraftService(settings, repo, None, Core())
+    with pytest.raises(ServiceError) as error:
+        await service.decision(
+            principal,
+            draft["draftId"],
+            DraftDecision(draftRevision=1, contentHash=draft["contentHash"]),
+            "CONFIRM",
+            "decision",
+            "trace",
+        )
+    assert error.value.code == "DRAFT_INVALIDATED"
+    assert repo.draft(owner, draft["draftId"])["status"] == "INVALIDATED"
+    assert repo.run_view(owner, run)["executionStatus"] == "NOT_EXECUTED"

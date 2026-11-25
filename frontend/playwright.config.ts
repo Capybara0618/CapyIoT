@@ -3,7 +3,9 @@ import { defineConfig } from '@playwright/test'
 export default defineConfig({
   testDir: './tests',
   testMatch:
-    process.env.CAPYIOT_LEGACY_TESTS === 'true' ? /.*\.spec\.ts/ : /(video-platform|agent-draft)\.spec\.ts/,
+    process.env.CAPYIOT_LEGACY_TESTS === 'true'
+      ? /.*\.spec\.ts/
+      : /(video-platform|agent-draft)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,

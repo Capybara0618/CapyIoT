@@ -168,7 +168,10 @@ onMounted(() =>
 </script>
 <template>
   <div class="video-page">
-    <PageHeader><RouterLink to="/agent-drafts">审阅 Agent 草稿</RouterLink><button :disabled="busy" @click="run(reload)">刷新</button></PageHeader>
+    <PageHeader
+      ><RouterLink to="/agent-drafts">审阅 Agent 草稿</RouterLink
+      ><button :disabled="busy" @click="run(reload)">刷新</button></PageHeader
+    >
     <p v-if="error" class="video-error" role="alert">{{ error }}</p>
     <section class="video-panel">
       <div class="video-toolbar">

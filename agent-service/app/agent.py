@@ -187,6 +187,15 @@ class OpsAgent:
 
         @self.agent.output_validator
         def verify_evidence(ctx: RunContext[AgentDeps], output: Answer):
+            statements = [claim.statement for claim in (*output.facts, *output.inferences)]
+            for statement in [*statements, *output.recommendations, *output.unknowns]:
+                if re.search(
+                    r"已(?:经)?创建.*(?:正式工单|维修工单(?!草稿))|工单.*创建成功|成功创建.*正式工单",
+                    statement,
+                ):
+                    raise ModelRetry(
+                        "本次工具只能生成草稿，正式工单尚未创建；请说明需要用户审阅确认"
+                    )
             for claim in (*output.facts, *output.inferences):
                 if not set(claim.evidenceIds).issubset(ctx.deps.evidence_ids):
                     logging.getLogger("capyiot.agent").info(

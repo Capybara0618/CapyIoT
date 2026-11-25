@@ -73,6 +73,27 @@ async def test_foundation_has_no_business_tools_and_separates_unknowns(settings)
         )
 
 
+async def test_model_cannot_claim_a_formal_order_was_created(settings):
+    def model(_, info):
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "facts": [],
+                        "inferences": [],
+                        "recommendations": ["已创建正式工单"],
+                        "unknowns": ["等待现场检查"],
+                    },
+                )
+            ]
+        )
+
+    with pytest.raises(ServiceError) as error:
+        await OpsAgent(settings, model=FunctionModel(model)).run("请准备草稿", deps())
+    assert error.value.code == "MODEL_INVALID_OUTPUT"
+
+
 async def test_total_deadline_and_cancellation_stop_the_model(settings):
     async def slow(_, __):
         await asyncio.sleep(10)

@@ -2,17 +2,16 @@ import json
 from datetime import timedelta
 
 import jwt
-import pytest
 from cryptography.hazmat.primitives import serialization
 from sqlalchemy import select
+from test_drafts import decide, propose, running
+from test_repository import database as database
 
 from app.delegation import DelegationSigner
 from app.dispatcher import Dispatcher, DispatchStore
 from app.errors import ServiceError
 from app.models import CommandOutbox
 from app.repository import now
-from test_drafts import running, propose, decide
-from test_repository import database as database
 
 
 def queued(database):
@@ -24,10 +23,19 @@ def queued(database):
 
 def test_signing_keys_are_independent_short_lived_bound_and_rotatable(tmp_path):
     signer = DelegationSigner(tmp_path / "agent-key.json", generate=True)
-    command = {"actorUserId": "user", "confirmationId": "confirmation", "draftId": "draft", "draftRevision": 2, "requestHash": "a" * 64, "idempotencyKey": "agent-command"}
+    command = {
+        "actorUserId": "user",
+        "confirmationId": "confirmation",
+        "draftId": "draft",
+        "draftRevision": 2,
+        "requestHash": "a" * 64,
+        "idempotencyKey": "agent-command",
+    }
     first = signer.issue(command)
     public = jwt.PyJWK.from_dict(signer.jwks()["keys"][0]).key
-    claims = jwt.decode(first, public, algorithms=["RS256"], audience="capyiot-core", issuer="capyiot-agent-service")
+    claims = jwt.decode(
+        first, public, algorithms=["RS256"], audience="capyiot-core", issuer="capyiot-agent-service"
+    )
     assert claims["exp"] - claims["iat"] == 60
     assert all(claims[k] == value for k, value in command.items())
     assert "privateKey" not in json.dumps(signer.jwks()) and '"d"' not in json.dumps(signer.jwks())
@@ -50,7 +58,9 @@ class Core:
         self.keys.append(command["idempotencyKey"])
         if self.deny:
             raise ServiceError("FORBIDDEN", 403, "撤权")
-        self.created.setdefault(command["idempotencyKey"], {"workOrderId": "101", "workOrderNo": "WO-101"})
+        self.created.setdefault(
+            command["idempotencyKey"], {"workOrderId": "101", "workOrderNo": "WO-101"}
+        )
         if self.lose_response:
             self.lose_response = False
             raise ServiceError("COMMAND_OUTCOME_UNKNOWN", 503, "响应丢失")
@@ -66,11 +76,15 @@ class Core:
 
 def ready_retry(database, draft):
     with database.sessions.begin() as session:
-        row = session.scalar(select(CommandOutbox).where(CommandOutbox.draft_id == draft["draftId"]))
+        row = session.scalar(
+            select(CommandOutbox).where(CommandOutbox.draft_id == draft["draftId"])
+        )
         row.next_retry_at = now() - timedelta(seconds=1)
 
 
-async def test_lost_response_reconciles_after_restart_without_creating_twice(database, settings, tmp_path):
+async def test_lost_response_reconciles_after_restart_without_creating_twice(
+    database, settings, tmp_path
+):
     repo, owner, draft = queued(database)
     core, signer = Core(), DelegationSigner(tmp_path / "key.json", generate=True)
     dispatcher = Dispatcher(settings, repo, core, signer)
@@ -83,19 +97,27 @@ async def test_lost_response_reconciles_after_restart_without_creating_twice(dat
     assert len(core.created) == 1 and len(core.keys) == 1
 
 
-async def test_revocation_before_dispatch_fails_without_business_creation(database, settings, tmp_path):
+async def test_revocation_before_dispatch_fails_without_business_creation(
+    database, settings, tmp_path
+):
     repo, owner, draft = queued(database)
     core = Core()
     core.deny = True
-    await Dispatcher(settings, repo, core, DelegationSigner(tmp_path / "key.json", generate=True)).once()
+    await Dispatcher(
+        settings, repo, core, DelegationSigner(tmp_path / "key.json", generate=True)
+    ).once()
     assert not core.created
     assert repo.draft(owner, draft["draftId"])["execution"]["status"] == "FAILED"
 
 
-async def test_unknown_outcome_remains_unknown_after_revocation_and_is_bounded(database, settings, tmp_path):
+async def test_unknown_outcome_remains_unknown_after_revocation_and_is_bounded(
+    database, settings, tmp_path
+):
     repo, owner, draft = queued(database)
     core = Core()
-    dispatcher = Dispatcher(settings, repo, core, DelegationSigner(tmp_path / "key.json", generate=True))
+    dispatcher = Dispatcher(
+        settings, repo, core, DelegationSigner(tmp_path / "key.json", generate=True)
+    )
     await dispatcher.once()
     core.deny = True
     for _ in range(settings.dispatch_max_attempts - 1):

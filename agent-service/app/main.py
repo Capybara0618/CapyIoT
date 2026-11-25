@@ -16,10 +16,10 @@ from app.auth import UserAuthenticator
 from app.config import Settings, load_settings
 from app.core_client import CoreApiClient
 from app.database import Database
-from app.errors import ServiceError
-from app.drafts import DraftRepository, DraftService
 from app.delegation import DelegationSigner
 from app.dispatcher import Dispatcher
+from app.drafts import DraftRepository, DraftService
+from app.errors import ServiceError
 from app.runtime import QueryRuntime
 from app.tools import ToolRunner
 
@@ -47,8 +47,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.auth = UserAuthenticator(app.state.http, config, app.state.core)
         app.state.repository = DraftRepository(app.state.database.sessions)
         app.state.tools = ToolRunner(config, app.state.repository)
-        app.state.drafts = DraftService(config, app.state.repository, app.state.tools, app.state.core)
-        app.state.ops_agent = OpsAgent(config, tools=(*app.state.tools.tools(), app.state.drafts.tool()))
+        app.state.drafts = DraftService(
+            config, app.state.repository, app.state.tools, app.state.core
+        )
+        app.state.ops_agent = OpsAgent(
+            config, tools=(*app.state.tools.tools(), app.state.drafts.tool())
+        )
         app.state.runtime = QueryRuntime(
             config,
             app.state.repository,
@@ -59,8 +63,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.signer, app.state.dispatcher = None, None
         if config.dispatch_enabled:
-            app.state.signer = DelegationSigner(config.delegation_key_file, config.delegation_keys_generate)
-            app.state.dispatcher = Dispatcher(config, app.state.repository, app.state.core, app.state.signer)
+            app.state.signer = DelegationSigner(
+                config.delegation_key_file, config.delegation_keys_generate
+            )
+            app.state.dispatcher = Dispatcher(
+                config, app.state.repository, app.state.core, app.state.signer
+            )
             app.state.dispatcher.start()
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("httpcore").setLevel(logging.WARNING)
