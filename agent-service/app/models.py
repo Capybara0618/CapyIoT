@@ -1,7 +1,18 @@
 """Only Agent-owned data. Business source IDs never reference another schema."""
+
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -24,7 +35,9 @@ class Conversation(Base):
     last_message_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     archived_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     version: Mapped[int] = mapped_column(BigInteger, default=0)
-    __table_args__ = (CheckConstraint("status IN ('ACTIVE','ARCHIVED')", name="ck_conversation_status"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE','ARCHIVED')", name="ck_conversation_status"),
+    )
 
 
 class Message(Base):
@@ -38,14 +51,19 @@ class Message(Base):
     content_status: Mapped[str] = mapped_column(String(40), default="AVAILABLE")
     run_id: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = stamp()
-    __table_args__ = (UniqueConstraint("conversation_id", "message_seq"), CheckConstraint("role IN ('USER','ASSISTANT')"))
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "message_seq"),
+        CheckConstraint("role IN ('USER','ASSISTANT')"),
+    )
 
 
 class AgentRun(Base):
     __tablename__ = "agent_run"
     run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversation.conversation_id"))
-    request_message_id: Mapped[str] = mapped_column(ForeignKey("conversation_message.message_id"), unique=True)
+    request_message_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_message.message_id"), unique=True
+    )
     owner_user_id: Mapped[str] = mapped_column(String(64))
     intent_type: Mapped[str] = mapped_column(String(32), default="USER_REQUEST")
     status: Mapped[str] = mapped_column(String(32), default="CREATED")
@@ -59,8 +77,12 @@ class AgentRun(Base):
     failure_code: Mapped[str | None] = mapped_column(String(64))
     answer_message_id: Mapped[str | None] = mapped_column(String(64))
     version: Mapped[int] = mapped_column(BigInteger, default=0)
-    __table_args__ = (UniqueConstraint("owner_user_id", "idempotency_key"),
-        CheckConstraint("status IN ('CREATED','PLANNING','RUNNING','WAITING_CONFIRMATION','SUCCEEDED','PARTIAL_SUCCEEDED','FAILED','CANCELLED','TIMED_OUT')"))
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "idempotency_key"),
+        CheckConstraint(
+            "status IN ('CREATED','PLANNING','RUNNING','WAITING_CONFIRMATION','SUCCEEDED','PARTIAL_SUCCEEDED','FAILED','CANCELLED','TIMED_OUT')"
+        ),
+    )
 
 
 class AgentStep(Base):
@@ -96,7 +118,12 @@ class ToolCall(Base):
     latency_ms: Mapped[int | None] = mapped_column(BigInteger)
     started_at: Mapped[datetime] = stamp()
     finished_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
-    __table_args__ = (UniqueConstraint("run_id", "sequence_no"), CheckConstraint("status IN ('STARTED','SUCCEEDED','EMPTY','REJECTED','FAILED','TIMED_OUT')"))
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence_no"),
+        CheckConstraint(
+            "status IN ('STARTED','SUCCEEDED','EMPTY','REJECTED','FAILED','TIMED_OUT')"
+        ),
+    )
 
 
 class Evidence(Base):
@@ -140,8 +167,12 @@ class Draft(Base):
     result_business_object_type: Mapped[str | None] = mapped_column(String(32))
     result_business_object_id: Mapped[str | None] = mapped_column(String(64))
     version: Mapped[int] = mapped_column(BigInteger, default=0)
-    __table_args__ = (CheckConstraint("action_type='WORK_ORDER' AND source_type='USER_REQUEST'"),
-        CheckConstraint("status IN ('DRAFTED','PENDING_CONFIRMATION','CONFIRMED','EXECUTING','EXECUTED','REJECTED','INVALIDATED','EXPIRED','FAILED')"))
+    __table_args__ = (
+        CheckConstraint("action_type='WORK_ORDER' AND source_type='USER_REQUEST'"),
+        CheckConstraint(
+            "status IN ('DRAFTED','PENDING_CONFIRMATION','CONFIRMED','EXECUTING','EXECUTED','REJECTED','INVALIDATED','EXPIRED','FAILED')"
+        ),
+    )
 
 
 class DraftRevision(Base):
@@ -166,8 +197,10 @@ class Confirmation(Base):
     request_id: Mapped[str] = mapped_column(String(128))
     authorization_result: Mapped[str] = mapped_column(String(32))
     idempotency_key: Mapped[str] = mapped_column(String(128))
-    __table_args__ = (UniqueConstraint("draft_id", "draft_revision", "action"),
-        CheckConstraint("action IN ('CONFIRM','REJECT')"))
+    __table_args__ = (
+        UniqueConstraint("draft_id", "draft_revision", "action"),
+        CheckConstraint("action IN ('CONFIRM','REJECT')"),
+    )
 
 
 class Execution(Base):
@@ -187,7 +220,11 @@ class Execution(Base):
     error_summary: Mapped[str | None] = mapped_column(String(1000))
     attempt_count: Mapped[int] = mapped_column(default=0)
     version: Mapped[int] = mapped_column(BigInteger, default=0)
-    __table_args__ = (CheckConstraint("status IN ('QUEUED','EXECUTING','SUCCEEDED','FAILED','RECONCILIATION_REQUIRED')"),)
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('QUEUED','EXECUTING','SUCCEEDED','FAILED','RECONCILIATION_REQUIRED')"
+        ),
+    )
 
 
 class CommandOutbox(Base):
@@ -195,7 +232,9 @@ class CommandOutbox(Base):
     command_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     draft_id: Mapped[str] = mapped_column(ForeignKey("operation_draft.draft_id"))
     draft_revision: Mapped[int] = mapped_column()
-    confirmation_id: Mapped[str] = mapped_column(ForeignKey("confirmation_record.confirmation_id"), unique=True)
+    confirmation_id: Mapped[str] = mapped_column(
+        ForeignKey("confirmation_record.confirmation_id"), unique=True
+    )
     actor_user_id: Mapped[str] = mapped_column(String(64))
     command_type: Mapped[str] = mapped_column(String(32))
     idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
@@ -207,5 +246,10 @@ class CommandOutbox(Base):
     lease_until: Mapped[datetime | None] = mapped_column(DATETIME(fsp=3))
     created_at: Mapped[datetime] = stamp()
     last_error: Mapped[str | None] = mapped_column(String(1000))
-    __table_args__ = (Index("ix_agent_dispatch", "status", "next_retry_at"), CheckConstraint("command_type='CREATE_WORK_ORDER'"),
-        CheckConstraint("status IN ('PENDING','DISPATCHING','RETRY','SUCCEEDED','DEAD','RECONCILIATION_REQUIRED')"))
+    __table_args__ = (
+        Index("ix_agent_dispatch", "status", "next_retry_at"),
+        CheckConstraint("command_type='CREATE_WORK_ORDER'"),
+        CheckConstraint(
+            "status IN ('PENDING','DISPATCHING','RETRY','SUCCEEDED','DEAD','RECONCILIATION_REQUIRED')"
+        ),
+    )

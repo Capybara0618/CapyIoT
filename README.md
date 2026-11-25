@@ -89,6 +89,28 @@ python scripts/verify_stage1.py --install-browser
 
 ## 部署与观测
 
+### Agent 服务基础
+
+2026-11-25 已完成阶段二基础代码与离线统一验证：34 项 Python 测试、静态检查、容器构建迁移及 Gateway/Core/Agent 联调通过。真实 DeepSeek 联调按用户选择留待模型配置后执行，当前不宣称真实模型兼容性已验收。
+
+`agent-service` 使用 Python 3.12、FastAPI、SQLAlchemy/Alembic、HTTPX 和 PydanticAI。`uv.lock` 固定依赖；官方 DeepSeek Provider 的模型客户端与调用 Java Core 的客户端独立。Agent 账号只拥有 `agent_db` 权限，每次用户请求都校验 Gateway RS256/JWKS 并向 Core 核对最新会话和授权。
+
+先执行 `python scripts/init_env.py`，再在本地 `.env` 填写 `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`；可通过 `DEEPSEEK_BASE_URL` 配置模型 API 地址。现有 MySQL 数据卷需要先执行：
+
+```sh
+docker compose up -d mysql
+python scripts/ensure_agent_db.py
+docker compose --profile agent up -d --build
+```
+
+Agent 使用独立的一次性迁移容器执行 Alembic，再启动服务。`/health/live` 检查进程，`/health/ready` 分别检查数据库迁移、Core 和模型元数据，失败返回 503；探针不生成模型回答。缺少必需配置时启动失败。通过 Gateway 可访问 `/api/v1/agent/conversations` 的创建/列表及指定会话历史；对话严格按当前用户隔离。
+
+阶段二只提供基础能力，尚未开放消息执行/SSE、业务工具、草稿确认和正式工单派发。当前存储的历史助手回答在尚未实现证据重授权时保守隐藏。后续阶段补齐证据重验后再开放历史正文。
+
+全部阶段二编码完成后，通过 `python scripts/verify_stage2.py` 显式执行离线统一验证；它使用独立 MySQL/Compose 数据卷和本地模型元数据替身，结束后关闭测试环境、保留原始报告在 `var/verification/`。测试覆盖真实 Provider 的离线 HTTP 序列化，但不能证明真实 DeepSeek 的工具调用、流式输出及模型兼容性；这些须在配置模型后另行联调。CI 仍只手动触发。
+
+### 平台监控
+
 ```sh
 docker compose --profile monitoring up -d
 ```
@@ -97,4 +119,4 @@ docker compose --profile monitoring up -d
 
 Helm 部署文件位于 `infra/helm/capyiot`。先生成本地配置和 TLS，再通过 `scripts/k8s_secrets.py --context <context> --namespace capyiot` 创建运行凭据与服务端证书 Secret。CA 私钥不上传。设备公钥/用户公钥分别发布，私钥分别使用 PVC。Kubernetes 及旧 KEDA 演示保留为可选部署，当前重构尚待统一验证；旧 device-state-group 的伸缩配置不代表新版 Core 容量结论。
 
-当前阶段不实现 Python AI Agent，也不新增 SuperAgent、多 Agent、RAG、视频流模块或任意 SQL/HTTP/shell 工具。后续 Agent 只能通过经授权的业务 API 工作。
+Agent 只响应用户主动请求；不新增 SuperAgent、多 Agent、RAG、视频流模块或任意 SQL/HTTP/shell 工具。业务查询和命令始终通过经授权的 Java API 完成。

@@ -1,4 +1,5 @@
 """Immutable initial Agent schema; future model changes require a new revision."""
+
 from pathlib import Path
 
 from alembic import op
@@ -17,4 +18,6 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError("Agent history migrations are forward-only; restore a reviewed backup instead")
+    raise RuntimeError(
+        "Agent history migrations are forward-only; restore a reviewed backup instead"
+    )

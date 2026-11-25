@@ -3,7 +3,10 @@ from typing import Annotated, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, PlainSerializer
 
-UtcTime = Annotated[datetime, PlainSerializer(lambda value: value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z"))]
+UtcTime = Annotated[
+    datetime,
+    PlainSerializer(lambda value: value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")),
+]
 T = TypeVar("T")
 
 

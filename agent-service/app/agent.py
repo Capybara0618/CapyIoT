@@ -6,7 +6,13 @@ from pathlib import Path
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, ModelRetry, RunContext, Tool, UsageLimits
-from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, UsageLimitExceeded
+from pydantic_ai.exceptions import (
+    ModelAPIError,
+    ModelRequestTimeout,
+    ModelTimeoutError,
+    UnexpectedModelBehavior,
+    UsageLimitExceeded,
+)
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
 from pydantic_ai.providers.deepseek import DeepSeekProvider
@@ -15,9 +21,20 @@ from app.config import Settings
 from app.core_client import CoreApiClient, Principal
 from app.errors import ServiceError
 
-ALLOWLIST = frozenset({"query_devices", "get_device_detail", "get_device_status_history", "query_anomalies",
-    "get_incident_detail", "query_incidents", "get_topology_context", "query_work_orders",
-    "get_maintenance_history", "prepare_work_order"})
+ALLOWLIST = frozenset(
+    {
+        "query_devices",
+        "get_device_detail",
+        "get_device_status_history",
+        "query_anomalies",
+        "get_incident_detail",
+        "query_incidents",
+        "get_topology_context",
+        "query_work_orders",
+        "get_maintenance_history",
+        "prepare_work_order",
+    }
+)
 
 
 class Claim(BaseModel):
@@ -44,22 +61,46 @@ class AgentDeps:
 
 
 class OpsAgent:
-    def __init__(self, settings: Settings, *, model: Model | None = None, tools: tuple[Tool, ...] = (), provider: DeepSeekProvider | None = None):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        model: Model | None = None,
+        tools: tuple[Tool, ...] = (),
+        provider: DeepSeekProvider | None = None,
+    ):
         self.settings = settings
-        if any(tool.name not in ALLOWLIST for tool in tools) or len({tool.name for tool in tools}) != len(tools):
+        if any(tool.name not in ALLOWLIST for tool in tools) or len(
+            {tool.name for tool in tools}
+        ) != len(tools):
             raise ValueError("Only explicitly registered CapyIoT business tools are allowed")
         self.provider = None
         if model is None:
             # Dedicated provider client; never share the Core user's token or its HTTP pool.
-            self.provider = provider or DeepSeekProvider(openai_client=AsyncOpenAI(
-                api_key=settings.deepseek_api_key.get_secret_value(), base_url=settings.deepseek_base_url,
-                max_retries=0, timeout=settings.http_timeout_seconds))
+            self.provider = provider or DeepSeekProvider(
+                openai_client=AsyncOpenAI(
+                    api_key=settings.deepseek_api_key.get_secret_value(),
+                    base_url=settings.deepseek_base_url,
+                    max_retries=0,
+                    timeout=settings.http_timeout_seconds,
+                )
+            )
             model = OpenAIChatModel(settings.deepseek_model, provider=self.provider)
-        prompt = Path(__file__).with_name("prompts").joinpath("system.md").read_text(encoding="utf-8")
-        self.agent = Agent(model, deps_type=AgentDeps, output_type=Answer, instructions=prompt,
-                           tools=tools, retries=1, instrument=False,
-                           model_settings=OpenAIChatModelSettings(thinking=False,
-                               max_tokens=settings.max_output_tokens, parallel_tool_calls=False))
+        prompt = (
+            Path(__file__).with_name("prompts").joinpath("system.md").read_text(encoding="utf-8")
+        )
+        self.agent = Agent(
+            model,
+            deps_type=AgentDeps,
+            output_type=Answer,
+            instructions=prompt,
+            tools=tools,
+            retries=1,
+            model_settings=OpenAIChatModelSettings(
+                thinking=False, max_tokens=settings.max_output_tokens, parallel_tool_calls=False
+            ),
+        )
+        self.agent.instrument = False
         self.registered_tools = frozenset(tool.name for tool in tools)
         self.slots = asyncio.BoundedSemaphore(settings.max_concurrent_runs)
         logging.getLogger("openai").setLevel(logging.WARNING)
@@ -80,18 +121,23 @@ class OpsAgent:
         try:
             async with asyncio.timeout(self.settings.run_timeout_seconds):
                 async with self.slots:
-                    result = await self.agent.run(content, deps=deps, usage_limits=UsageLimits(
-                        request_limit=self.settings.max_model_requests,
-                        tool_calls_limit=self.settings.max_tool_calls,
-                        output_tokens_limit=self.settings.max_output_tokens))
+                    result = await self.agent.run(
+                        content,
+                        deps=deps,
+                        usage_limits=UsageLimits(
+                            request_limit=self.settings.max_model_requests,
+                            tool_calls_limit=self.settings.max_tool_calls,
+                            output_tokens_limit=self.settings.max_output_tokens,
+                        ),
+                    )
                     return result.output
-        except TimeoutError:
+        except (TimeoutError, ModelRequestTimeout, ModelTimeoutError):
             raise ServiceError("MODEL_TIMEOUT", 504, "模型运行超时，请稍后重试") from None
         except UsageLimitExceeded:
             raise ServiceError("RUN_BUDGET_EXCEEDED", 409, "本次运行已达到预算上限") from None
         except UnexpectedModelBehavior:
             raise ServiceError("MODEL_INVALID_OUTPUT", 502, "模型未返回可核查的有效回答") from None
-        except ModelHTTPError:
+        except ModelAPIError:
             raise ServiceError("MODEL_UNAVAILABLE", 503, "模型服务暂不可用") from None
 
     async def close(self):

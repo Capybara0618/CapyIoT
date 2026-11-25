@@ -1,4 +1,5 @@
 """Offline model metadata fixture; no real model, generation or API key required."""
+
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
