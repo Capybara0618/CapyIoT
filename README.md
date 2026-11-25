@@ -93,6 +93,8 @@ python scripts/verify_stage1.py --install-browser
 
 2026-11-25 已完成阶段二基础代码与离线统一验证：34 项 Python 测试、静态检查、容器构建迁移及 Gateway/Core/Agent 联调通过。真实 DeepSeek 联调按用户选择留待模型配置后执行，当前不宣称真实模型兼容性已验收。
 
+同日已完成阶段三代码与离线整链路验收：77 项 Python 测试、45 项 Core/共享契约测试通过；独立环境中九个工具实际调用 Java API，查询回答、证据重验、幂等重放、主动/断连取消和重启恢复均通过。真实模型的工具选择与推理效果仍待配置后实测。
+
 `agent-service` 使用 Python 3.12、FastAPI、SQLAlchemy/Alembic、HTTPX 和 PydanticAI。`uv.lock` 固定依赖；官方 DeepSeek Provider 的模型客户端与调用 Java Core 的客户端独立。Agent 账号只拥有 `agent_db` 权限，每次用户请求都校验 Gateway RS256/JWKS 并向 Core 核对最新会话和授权。
 
 先执行 `python scripts/init_env.py`，再在本地 `.env` 填写 `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`；可通过 `DEEPSEEK_BASE_URL` 配置模型 API 地址。现有 MySQL 数据卷需要先执行：
@@ -105,9 +107,19 @@ docker compose --profile agent up -d --build
 
 Agent 使用独立的一次性迁移容器执行 Alembic，再启动服务。`/health/live` 检查进程，`/health/ready` 分别检查数据库迁移、Core 和模型元数据，失败返回 503；探针不生成模型回答。缺少必需配置时启动失败。通过 Gateway 可访问 `/api/v1/agent/conversations` 的创建/列表及指定会话历史；对话严格按当前用户隔离。
 
-阶段二只提供基础能力，尚未开放消息执行/SSE、业务工具、草稿确认和正式工单派发。当前存储的历史助手回答在尚未实现证据重授权时保守隐藏。后续阶段补齐证据重验后再开放历史正文。
+阶段二提供服务基础，阶段三接入了 9 个只读业务工具及消息查询链路。用户通过 `POST /api/v1/agent/conversations/{id}/messages` 发起查询，必填 `Idempotency-Key`，并声明 `Accept: text/event-stream`。响应提供运行/工具进度及校验后的结构化回答；`GET /api/v1/agent/runs/{id}` 查询持久化结果，`POST /api/v1/agent/runs/{id}/cancel` 主动取消。前端对话界面仍留后续阶段，当前可通过 API 使用。
+
+工具覆盖设备、状态历史、异常、故障详情、拓扑、工单和维修历史，参数不接受模型自报身份或园区权限。异常严重程度沿用新领域的 `WARNING/FAULT`，不混用历史告警枚举。列表默认 20 条、最大 50 条；拓扑深度最大 3、节点上限 100。裁剪、权限受限和数据新鲜度不足会明确标记。ToolCall、来源对象 ID/版本/时间和证据引用保存至 Agent 自有数据库；原始设备载荷和模型思维链不落库。
+
+时间筛选须使用 RFC3339 UTC，单次最大跨度默认 31 天；只提供一侧边界时由服务端补齐有界范围。工单及维修历史列表的时间筛选按工单创建时间执行。历史拓扑关系与当前节点状态分开展示，不将当前在线状态冒充历史状态。
+
+历史答案与有界对话上下文在读取时重新查询 Core 校验：授权版本、可见来源对象或结果范围变化时保守隐藏旧答案；没有可重验来源的旧答案也保持隐藏。历史对话不能充当权限凭证。消息响应只发送经过 Schema 与引用校验的回答，`answer.delta` 当前为一次完整结构化回答片段，不承诺模型 Token 级实时输出或重放。客户端断开即取消运行；已完成工具记录和证据保留。中断的只读 Run 达到期限后可查询到超时终态。
+
+阶段三不注册 `prepare_work_order`，不创建草稿、正式工单或修改根因。草稿确认、服务委托签名与正式命令派发留阶段四实现。
 
 全部阶段二编码完成后，通过 `python scripts/verify_stage2.py` 显式执行离线统一验证；它使用独立 MySQL/Compose 数据卷和本地模型元数据替身，结束后关闭测试环境、保留原始报告在 `var/verification/`。测试覆盖真实 Provider 的离线 HTTP 序列化，但不能证明真实 DeepSeek 的工具调用、流式输出及模型兼容性；这些须在配置模型后另行联调。CI 仍只手动触发。
+
+阶段三统一验证入口为 `python scripts/verify_stage3.py`：串行执行 Python 测试、Core/共享契约回归，以及虚拟交换机故障→真实 Java API→九个 Agent 工具→可追溯回答的整链路验收。只有模型使用确定性的离线替身，其余接入、数据与用户权限来自独立部署的真实平台。支持 `--resume-report <本地报告>`，仅按输入哈希复用成功构建检查，部署与查询场景始终重新执行。这个离线场景验证系统链路，不代表真实模型的推理质量或 DeepSeek 兼容性已经验证。
 
 ### 平台监控
 

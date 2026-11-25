@@ -1,4 +1,5 @@
 """Fixed input contracts and allowlisted projections; never pass raw Core payloads to a model."""
+
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Generic, Literal, TypeVar
 
@@ -40,9 +41,9 @@ class TimeRange(Input):
     def bounded(self, days):
         limit = timedelta(days=days)
         if self.from_ or self.to:
-            start = self.from_ or self.to-limit
-            end = self.to or min(datetime.now(UTC), start+limit)
-            if end <= start or end-start > limit:
+            start = self.from_ or self.to - limit
+            end = self.to or min(datetime.now(UTC), start + limit)
+            if end <= start or end - start > limit:
                 raise ValueError("时间查询超出跨度上限")
             return {"from": start.isoformat(), "to": end.isoformat()}
         return {}
@@ -70,7 +71,7 @@ class StatusHistory(TimeRange, Pagination, DeviceIdentity):
 class QueryAnomalies(TimeRange, Pagination):
     deviceId: ID | None = None
     anomalyType: str | None = Field(default=None, max_length=64, pattern=r"^[A-Z_]+$")
-    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] | None = None
+    severity: Literal["WARNING", "FAULT"] | None = None
     status: Literal["ACTIVE", "RECOVERED", "DISMISSED"] | None = None
 
 
@@ -81,7 +82,10 @@ class IncidentIdentity(Input):
 class QueryIncidents(TimeRange, Pagination):
     deviceId: ID | None = None
     areaId: ID | None = None
-    status: Literal["PENDING_REVIEW", "OPEN", "PROCESSING", "PENDING_CLOSE", "CLOSED", "REJECTED"] | None = None
+    status: (
+        Literal["PENDING_REVIEW", "OPEN", "PROCESSING", "PENDING_CLOSE", "CLOSED", "REJECTED"]
+        | None
+    ) = None
     priority: Literal["P1", "P2", "P3", "P4"] | None = None
 
 
@@ -108,7 +112,19 @@ class TopologyQuery(Input):
 class QueryOrders(TimeRange, Pagination):
     deviceId: ID | None = None
     incidentId: ID | None = None
-    status: Literal["OPEN", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "VERIFYING", "RETURNED", "CLOSED", "CANCELLED"] | None = None
+    status: (
+        Literal[
+            "OPEN",
+            "ASSIGNED",
+            "ACCEPTED",
+            "IN_PROGRESS",
+            "VERIFYING",
+            "RETURNED",
+            "CLOSED",
+            "CANCELLED",
+        ]
+        | None
+    ) = None
     priority: Literal["P1", "P2", "P3", "P4"] | None = None
     assignedRepairerId: ID | None = None
     designatedAcceptorId: ID | None = None
@@ -194,7 +210,7 @@ class Anomaly(Projection):
     anomalyType: str
     resourceKey: str | None = None
     status: str
-    severity: str
+    severity: Literal["WARNING", "FAULT"]
     version: int
     firstObservedAt: datetime | None = None
     lastObservedAt: datetime | None = None
@@ -306,6 +322,7 @@ class EvidenceView(BaseModel):
     sourceMode: Literal["CORE_API"] = "CORE_API"
     freshnessStatus: str
     summary: str
+    sourceObjects: list[dict] = Field(default_factory=list)
 
 
 class ToolResult(BaseModel, Generic[T]):

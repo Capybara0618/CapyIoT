@@ -1,4 +1,5 @@
 """Persist safe query provenance and bound read-only Run lifetimes."""
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.mysql import DATETIME

@@ -7,7 +7,16 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.errors import ServiceError
-from app.models import AgentRun, AgentStep, Conversation, Draft, DraftRevision, Evidence, Message, ToolCall
+from app.models import (
+    AgentRun,
+    AgentStep,
+    Conversation,
+    Draft,
+    DraftRevision,
+    Evidence,
+    Message,
+    ToolCall,
+)
 
 ACTIVE_RUNS = {"CREATED", "PLANNING", "RUNNING"}
 
@@ -120,12 +129,23 @@ class Repository:
                     return old.run_id, False
                 if conversation.status != "ACTIVE":
                     raise ServiceError("CONVERSATION_ARCHIVED", 409, "归档对话不可写入")
-                for active in session.scalars(select(AgentRun).where(AgentRun.conversation_id == conversation_id, AgentRun.status.in_(ACTIVE_RUNS))):
+                for active in session.scalars(
+                    select(AgentRun).where(
+                        AgentRun.conversation_id == conversation_id,
+                        AgentRun.status.in_(ACTIVE_RUNS),
+                    )
+                ):
                     if active.lease_until and active.lease_until < now():
-                        active.status, active.failure_code, active.finished_at = "TIMED_OUT", "RUN_INTERRUPTED", now()
+                        active.status, active.failure_code, active.finished_at = (
+                            "TIMED_OUT",
+                            "RUN_INTERRUPTED",
+                            now(),
+                        )
                         active.version += 1
                     else:
-                        raise ServiceError("RUN_ALREADY_IN_PROGRESS", 409, "该对话已有运行中的请求，请稍后查询")
+                        raise ServiceError(
+                            "RUN_ALREADY_IN_PROGRESS", 409, "该对话已有运行中的请求，请稍后查询"
+                        )
                 sequence = (
                     session.scalar(
                         select(func.max(Message.message_seq)).where(
@@ -155,7 +175,7 @@ class Repository:
                         idempotency_key=key,
                         request_hash=request_hash,
                         correlation_id=correlation,
-                        lease_until=now()+timedelta(seconds=240),
+                        lease_until=now() + timedelta(seconds=240),
                     )
                 )
                 conversation.last_message_at = now()
@@ -226,45 +246,91 @@ class Repository:
             run = self.owned(session, AgentRun, owner, identity, lock=True)
             if run.status != "CREATED":
                 raise ServiceError("INVALID_STATE", 409, "运行不可重复执行")
-            run.status, run.lease_until = "RUNNING", now()+timedelta(seconds=duration+15)
-            run.current_step_no, run.version = 1, run.version+1
-            session.add(AgentStep(step_id=str(uuid.uuid4()), run_id=identity, sequence_no=1, step_type="QUERY_ANALYSIS",
-                                  status="STARTED", summary="查询当前授权范围内的业务证据"))
+            run.status, run.lease_until = "RUNNING", now() + timedelta(seconds=duration + 15)
+            run.current_step_no, run.version = 1, run.version + 1
+            session.add(
+                AgentStep(
+                    step_id=str(uuid.uuid4()),
+                    run_id=identity,
+                    sequence_no=1,
+                    step_type="QUERY_ANALYSIS",
+                    status="STARTED",
+                    summary="查询当前授权范围内的业务证据",
+                )
+            )
 
     def run_view(self, owner, identity):
         with self.sessions.begin() as session:
             run = self.owned(session, AgentRun, owner, identity, lock=True)
             if run.status in ACTIVE_RUNS and run.lease_until and run.lease_until < now():
-                run.status, run.failure_code, run.finished_at = "TIMED_OUT", "RUN_INTERRUPTED", now()
+                run.status, run.failure_code, run.finished_at = (
+                    "TIMED_OUT",
+                    "RUN_INTERRUPTED",
+                    now(),
+                )
                 run.version += 1
             answer = session.get(Message, run.answer_message_id) if run.answer_message_id else None
-            return {"runId": identity, "conversationId": run.conversation_id, "status": run.status,
-                    "startedAt": run.started_at, "finishedAt": run.finished_at, "answerMessageId": run.answer_message_id,
-                    "answer": json.loads(answer.content) if answer else None, "toolCallCount": run.tool_call_count,
-                    "draftId": None, "executionStatus": "NOT_EXECUTED", "errorCode": run.failure_code, "version": run.version}
+            return {
+                "runId": identity,
+                "conversationId": run.conversation_id,
+                "status": run.status,
+                "startedAt": run.started_at,
+                "finishedAt": run.finished_at,
+                "answerMessageId": run.answer_message_id,
+                "answer": json.loads(answer.content) if answer else None,
+                "toolCallCount": run.tool_call_count,
+                "draftId": None,
+                "executionStatus": "NOT_EXECUTED",
+                "errorCode": run.failure_code,
+                "version": run.version,
+            }
 
     def finish_run(self, owner, identity, status, answer=None, error_code=None):
         with self.sessions.begin() as session:
             original = self.owned(session, AgentRun, owner, identity)
-            conversation = self.owned(session, Conversation, owner, original.conversation_id, lock=True)
+            conversation = self.owned(
+                session, Conversation, owner, original.conversation_id, lock=True
+            )
             run = self.owned(session, AgentRun, owner, identity, lock=True)
             if run.status not in ACTIVE_RUNS:
                 return run.answer_message_id
             if status not in {"SUCCEEDED", "PARTIAL_SUCCEEDED", "FAILED", "CANCELLED", "TIMED_OUT"}:
                 raise ValueError("Invalid terminal status")
             if answer is not None:
-                sequence = session.scalar(select(func.max(Message.message_seq)).where(Message.conversation_id == run.conversation_id)) or 0
-                message = Message(message_id=str(uuid.uuid4()), conversation_id=run.conversation_id, message_seq=sequence+1,
-                                  role="ASSISTANT", content=json.dumps(answer, ensure_ascii=False), content_type="STRUCTURED_ANSWER", run_id=identity)
+                sequence = (
+                    session.scalar(
+                        select(func.max(Message.message_seq)).where(
+                            Message.conversation_id == run.conversation_id
+                        )
+                    )
+                    or 0
+                )
+                message = Message(
+                    message_id=str(uuid.uuid4()),
+                    conversation_id=run.conversation_id,
+                    message_seq=sequence + 1,
+                    role="ASSISTANT",
+                    content=json.dumps(answer, ensure_ascii=False),
+                    content_type="STRUCTURED_ANSWER",
+                    run_id=identity,
+                )
                 session.add(message)
                 run.answer_message_id = message.message_id
-                conversation.last_message_at, conversation.version = now(), conversation.version+1
+                conversation.last_message_at, conversation.version = now(), conversation.version + 1
             run.status, run.failure_code, run.finished_at = status, error_code, now()
             run.version += 1
-            for step in session.scalars(select(AgentStep).where(AgentStep.run_id == identity, AgentStep.status == "STARTED")):
+            for step in session.scalars(
+                select(AgentStep).where(AgentStep.run_id == identity, AgentStep.status == "STARTED")
+            ):
                 step.status, step.finished_at, step.error_code = status, now(), error_code
-            for tool in session.scalars(select(ToolCall).where(ToolCall.run_id == identity, ToolCall.status == "STARTED")):
-                tool.status, tool.finished_at, tool.error_code = "FAILED", now(), error_code or "RUN_TERMINATED"
+            for tool in session.scalars(
+                select(ToolCall).where(ToolCall.run_id == identity, ToolCall.status == "STARTED")
+            ):
+                tool.status, tool.finished_at, tool.error_code = (
+                    "FAILED",
+                    now(),
+                    error_code or "RUN_TERMINATED",
+                )
             return run.answer_message_id
 
     def start_tool(self, owner, run_id, name, arguments, budget):
@@ -276,14 +342,25 @@ class Repository:
                 raise ServiceError("RUN_BUDGET_EXCEEDED", 409, "工具调用已达到上限")
             run.tool_call_count += 1
             identity = str(uuid.uuid4())
-            session.add(ToolCall(tool_call_id=identity, run_id=run_id, sequence_no=run.tool_call_count, tool_name=name,
-                                input_summary=json.dumps(arguments, ensure_ascii=False, separators=(",", ":")), input_hash=fingerprint(arguments),
-                                authorization_decision="PENDING", status="STARTED"))
+            session.add(
+                ToolCall(
+                    tool_call_id=identity,
+                    run_id=run_id,
+                    sequence_no=run.tool_call_count,
+                    tool_name=name,
+                    input_summary=json.dumps(arguments, ensure_ascii=False, separators=(",", ":")),
+                    input_hash=fingerprint(arguments),
+                    authorization_decision="PENDING",
+                    status="STARTED",
+                )
+            )
             return identity
 
-    def finish_tool(self, owner, run_id, call_id, result, provenance=None, result_hash=None, latency=0):
+    def finish_tool(
+        self, owner, run_id, call_id, result, provenance=None, result_hash=None, latency=0
+    ):
         with self.sessions.begin() as session:
-            run = self.owned(session, AgentRun, owner, run_id, lock=True)
+            self.owned(session, AgentRun, owner, run_id, lock=True)
             call = session.get(ToolCall, call_id)
             if call is None or call.run_id != run_id:
                 raise ServiceError("NOT_FOUND", 404, "工具记录不存在")
@@ -291,29 +368,72 @@ class Repository:
                 return
             call.status, call.finished_at, call.latency_ms = result.status, now(), latency
             call.error_code = result.errorCode
-            call.authorization_decision = "DENIED" if result.authorization == "DENIED" else "CURRENT_USER_SCOPE"
+            call.authorization_decision = (
+                "DENIED" if result.authorization == "DENIED" else "CURRENT_USER_SCOPE"
+            )
             call.result_summary = f"status={result.status}; completeness={result.completeness}; truncated={result.truncated}"
             for reference in result.evidenceReferences:
-                session.add(Evidence(evidence_id=reference.evidenceId, run_id=run_id, tool_call_id=call_id,
-                    source_context=reference.sourceContext, source_type="TOOL_RESULT", source_id=call_id,
-                    source_version=reference.sourceVersion, source_mode="CORE_API", relation="FACT",
-                    evidence_summary=reference.summary, freshness_status=reference.freshnessStatus,
-                    query_json=provenance, result_hash=result_hash))
+                session.add(
+                    Evidence(
+                        evidence_id=reference.evidenceId,
+                        run_id=run_id,
+                        tool_call_id=call_id,
+                        source_context=reference.sourceContext,
+                        source_type="TOOL_RESULT",
+                        source_id=call_id,
+                        source_version=reference.sourceVersion,
+                        source_mode="CORE_API",
+                        relation="FACT",
+                        evidence_summary=reference.summary,
+                        freshness_status=reference.freshnessStatus,
+                        query_json=provenance,
+                        result_hash=result_hash,
+                    )
+                )
 
     def evidence(self, owner, run_id):
         with self.sessions() as session:
             self.owned(session, AgentRun, owner, run_id)
-            return [{"evidenceId": row.evidence_id, "toolName": row.query_json.get("tool") if row.query_json else None,
-                "arguments": row.query_json.get("arguments") if row.query_json else None,
-                "authorizationVersion": row.query_json.get("authorizationVersion") if row.query_json else None,
-                "resultHash": row.result_hash, "retrievedAt": row.retrieved_at.replace(tzinfo=UTC).isoformat(),
-                "sourceContext": row.source_context, "sourceId": row.source_id, "sourceVersion": row.source_version,
-                "freshnessStatus": row.freshness_status, "summary": row.evidence_summary}
-                for row in session.scalars(select(Evidence).where(Evidence.run_id == run_id).order_by(Evidence.evidence_id))]
+            return [
+                {
+                    "evidenceId": row.evidence_id,
+                    "toolName": row.query_json.get("tool") if row.query_json else None,
+                    "arguments": row.query_json.get("arguments") if row.query_json else None,
+                    "authorizationVersion": row.query_json.get("authorizationVersion")
+                    if row.query_json
+                    else None,
+                    "resultHash": row.result_hash,
+                    "sourceObjects": row.query_json.get("sourceObjects", [])
+                    if row.query_json
+                    else [],
+                    "retrievedAt": row.retrieved_at.replace(tzinfo=UTC).isoformat(),
+                    "sourceContext": row.source_context,
+                    "sourceId": row.source_id,
+                    "sourceVersion": row.source_version,
+                    "freshnessStatus": row.freshness_status,
+                    "summary": row.evidence_summary,
+                }
+                for row in session.scalars(
+                    select(Evidence).where(Evidence.run_id == run_id).order_by(Evidence.evidence_id)
+                )
+            ]
 
     def recent_messages(self, owner, conversation_id, limit):
         with self.sessions() as session:
             self.owned(session, Conversation, owner, conversation_id)
-            rows = list(session.scalars(select(Message).where(Message.conversation_id == conversation_id)
-                        .order_by(Message.message_seq.desc()).limit(limit))) if limit else []
-            return [{"role": row.role, "content": row.content, "runId": row.run_id} for row in reversed(rows)]
+            rows = (
+                list(
+                    session.scalars(
+                        select(Message)
+                        .where(Message.conversation_id == conversation_id)
+                        .order_by(Message.message_seq.desc())
+                        .limit(limit)
+                    )
+                )
+                if limit
+                else []
+            )
+            return [
+                {"role": row.role, "content": row.content, "runId": row.run_id}
+                for row in reversed(rows)
+            ]

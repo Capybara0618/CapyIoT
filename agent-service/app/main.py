@@ -46,7 +46,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.repository = Repository(app.state.database.sessions)
         app.state.tools = ToolRunner(config, app.state.repository)
         app.state.ops_agent = OpsAgent(config, tools=app.state.tools.tools())
-        app.state.runtime = QueryRuntime(config, app.state.repository, app.state.tools, app.state.core, app.state.auth, app.state.ops_agent)
+        app.state.runtime = QueryRuntime(
+            config,
+            app.state.repository,
+            app.state.tools,
+            app.state.core,
+            app.state.auth,
+            app.state.ops_agent,
+        )
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("httpcore").setLevel(logging.WARNING)
         try:

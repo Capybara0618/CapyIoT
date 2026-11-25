@@ -193,9 +193,22 @@ async def test_provider_failure_is_normalized_without_diagnostics(settings, fail
 
 async def test_citing_unconfirmed_evidence_does_not_confirm_root_cause(settings):
     def model(_, info):
-        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
-            "facts": [{"statement": "已确认交换机为根因", "evidenceIds": ["candidate-only"]}],
-            "inferences": [], "recommendations": [], "unknowns": []})])
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "facts": [
+                            {"statement": "已确认交换机为根因", "evidenceIds": ["candidate-only"]}
+                        ],
+                        "inferences": [],
+                        "recommendations": [],
+                        "unknowns": [],
+                    },
+                )
+            ]
+        )
+
     context = deps()
     context.evidence_ids.add("candidate-only")
     with pytest.raises(ServiceError):

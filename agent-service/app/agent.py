@@ -1,8 +1,8 @@
 import asyncio
 import logging
-from dataclasses import dataclass, field
-from collections.abc import Awaitable, Callable
 import re
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -119,7 +119,10 @@ class OpsAgent:
             for claim in (*output.facts, *output.inferences):
                 if not set(claim.evidenceIds).issubset(ctx.deps.evidence_ids):
                     raise ModelRetry("证据引用不存在或尚未授权查询，请移除该陈述并说明未知信息")
-                if re.search(r"已确认.*根因|已证实.*根因|确定根因|根因是|确认为.*根因|\bCONFIRMED\b", claim.statement) and not set(claim.evidenceIds).intersection(ctx.deps.confirmed_root_evidence):
+                if re.search(
+                    r"已确认.*根因|已证实.*根因|确定根因|根因是|确认为.*根因|\bCONFIRMED\b",
+                    claim.statement,
+                ) and not set(claim.evidenceIds).intersection(ctx.deps.confirmed_root_evidence):
                     raise ModelRetry("只能描述候选根因或推断，未取得后端 CONFIRMED 根因证据")
             if not output.facts and not output.unknowns:
                 raise ModelRetry("缺少已核查事实时必须说明未知信息")
