@@ -21,11 +21,7 @@ class Handler(BaseHTTPRequestHandler):
         messages = request["messages"]
         last_user = max(i for i, message in enumerate(messages) if message["role"] == "user")
         content = messages[last_user]["content"]
-        intent = " ".join(
-            str(m.get("content", ""))
-            for m in messages
-            if m["role"] == "user" and "运行剩余预算" not in str(m.get("content", ""))
-        )
+        intent = next((str(m.get("content", "")) for m in reversed(messages) if m["role"] == "user" and "运行剩余预算" not in str(m.get("content", ""))), "")
         draft_mode = "draft-fixture" in intent
         if "slow-fixture" in str(content):
             time.sleep(5)
@@ -51,7 +47,7 @@ class Handler(BaseHTTPRequestHandler):
         incident = incidents[0]["incidentId"] if incidents else "missing-incident"
         sequence = [
             ("query_devices", {"keyword": "VIDEO"}),
-            ("query_incidents", {"status": "PENDING_REVIEW"}),
+            ("query_incidents", {}),
             ("get_device_detail", {"deviceId": root}),
             ("get_incident_detail", {"incidentId": incident}),
             ("get_topology_context", {"deviceId": root}),

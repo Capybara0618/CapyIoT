@@ -5,7 +5,7 @@ export default defineConfig({
   testMatch:
     process.env.CAPYIOT_LEGACY_TESTS === 'true'
       ? /.*\.spec\.ts/
-      : /(video-platform|agent-draft)\.spec\.ts/,
+      : /(video-platform|agent-draft|agent-chat(?:-live)?)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
