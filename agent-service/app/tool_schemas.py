@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 ID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 Text = Annotated[str, Field(max_length=1000)]
@@ -173,7 +173,7 @@ class Binding(Projection):
 
 class Relation(Projection):
     relationId: ID
-    relationType: str
+    relationType: Literal["NETWORK", "POWER", "VIDEO"]
     sourceDeviceId: ID
     targetDeviceId: ID
     upstreamPortRef: str | None = None
@@ -181,6 +181,15 @@ class Relation(Projection):
     channelNo: int | None = None
     validFrom: datetime | None = None
     validTo: datetime | None = None
+
+    @computed_field
+    @property
+    def direction(self) -> str:
+        return {
+            "NETWORK": "sourceDeviceId 是上游交换机，targetDeviceId 是下游设备；不是下游设备作为上游",
+            "POWER": "sourceDeviceId 是 PoE 供电交换机，targetDeviceId 是受电 IPC",
+            "VIDEO": "sourceDeviceId 是 NVR，targetDeviceId 是对应录像通道关联的 IPC；这是业务关联，不是网络上下游",
+        }[self.relationType]
 
 
 class DeviceDetail(Device):

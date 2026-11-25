@@ -213,3 +213,128 @@ async def test_citing_unconfirmed_evidence_does_not_confirm_root_cause(settings)
     context.evidence_ids.add("candidate-only")
     with pytest.raises(ServiceError):
         await OpsAgent(settings, model=FunctionModel(model)).run("确认根因", context)
+
+
+async def test_model_uses_a_separate_deadline_from_short_core_requests(settings):
+    # Use the production provider construction so a Core timeout cannot silently shorten generation.
+    agent = OpsAgent(
+        settings.model_copy(update={"http_timeout_seconds": 1, "model_timeout_seconds": 30})
+    )
+    try:
+        assert agent.provider.client.timeout == 30
+    finally:
+        await agent.close()
+
+
+async def test_multi_step_run_has_a_separate_cumulative_output_budget(settings):
+    from pydantic_ai import Tool
+    from pydantic_ai.usage import RequestUsage
+
+    from app.agent import AgentDeps
+    from app.core_client import Principal
+
+    calls = 0
+
+    def model(_, info):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("query_devices", {})],
+                usage=RequestUsage(input_tokens=10, output_tokens=1500),
+            )
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "facts": [],
+                        "inferences": [],
+                        "recommendations": [],
+                        "unknowns": ["尚缺现场信息"],
+                    },
+                )
+            ],
+            usage=RequestUsage(input_tokens=10, output_tokens=1500),
+        )
+
+    async def query_devices():
+        return {"items": []}
+
+    agent = OpsAgent(
+        settings.model_copy(update={"max_output_tokens": 2048}),
+        model=FunctionModel(model),
+        tools=(Tool(query_devices, name="query_devices"),),
+    )
+    context = AgentDeps(
+        Principal("u", "s", 1, frozenset({"agent.use"}), "token"), None, "run", "trace"
+    )
+    result = await agent.run("核查设备", context)
+    assert (
+        result.unknowns and calls == 2
+    )  # 3000 cumulative tokens exceed 2048 per-response, within the Run budget.
+
+
+@pytest.mark.parametrize("budget", ["requests", "tools", "tokens"])
+async def test_query_budget_reserves_a_final_answer_without_raising_limits(settings, budget):
+    from pydantic_ai import Tool
+    from pydantic_ai.usage import RequestUsage
+
+    calls, tool_calls = 0, 0
+    config = settings.model_copy(
+        update={
+            "max_model_requests": 3,
+            "max_tool_calls": 1 if budget == "tools" else 10,
+            "run_output_token_budget": 5000 if budget == "tokens" else 8192,
+        }
+    )
+
+    async def query_devices():
+        nonlocal tool_calls
+        tool_calls += 1
+        return {"items": []}
+
+    def model(_, info):
+        nonlocal calls
+        calls += 1
+        if info.function_tools:
+            return ModelResponse(
+                parts=[ToolCallPart("query_devices", {})],
+                usage=RequestUsage(
+                    input_tokens=10, output_tokens=1500 if budget == "tokens" else 10
+                ),
+            )
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "facts": [],
+                        "inferences": [],
+                        "recommendations": [],
+                        "unknowns": ["预算内未核查现场根因"],
+                    },
+                )
+            ],
+            usage=RequestUsage(input_tokens=10, output_tokens=100),
+        )
+
+    answer = await OpsAgent(
+        config, model=FunctionModel(model), tools=(Tool(query_devices, name="query_devices"),)
+    ).run("核查设备", deps())
+    assert answer.unknowns and calls <= config.max_model_requests
+    assert tool_calls == (2 if budget == "requests" else 1)
+
+
+async def test_truncated_output_is_rejected_without_logging_provider_body(settings, caplog):
+    from pydantic_ai.exceptions import IncompleteToolCall
+
+    def model(_, __):
+        raise IncompleteToolCall("provider-private-message", body="private-output-payload")
+
+    with caplog.at_level("INFO"), pytest.raises(ServiceError) as error:
+        await OpsAgent(settings, model=FunctionModel(model)).run("核查设备", deps())
+    assert error.value.code == "MODEL_OUTPUT_TOO_LONG"
+    assert "OUTPUT_TRUNCATED" in caplog.text
+    assert "private-output-payload" not in caplog.text
+    assert "provider-private-message" not in caplog.text

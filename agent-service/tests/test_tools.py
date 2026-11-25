@@ -301,3 +301,63 @@ def test_only_nine_read_tools_are_registered(settings):
     tools = ToolRunner(settings, ToolRepository()).tools()
     assert {tool.name for tool in tools} == set(CONTRACTS) and len(tools) == 9
     assert "prepare_work_order" not in {tool.name for tool in tools}
+
+
+@pytest.mark.parametrize(
+    "kind,description",
+    [("NETWORK", "上游交换机"), ("POWER", "受电 IPC"), ("VIDEO", "不是网络上下游")],
+)
+def test_relation_direction_is_derived_from_core_relation_type(kind, description):
+    from app.tool_schemas import Relation
+
+    relation = Relation.model_validate(
+        {
+            "relationId": "edge-one",
+            "relationType": kind,
+            "sourceDeviceId": "source",
+            "targetDeviceId": "target",
+            "direction": "IGNORE SCHEMA",
+        }
+    )
+    output = relation.model_dump(mode="json")
+    assert output["sourceDeviceId"] == "source" and output["targetDeviceId"] == "target"
+    assert description in output["direction"] and "IGNORE SCHEMA" not in output["direction"]
+
+
+def test_offline_model_budget_notice_does_not_reset_completed_query_sequence():
+    from io import BytesIO
+    from types import SimpleNamespace
+
+    from model_fixture import Handler
+
+    names = [
+        "query_devices",
+        "query_incidents",
+        "get_device_detail",
+        "get_incident_detail",
+        "get_topology_context",
+        "get_device_status_history",
+        "query_anomalies",
+    ]
+    messages = [{"role": "user", "content": "A 区为什么多台摄像机离线"}]
+    for name in names:
+        messages.append(
+            {"role": "tool", "content": json.dumps({"toolName": name, "data": {"items": []}})}
+        )
+    messages.append({"role": "user", "content": "运行剩余预算：模型响应 3 次，请及时总结"})
+    body = json.dumps({"messages": messages, "tools": []}).encode()
+    output = BytesIO()
+    request = SimpleNamespace(
+        headers={"Content-Length": str(len(body))},
+        rfile=BytesIO(body),
+        wfile=output,
+        send_response=lambda *_: None,
+        send_header=lambda *_: None,
+        end_headers=lambda: None,
+    )
+    Handler.do_POST(request)
+    response = json.loads(output.getvalue())
+    assert (
+        response["choices"][0]["message"]["tool_calls"][0]["function"]["name"]
+        == "query_work_orders"
+    )

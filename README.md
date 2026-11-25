@@ -91,9 +91,11 @@ python scripts/verify_stage1.py --install-browser
 
 ### Agent 服务基础
 
-2026-11-25 已完成阶段二基础代码与离线统一验证：34 项 Python 测试、静态检查、容器构建迁移及 Gateway/Core/Agent 联调通过。真实 DeepSeek 联调按用户选择留待模型配置后执行，当前不宣称真实模型兼容性已验收。
+2026-11-25 已完成阶段二基础代码与离线统一验证：34 项 Python 测试、静态检查、容器构建迁移及 Gateway/Core/Agent 联调通过。
 
-同日已完成阶段三代码与离线整链路验收：77 项 Python 测试、45 项 Core/共享契约测试通过；独立环境中九个工具实际调用 Java API，查询回答、证据重验、幂等重放、主动/断连取消和重启恢复均通过。真实模型的工具选择与推理效果仍待配置后实测。
+同日已完成阶段三代码与离线整链路验收：77 项 Python 测试、45 项 Core/共享契约测试通过；独立环境中九个工具实际调用 Java API，查询回答、证据重验、幂等重放、主动/断连取消和重启恢复均通过。
+
+用户配置模型后，已使用真实 `deepseek-flash` 验证设备查询和模拟交换机故障分析：模型实际选择并调用受控 Java 查询工具，返回带有效证据引用的结构化回答，经 Agent SSE 和 Run 查询返回；没有创建工单或确认根因。实测修复了模型超时与 Core 超时混用、累计输出预算误用，以及接近预算时无法收束查询的问题，并补充拓扑关系方向说明。复杂场景曾出现超时、预算耗尽和无效输出，修复后的场景复验通过；单次场景通过不等于全面的模型准确性或稳定性评估，正式业务结论仍须人工核查。修复后统一复验通过：87 项 Python 测试、静态检查及九工具离线整链路检查；45 项 Core/共享契约测试因对应源码未变化复用此前结果。不宣称已验证原生 Token 级流式输出。
 
 `agent-service` 使用 Python 3.12、FastAPI、SQLAlchemy/Alembic、HTTPX 和 PydanticAI。`uv.lock` 固定依赖；官方 DeepSeek Provider 的模型客户端与调用 Java Core 的客户端独立。Agent 账号只拥有 `agent_db` 权限，每次用户请求都校验 Gateway RS256/JWKS 并向 Core 核对最新会话和授权。
 
@@ -104,6 +106,8 @@ docker compose up -d mysql
 python scripts/ensure_agent_db.py
 docker compose --profile agent up -d --build
 ```
+
+模型请求默认超时 30 秒，可用 `AGENT_MODEL_TIMEOUT_SECONDS` 调整；这与 Core API 的短超时独立。单次模型响应最多 4096 个输出 Token，整轮多步调用的累计输出预算默认 8192，可用 `AGENT_RUN_OUTPUT_TOKEN_BUDGET` 调整。接近请求数、工具数或输出预算时，会收起查询工具并提醒模型完成最终回答；硬上限依然生效，不自动无限追加预算。运行总时长、模型请求次数和工具次数仍有独立上限，模型服务异常不会无限重试。截断的结构化输出不会作为成功答案返回。
 
 Agent 使用独立的一次性迁移容器执行 Alembic，再启动服务。`/health/live` 检查进程，`/health/ready` 分别检查数据库迁移、Core 和模型元数据，失败返回 503；探针不生成模型回答。缺少必需配置时启动失败。通过 Gateway 可访问 `/api/v1/agent/conversations` 的创建/列表及指定会话历史；对话严格按当前用户隔离。
 

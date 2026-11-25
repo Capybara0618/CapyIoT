@@ -27,10 +27,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(503)
             self.end_headers()
             return
+        # This fixture serves fresh conversations only. Request-scoped budget notices may be
+        # rendered as additional user-role messages; they must not reset completed tool calls.
         results = [
-            json.loads(message["content"])
-            for message in messages[last_user + 1 :]
-            if message["role"] == "tool"
+            json.loads(message["content"]) for message in messages if message["role"] == "tool"
         ]
         by_name = {result["toolName"]: result for result in results}
         devices = by_name.get("query_devices", {}).get("data", {}).get("items", [])
