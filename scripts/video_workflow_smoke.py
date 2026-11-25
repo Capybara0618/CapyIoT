@@ -59,6 +59,10 @@ def main():
     correlation = str(uuid.uuid4())
     try:
         login("supervisor")
+        specification=call("/openapi")
+        required_paths=("/api/v1/devices","/api/v1/topology/context","/api/v1/anomalies","/api/v1/incidents","/api/v1/workorders","/api/v1/device-sessions")
+        if any(path not in specification.get("paths",{}) for path in required_paths) or any(path.startswith("/internal/") for path in specification.get("paths",{})):
+            raise AssertionError("Public OpenAPI does not match the Core boundary")
         incidents = wait(lambda: call("/incidents?status=PENDING_REVIEW")["data"]["items"], "simulated topology correlation")
         item = call("/incidents/" + incidents[0]["incidentId"])["data"]
         incident_id = item["incidentId"]
@@ -106,6 +110,7 @@ def main():
         history = call("/devices/" + device_ids[0] + "/maintenance-history")["data"]
         if not any(o["workOrderId"] == order_id and o["repairRecords"] and o["acceptanceRecords"] for o in history["items"]):
             raise AssertionError("Maintenance history omitted repair or acceptance evidence")
+        wait(lambda: any(a["resourceId"]==order_id and a["actionCode"]=="WorkOrderClosed" for a in call("/audit-records?size=100&resourceId="+order_id)["data"]["items"]), "domain audit projection")
         print("HTTPS workflow checks passed: candidate correlation, explicit creation, idempotency, Gate conflicts, separate repair/acceptance and final incident closure.")
     finally:
         for saved in sessions:
