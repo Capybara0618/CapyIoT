@@ -266,7 +266,7 @@ onMounted(() =>
             </select></label
           >
           <label
-            >安装区域<select v-model="create.areaId" required>
+            >安装区域<select v-model="create.areaId" aria-label="安装区域" required>
               <option value="">请选择</option>
               <option v-for="a in areas" :key="a.areaId" :value="a.areaId">
                 {{ a.name }} · {{ a.areaCode }}

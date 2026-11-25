@@ -40,6 +40,9 @@ test('business pages keep the same light theme and navigation at desktop and mob
     ]) {
       await page.goto(path)
       await expect(page.locator('.page-header h1')).toBeVisible()
+      if (path === '/topology') {
+        await expect(page.locator('.vue-flow__controls-button svg').first()).toBeVisible()
+      }
       await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
       await expect(page.locator('.video-error')).toHaveCount(0)
     }
