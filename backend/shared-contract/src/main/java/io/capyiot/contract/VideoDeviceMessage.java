@@ -21,9 +21,10 @@ public record VideoDeviceMessage(String eventId,int schemaVersion,String deviceI
     public static VideoDeviceMessage validate(JsonNode root,String topic,String deviceType,Instant receivedAt) {
         fields(root,ENVELOPE,ENVELOPE);
         text(root,"eventId",36); uuid(root.path("eventId").asText()); text(root,"deviceId",64);text(root,"sessionId",64);text(root,"streamKey",128);
-        require(root.path("schemaVersion").isIntegralNumber()&&root.path("schemaVersion").asInt()==1);
+        require(root.path("schemaVersion").isIntegralNumber()&&root.path("schemaVersion").canConvertToInt()&&root.path("schemaVersion").asInt()==1);
         require(root.path("sequence").isIntegralNumber()&&root.path("sequence").canConvertToLong()); long seq=root.path("sequence").asLong();require(seq>=1&&seq<=9007199254740991L);
-        String time=text(root,"occurredAt",64);require(time.endsWith("Z"));Instant occurred=Instant.parse(time);
+        String time=text(root,"occurredAt",64);require(time.endsWith("Z"));Instant occurred;
+        try{occurred=Instant.parse(time);}catch(java.time.DateTimeException invalid){throw new IllegalArgumentException("Invalid device message timestamp");}
         require(!occurred.isBefore(receivedAt.minusSeconds(86400))&&!occurred.isAfter(receivedAt.plusSeconds(300)));
         String device=text(root,"deviceId",64),session=text(root,"sessionId",64);
         require(device.matches("[A-Za-z0-9_-]{1,64}")&&session.matches("[A-Za-z0-9_-]{1,64}"));

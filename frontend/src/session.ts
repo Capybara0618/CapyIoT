@@ -32,12 +32,14 @@ export async function login(username: string, password: string) {
   sessionStorage.setItem('capyiot.token', result.accessToken)
   sessionStorage.setItem('capyiot.session', JSON.stringify(result))
   session.value = result
+  window.dispatchEvent(new Event('capyiot:session-changed'))
 }
 
 export function clearSession() {
   sessionStorage.removeItem('capyiot.token')
   sessionStorage.removeItem('capyiot.session')
   session.value = null
+  window.dispatchEvent(new Event('capyiot:session-changed'))
 }
 
 export async function logout() {

@@ -80,7 +80,8 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
         return Views.page(rows,page,size);
     }
     private Map<String,Object> summary(Map<String,Object> raw){var view=Views.row(raw);long id=((Number)raw.get("id")).longValue();view.remove("id");view.put("workOrderId",Long.toString(id));view.put("parkId",view.remove("campusId"));
-        view.remove("sourceBusinessKey");view.put("deviceItems",store.db.queryForList("SELECT * FROM work_order_device_item WHERE work_order_id=? ORDER BY device_role,item_id",id).stream().map(Views::row).toList());return view;
+        view.keySet().retainAll(Set.of("workOrderId","workOrderNo","parkId","sourceType","incidentId","title","description","workCategory","expectedResult","priority","priorityReason","status","assignedRepairerId","designatedAcceptorId","workCycleNo","dueAt","completionSummary","cancelReason","assignedAt","acceptedAt","startedAt","submittedAt","cancelledAt","closedAt","createdAt","updatedAt","createdBy","version","lastAcceptanceId"));
+        view.put("deviceItems",store.db.queryForList("SELECT item_id,device_id,device_role,asset_code_snapshot,device_name_snapshot,device_type_snapshot,area_id_snapshot,monitoring_point_id,issue_description FROM work_order_device_item WHERE work_order_id=? ORDER BY device_role,item_id",id).stream().map(Views::row).toList());return view;
     }
     public Map<String,Object> detail(AuthorizationContext actor,long id){var order=require(actor,"workorder.read",id);var view=summary(order);
         view.put("repairRecords",store.db.queryForList("SELECT * FROM repair_record WHERE work_order_id=? ORDER BY created_at,record_id",id).stream().map(Views::row).toList());
@@ -142,7 +143,11 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
         });
         return result;
     }
-    public Map<String,Object> maintenance(AuthorizationContext actor,String device,int page,int size){devices.requireVisibleDevices(actor,"workorder.read",List.of(device));return list(actor,device,null,null,null,null,null,null,null,page,size);}
+    public Map<String,Object> maintenance(AuthorizationContext actor,String device,int page,int size){
+        devices.requireVisibleDevices(actor,"workorder.read",List.of(device));var result=new LinkedHashMap<>(list(actor,device,null,null,null,null,null,null,null,page,size));
+        @SuppressWarnings("unchecked") var items=(List<Map<String,Object>>)result.get("items");
+        result.put("items",items.stream().map(item->detail(actor,Long.parseLong(item.get("workOrderId").toString()))).toList());return result;
+    }
     private void history(AuthorizationContext actor,long id,long version,String action,String from,String to,String reason,String requestId){
         String correlation=null;var attributes=org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
         if(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet){var req=servlet.getRequest();if(requestId==null)requestId=Objects.toString(req.getHeader("X-Request-Id"),req.getRequestId());correlation=Objects.toString(req.getHeader("X-Correlation-Id"),requestId);}

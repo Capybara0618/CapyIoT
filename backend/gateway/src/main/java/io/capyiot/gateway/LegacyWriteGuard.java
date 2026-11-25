@@ -16,8 +16,10 @@ class LegacyWriteGuard implements WebFilter {
     LegacyWriteGuard(@Value("${capyiot.legacy-read-only:true}") boolean readOnly){this.readOnly=readOnly;}
     public Mono<Void> filter(ServerWebExchange exchange,WebFilterChain chain){
         String path=exchange.getRequest().getPath().value();HttpMethod method=exchange.getRequest().getMethod();
-        boolean legacy=path.startsWith("/api/v1/locations/")||path.startsWith("/api/v1/topology/links")||path.startsWith("/api/v1/alarms/")
+        boolean legacy=path.startsWith("/api/v1/legacy/")||path.startsWith("/api/v1/locations/")||path.startsWith("/api/v1/topology/links")||path.startsWith("/api/v1/alarms/")
             ||path.startsWith("/api/v1/alarm-rules")||path.startsWith("/api/v1/scenario-runs");
+        // Existing scoped compensation endpoints retain their own server-side authorization.
+        if(path.matches("/api/v1/alarms/outbox/[0-9]+/retry"))legacy=false;
         if(readOnly&&legacy&&method!=HttpMethod.GET&&method!=HttpMethod.HEAD&&method!=HttpMethod.OPTIONS)
             return ApiErrors.write(exchange,HttpStatus.CONFLICT,"LEGACY_READ_ONLY","历史入口只读，请使用当前资产、故障和工单功能");
         return chain.filter(exchange);

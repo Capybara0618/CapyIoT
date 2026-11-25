@@ -16,11 +16,12 @@ import PageHeader from '../components/PageHeader.vue'
 import MetricTrend from '../components/MetricTrend.vue'
 
 const services = [
+  { id: 'core-service', name: '业务核心', icon: Server },
   { id: 'gateway', name: 'API 网关', icon: Server },
   { id: 'device-ingestion', name: '设备接入', icon: Radio },
-  { id: 'device-service', name: '设备管理', icon: HardDrive },
-  { id: 'alarm-service', name: '告警治理', icon: BellRing },
-  { id: 'workflow-service', name: '工单协同', icon: ClipboardList },
+  { id: 'device-service', name: '历史设备查询', icon: HardDrive },
+  { id: 'alarm-service', name: '历史告警查询', icon: BellRing },
+  { id: 'workflow-service', name: '历史工单查询', icon: ClipboardList },
 ] as const
 const healthLabels = { UP: '就绪', DOWN: '未就绪', UNREACHABLE: '探测失败' } as const
 interface Health {
@@ -39,13 +40,13 @@ interface Deployment {
   scaling: { configured: boolean; ready: boolean; active: boolean; min: number; max: number } | null
 }
 const definitions = [
-  { id: 'lag', label: 'Kafka 消费积压', unit: '条', color: '#97641b', hint: 'device-state-group' },
+  { id: 'lag', label: 'Kafka 消费积压', unit: '条', color: '#97641b', hint: '当前业务消费者；无采样时不显示估计值' },
   {
     id: 'tps',
     label: '设备事件处理速率',
     unit: '条/秒',
     color: '#347454',
-    hint: '完成状态投影，包括成功重投',
+    hint: '新应用的设备消息，不含重复事件',
   },
   {
     id: 'httpP95',
@@ -93,7 +94,7 @@ const health = ref<Health>()
 const metrics = ref<Metrics>()
 const deployment = ref<Deployment>()
 const minutes = ref(15)
-const service = ref('device-service')
+const service = ref('core-service')
 const loading = ref(false)
 const healthError = ref('')
 const metricsError = ref('')

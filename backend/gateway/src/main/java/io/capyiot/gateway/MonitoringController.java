@@ -20,7 +20,7 @@ import reactor.core.publisher.Mono;
 
 @RestController
 class MonitoringController {
-    private static final Set<String> SERVICES = Set.of("gateway", "device-ingestion", "device-service", "alarm-service", "workflow-service");
+    private static final Set<String> SERVICES = Set.of("core-service","gateway", "device-ingestion", "device-service", "alarm-service", "workflow-service");
     private static final Set<Integer> WINDOWS = Set.of(15, 60, 360);
     record Point(long at, Double value) {}
     record Series(String id, List<Point> points) {}
@@ -47,8 +47,8 @@ class MonitoringController {
         if (!enabled) return Mono.just(ok(new Snapshot(List.of(), false, Instant.ofEpochSecond(end))));
         String selected = "service=\"" + service + "\"";
         var queries = List.of(
-                new Query("lag", "max(capyiot_kafka_group_lag)"),
-                new Query("tps", "sum(rate(capyiot_device_events_projected_total[2m]))"),
+                new Query("lag", "max(kafka_consumer_fetch_manager_records_lag_max{service=\"core-service\"})"),
+                new Query("tps", "sum(rate(capyiot_device_events_total{result=\"APPLIED\"}[2m]))"),
                 new Query("httpP95", "1000 * histogram_quantile(0.95,sum by(le) (rate(http_server_requests_seconds_bucket{"
                         + selected + ",uri!~\"/actuator/.*|/api/v1/stream|/api/v1/.*/stream\"}[5m])))"),
                 new Query("heapMiB", "sum(jvm_memory_used_bytes{area=\"heap\"," + selected + "}) / 1048576"),

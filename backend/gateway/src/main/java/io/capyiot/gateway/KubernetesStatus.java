@@ -21,7 +21,7 @@ import reactor.netty.http.client.HttpClient;
 @Component
 class KubernetesStatus {
     private static final Path ACCOUNT = Path.of("/var/run/secrets/kubernetes.io/serviceaccount");
-    private static final List<String> APP_NAMES = List.of("gateway", "device-ingestion", "device-service",
+    private static final List<String> APP_NAMES = List.of("core-service","gateway", "device-ingestion", "device-service",
             "alarm-service", "workflow-service", "frontend");
     record Workload(String service, Integer desired, Integer ready, Integer available) {}
     record Scaling(boolean configured, boolean ready, boolean active, Integer min, Integer max) {}

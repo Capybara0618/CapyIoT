@@ -18,14 +18,16 @@ import org.springframework.stereotype.Component;
 class DeviceStateRuntime {
     private final DeviceStateService states;private final ObjectMapper json;private final KafkaTemplate<String,String> kafka;
     private final long heartbeatSeconds,freshnessSeconds;
+    private final io.micrometer.core.instrument.MeterRegistry meters;
     DeviceStateRuntime(DeviceStateService states,ObjectMapper json,KafkaTemplate<String,String> kafka,
-        @Value("${capyiot.device-runtime.heartbeat-timeout-seconds:45}") long heartbeat,@Value("${capyiot.device-runtime.freshness-timeout-seconds:120}") long freshness){this.states=states;this.json=json;this.kafka=kafka;heartbeatSeconds=heartbeat;freshnessSeconds=freshness;}
+        @Value("${capyiot.device-runtime.heartbeat-timeout-seconds:45}") long heartbeat,@Value("${capyiot.device-runtime.freshness-timeout-seconds:120}") long freshness,io.micrometer.core.instrument.MeterRegistry meters){this.states=states;this.json=json;this.kafka=kafka;heartbeatSeconds=heartbeat;freshnessSeconds=freshness;this.meters=meters;}
     @KafkaListener(topics={VideoDeviceMessage.HEARTBEAT_TOPIC,VideoDeviceMessage.STATUS_TOPIC,VideoDeviceMessage.EVENT_TOPIC},groupId="core-device-state-v1")
     void consume(ConsumerRecord<String,String> record) throws Exception {
         try {
             var event=json.readValue(record.value(),VideoDeviceEvent.class);
             if(!record.key().equals(event.deviceId()))throw ApiProblem.invalid("Kafka key 不一致");
-            states.accept(event,record.partition(),record.offset());
+            String result=states.accept(event,record.partition(),record.offset());
+            meters.counter("capyiot.device.events","eventType",event.eventType(),"result",result).increment();
         }catch(ApiProblem|com.fasterxml.jackson.core.JsonProcessingException|IllegalArgumentException invalid){
             kafka.send("capyiot.device.rejected.v1",record.key(),json.writeValueAsString(Map.of("source","core-device-state","reason","INVALID_OR_REVOKED_EVENT","partition",record.partition(),"offset",record.offset()))).get(15,java.util.concurrent.TimeUnit.SECONDS);
         }

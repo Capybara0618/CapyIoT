@@ -51,7 +51,7 @@ public class FaultService implements HealthQueryPort,IncidentGatePort,EvidenceQu
         var rows=store.db.queryForList("SELECT * FROM anomaly ORDER BY last_observed_at DESC,anomaly_id").stream().filter(a->visible.contains(a.get("device_id")))
                 .filter(a->deviceId==null||deviceId.equals(a.get("device_id"))).filter(a->type==null||type.equals(a.get("anomaly_type")))
                 .filter(a->severity==null||severity.equals(a.get("severity"))).filter(a->status==null||status.equals(a.get("status")))
-                .filter(a->from==null||!DbTime.instant(a.get("last_observed_at")).isBefore(from)).filter(a->to==null||DbTime.instant(a.get("last_observed_at")).isBefore(to)).map(Views::row).toList();
+                .filter(a->from==null||!DbTime.instant(a.get("last_observed_at")).isBefore(from)).filter(a->to==null||DbTime.instant(a.get("last_observed_at")).isBefore(to)).map(this::anomalySummary).toList();
         return Views.page(rows,page,size);
     }
     public Map<String,Object> anomalyDetail(AuthorizationContext actor,String id){
@@ -59,6 +59,7 @@ public class FaultService implements HealthQueryPort,IncidentGatePort,EvidenceQu
         result.put("evidenceReferences",store.db.queryForList("SELECT * FROM anomaly_evidence WHERE anomaly_id=? ORDER BY received_at,evidence_id",id).stream().map(Views::row).toList());
         result.put("legacyMappings",store.db.queryForList("SELECT legacy_alarm_id AS legacyAlarmId,mapping_reason AS mappingReason FROM legacy_alarm_mapping WHERE target_type='ANOMALY' AND target_id=?",id));return result;
     }
+    private Map<String,Object> anomalySummary(Map<String,Object> raw){var result=Views.row(raw);result.remove("activeDedupeKey");return result;}
     public JsonNode dismiss(AuthorizationContext actor,String key,String id,Reason c){
         var a=anomaly(id);visible(actor,"anomaly.dismiss",a);String park=a.get("park_id").toString();
         var result=write(actor,key,park,"AnomalyDismissed",Map.of("id",id,"body",c),()->{
@@ -91,7 +92,7 @@ public class FaultService implements HealthQueryPort,IncidentGatePort,EvidenceQu
         if(anomalies.stream().anyMatch(a->!park.equals(a.get("park_id"))))throw ApiProblem.invalid("故障不能跨园区");
         return write(actor,key,park,"IncidentCreated",c,()->{
             var current=c.anomalyIds().stream().map(this::anomaly).toList();if(current.stream().anyMatch(a->!a.get("status").equals("ACTIVE")))throw ApiProblem.conflict("只能关联活动异常");
-            String id=createIncident(park,c.title(),c.priority().name(),c.reason(),current,null,actor.userId(),null);return Map.of("incidentId",id,"status","PENDING_REVIEW","version",0);
+            String id=createIncident(park,c.title(),c.priority().name(),c.reason(),current,null,actor.userId(),null,actor);return Map.of("incidentId",id,"status","PENDING_REVIEW","version",0);
         });
     }
     public JsonNode review(AuthorizationContext actor,String key,String id,Review c){var i=requireIncident(actor,"incident.review",id);
@@ -221,12 +222,12 @@ public class FaultService implements HealthQueryPort,IncidentGatePort,EvidenceQu
         store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)",park);
         return commands.execute(park,key,actor.userId(),type,command,mutation);
     }
-    private String createIncident(String park,String title,String priority,String reason,List<Map<String,Object>> anomalies,String root,String actor,String correlation){
+    private String createIncident(String park,String title,String priority,String reason,List<Map<String,Object>> anomalies,String root,String actor,String correlation,AuthorizationContext actorContext){
         String id=UUID.randomUUID().toString();var deviceIds=anomalies.stream().map(a->a.get("device_id").toString()).distinct().sorted().toList();
         store.db.update("INSERT INTO incident(incident_id,incident_no,park_id,title,status,priority,priority_reason,root_cause_status,candidate_root_device_id,impact_snapshot_json,primary_correlation_key,opened_at,created_by) VALUES(?,?,?,?,'PENDING_REVIEW',?,?,?,?,?,?,CURRENT_TIMESTAMP(3),?)",id,"INC-"+id.substring(0,12).toUpperCase(Locale.ROOT),park,title,priority,reason,root==null?"UNKNOWN":"UNCONFIRMED",root,serialize(Map.of("actualDeviceIds",deviceIds,"possibleImpactDeviceIds",List.of())),correlation,actor);
         store.db.update("INSERT INTO incident_work_order_gate(incident_id) VALUES(?)",id);
         for(var anomaly:anomalies)store.db.update("INSERT INTO incident_anomaly_link(link_id,incident_id,anomaly_id,relation_kind,confidence,linked_at,linked_by,evidence_json) VALUES(?,?,?,'PRIMARY',?,CURRENT_TIMESTAMP(3),?,?)",UUID.randomUUID().toString(),id,anomaly.get("anomaly_id"),root==null?1.0:0.95,actor,serialize(Map.of("source","ANOMALY_EVIDENCE","candidateOnly",root!=null)));
-        events.append("IncidentCreated",id,park,null,Map.of("incidentId",id,"rootCauseStatus",root==null?"UNKNOWN":"UNCONFIRMED"));return id;
+        events.append("IncidentCreated",id,park,actorContext,Map.of("incidentId",id,"rootCauseStatus",root==null?"UNKNOWN":"UNCONFIRMED","reason",reason));return id;
     }
     public void observation(JsonNode event){
         String eventId=event.path("eventId").asText(),type=event.path("eventType").asText(),deviceId=event.path("aggregateId").asText(),park=event.path("parkId").asText();JsonNode body=event.path("body");
@@ -308,7 +309,7 @@ public class FaultService implements HealthQueryPort,IncidentGatePort,EvidenceQu
                 String correlation="NETWORK/"+root.get("anomaly_id");
                 if(Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM incident WHERE park_id=? AND primary_correlation_key=?",Boolean.class,park,correlation)))continue;
                 if(group.stream().anyMatch(a->Boolean.TRUE.equals(store.db.queryForObject("SELECT COUNT(*)>0 FROM incident_anomaly_link WHERE anomaly_id=? AND unlinked_at IS NULL",Boolean.class,a.get("anomaly_id")))))continue;
-                String id=createIncident(park,"交换机及下联设备通信异常（待研判）","P2","共同上游、交换机自身异常与下联设备失联的相近时间证据；并非已确认根因",group,rootId,"fault-correlation",correlation);
+                String id=createIncident(park,"交换机及下联设备通信异常（待研判）","P2","共同上游、交换机自身异常与下联设备失联的相近时间证据；并非已确认根因",group,rootId,"fault-correlation",correlation,null);
                 store.db.update("INSERT INTO correlation_candidate(candidate_id,incident_id,candidate_root_device_id,related_anomaly_ids_json,confidence,evidence_path_json,generated_at,expires_at) VALUES(?,?,?,?,0.9500,?,?,?)",UUID.randomUUID().toString(),id,rootId,serialize(group.stream().map(a->a.get("anomaly_id")).toList()),serialize(network.stream().filter(edge->group.stream().anyMatch(a->a.get("device_id").equals(edge.get("downstreamDeviceId")))).toList()),DbTime.sql(at),DbTime.sql(at.plusSeconds(300)));
             }
         });

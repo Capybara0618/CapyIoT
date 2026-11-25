@@ -178,11 +178,13 @@ window.addEventListener('capyiot:unauthorized', () => {
   pending.clear()
 })
 export function core<T>(path: string, init: RequestInit = {}) {
+  // Backend remains authoritative; a different login must not reuse cached permissions or command keys.
   const headers = new Headers(init.headers)
   headers.set('X-CapyIoT-Legacy-View', 'false')
   return request<T>(path, { ...init, headers })
 }
 const pending = new Map<string, string>()
+window.addEventListener('capyiot:session-changed', () => { me.value = null; pending.clear() })
 export async function command<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
   const content = JSON.stringify(body),
     signature = method + path + content

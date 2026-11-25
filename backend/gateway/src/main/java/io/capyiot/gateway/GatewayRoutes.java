@@ -19,12 +19,15 @@ class GatewayRoutes {
                 .route("foundation-api",route->route.path("/api/v1/auth/me","/api/v1/auth/logout","/api/v1/users","/api/v1/users/**","/api/v1/grants/**","/api/v1/audit-records").uri(coreUrl))
                 .route("agent-api",route->route.path("/api/v1/agent/**").metadata("response-timeout",-1).uri(agentUrl))
                 .route("core-openapi",route->route.path("/api/v1/openapi").filters(f->f.setPath("/v3/api-docs")).uri(coreUrl))
+                .route("historical-workorders",route->route.path("/api/v1/legacy/workorders","/api/v1/legacy/workorders/**").filters(f->f.rewritePath("/api/v1/legacy/(?<rest>.*)","/api/v1/${rest}")).uri(workflowUrl))
+                .route("historical-events",route->route.path("/api/v1/legacy/events","/api/v1/legacy/events/**").filters(f->f.rewritePath("/api/v1/legacy/(?<rest>.*)","/api/v1/${rest}")).uri(deviceUrl))
                 .route("legacy-device-history",route->route.path("/api/v1/devices/activity","/api/v1/devices/cursor").uri(deviceUrl))
                 .route("core-assets",route->route.path("/api/v1/parks","/api/v1/areas","/api/v1/areas/**","/api/v1/monitoring-points","/api/v1/monitoring-points/**",
                         "/api/v1/monitoring-point-bindings/**","/api/v1/network-dependencies","/api/v1/network-dependencies/**","/api/v1/power-dependencies","/api/v1/power-dependencies/**",
                         "/api/v1/video-channel-associations","/api/v1/video-channel-associations/**","/api/v1/topology/context","/api/v1/devices/*/status-history",
                         "/api/v1/device-sessions","/api/v1/devices/*/credential/rotate","/api/v1/devices","/api/v1/devices/*","/api/v1/devices/*/events","/api/v1/locations","/api/v1/events","/api/v1/events/**","/api/v1/health").uri(coreUrl))
                 .route("core-faults",route->route.path("/api/v1/anomalies","/api/v1/anomalies/**","/api/v1/incidents","/api/v1/incidents/**").uri(coreUrl))
+                .route("workorder-outbox-management",route->route.path("/api/v1/workorders/outbox/**").uri(workflowUrl))
                 .route("core-workorders",route->route.path("/api/v1/workorders","/api/v1/workorders/**","/api/v1/workorder-assignees","/api/v1/devices/*/maintenance-history").uri(coreUrl))
                 .route("device-health", route -> route.path("/api/v1/health")
                         .filters(filters -> filters.setPath("/internal/health"))

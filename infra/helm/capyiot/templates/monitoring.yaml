@@ -10,7 +10,7 @@ metadata:
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    resourceNames: [gateway, device-ingestion, device-service, alarm-service, workflow-service, frontend]
+    resourceNames: [core-service, gateway, device-ingestion, device-service, alarm-service, workflow-service, frontend]
     verbs: ["get"]
   - apiGroups: ["keda.sh"]
     resources: ["scaledobjects"]

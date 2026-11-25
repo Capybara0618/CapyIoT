@@ -97,7 +97,7 @@ public class DeviceStateService {
         return changed;
     }
     private void serverTransition(String id,String dimension,String old,String next,Instant at,long version){store.db.update("INSERT INTO device_status_history(device_id,state_dimension,old_value,new_value,occurred_at,received_at,state_version) VALUES(?,?,?,?,?,?,?)",id,dimension,old,next,ts(at),ts(at),version);}
-    private String hash(Object value){try{return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(value)));}catch(Exception e){throw new IllegalStateException(e);}}
+    private String hash(Object value){try{return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(CanonicalJson.sorted(json.valueToTree(value)).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
     private String serialize(Object value){try{return json.writeValueAsString(value);}catch(Exception e){throw new IllegalStateException(e);}}
     private static java.time.LocalDateTime ts(Instant time){return DbTime.sql(time);}
 }

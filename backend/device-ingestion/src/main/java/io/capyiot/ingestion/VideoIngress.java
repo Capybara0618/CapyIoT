@@ -31,7 +31,7 @@ class VideoIngress implements SmartLifecycle,HealthIndicator {
                  @Value("${capyiot.mqtt-client-id}") String clientId,@Value("${MQTT_CA_FILE:../var/tls/ca.pem}") String ca,
                  @Value("${CORE_SERVICE_URL:http://localhost:8085}") String coreUrl,@Value("${CORE_SERVICE_KEY:}") String key) throws MqttException {
         if(!url.startsWith("ssl://")||key.length()<32)throw new IllegalArgumentException("A09 requires MQTTS and a Core service credential");
-        this.kafka=kafka;this.json=json;this.clientId=clientId;this.ca=ca;
+        this.kafka=kafka;this.json=json.copy().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);this.clientId=clientId;this.ca=ca;
         var requests=new SimpleClientHttpRequestFactory();requests.setConnectTimeout(Duration.ofSeconds(2));requests.setReadTimeout(Duration.ofSeconds(3));
         core=RestClient.builder().baseUrl(coreUrl).requestFactory(requests).defaultHeader("X-Core-Service-Key",key).build();
         acknowledgments=meters.counter("capyiot.mqtt.ack");meters.gauge("capyiot.mqtt.inflight",slots,s->128-s.availablePermits());

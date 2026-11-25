@@ -141,6 +141,7 @@ services:
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SCENARIO_DEVICE_FILE: /demo/demo-devices.json
+      CAPYIOT_LEGACY_SCENARIOS_ENABLED: 'false'
       SPRING_KAFKA_LISTENER_AUTO_STARTUP: 'false'
       CAPYIOT_SWEEP_ENABLED: 'false'
       CAPYIOT_OUTBOX_ENABLED: 'false'
@@ -317,7 +318,7 @@ services:
       MQTT_CA_FILE: /tls/ca.pem
       DEVICE_FILE: /data/devices.json
     volumes:
-      - ./var/video-devices.json:/data/devices.json:ro
+      - ${VIDEO_DEVICE_FILE:-./var/video-devices.json}:/data/devices.json:ro
       - ./var/tls/ca.pem:/tls/ca.pem:ro
     depends_on:
       gateway: { condition: service_healthy }

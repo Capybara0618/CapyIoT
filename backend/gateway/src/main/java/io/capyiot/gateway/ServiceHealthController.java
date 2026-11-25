@@ -26,10 +26,10 @@ class ServiceHealthController {
             @Value("${capyiot.services.ingestion-url}") String ingestion,
             @Value("${capyiot.services.device-url}") String device,
             @Value("${capyiot.services.alarm-url}") String alarm,
-            @Value("${capyiot.services.workflow-url}") String workflow) {
+            @Value("${capyiot.services.workflow-url}") String workflow,@Value("${capyiot.services.core-url}") String core) {
         http = builder.build();
         probes = List.of(new Probe("device-ingestion", ingestion), new Probe("device-service", device),
-                new Probe("alarm-service", alarm), new Probe("workflow-service", workflow));
+                new Probe("alarm-service", alarm), new Probe("workflow-service", workflow),new Probe("core-service",core));
     }
 
     @GetMapping("/api/v1/observability/services")

@@ -24,6 +24,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="capyiot.legacy-scenarios-enabled",havingValue="true",matchIfMissing=true)
 class ScenarioRunner {
     private record Signal(String deviceId, DeviceMessage.Type type) {}
     private record PhaseAttempt(String runId, Instant phaseAt, Instant firstTick) {}

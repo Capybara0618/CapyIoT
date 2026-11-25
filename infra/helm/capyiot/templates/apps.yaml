@@ -103,6 +103,7 @@ spec:
             {{- if eq $name "device-service" }}
             - { name: CAPYIOT_QUERY_CACHE_ENABLED, value: {{ $root.Values.queryCacheEnabled | quote }} }
             - { name: CAPYIOT_JFR_OPTIONS, value: {{ $root.Values.deviceJfrOptions | quote }} }
+            - { name: CAPYIOT_LEGACY_SCENARIOS_ENABLED, value: "false" }
             {{- end }}
             {{- if $frontend }}
             - { name: NGINX_ENVSUBST_FILTER, value: '^CORE_SERVICE_KEY$' }

@@ -29,7 +29,14 @@ class CurrentAuthorization {
                         .timeout(Duration.ofSeconds(3)).map(context->{exchange.getAttributes().put("capyiot.authorization",context); return true;}))
                 .defaultIfEmpty(false)
                 .onErrorMap(error->new AuthorizationFailure(error instanceof WebClientResponseException response&&response.getStatusCode().value()==401))
-                .flatMap(ignored->chain.filter(exchange))
+                .flatMap(authenticated->{
+                    if(path.startsWith("/api/v1/observability/")){
+                        JsonNode context=exchange.getAttribute("capyiot.authorization");boolean platform=false;
+                        if(context!=null)for(JsonNode grant:context.path("grants"))if(grant.path("roleCode").asText().equals("SYS_ADMIN")&&grant.path("scopeType").asText().equals("NONE"))platform=true;
+                        if(authenticated&&!platform)return ApiErrors.write(exchange,HttpStatus.FORBIDDEN,"PERMISSION_DENIED","系统运行信息需要平台管理员权限");
+                    }
+                    return chain.filter(exchange);
+                })
                 .onErrorResume(AuthorizationFailure.class,error->ApiErrors.write(exchange,error.unauthorized?HttpStatus.UNAUTHORIZED:HttpStatus.SERVICE_UNAVAILABLE,
                         error.unauthorized?"SESSION_INVALID":"AUTHORIZATION_UNAVAILABLE","会话失效或授权服务不可用"));
     }

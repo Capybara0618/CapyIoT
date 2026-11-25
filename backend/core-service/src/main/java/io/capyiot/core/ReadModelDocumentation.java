@@ -31,7 +31,8 @@ class ReadModelDocumentation {
             if(method.equals("GET")&&arrays.containsKey(path))data=new ArraySchema().items(schema(api,arrays.get(path)));
             if(!method.equals("GET")&&!method.equals("DELETE")){
                 if(path.equals("/api/v1/workorders"))data=schema(api,ApiViews.CreatedWorkOrder.class);
-                else if(path.equals("/api/v1/devices"))data=schema(api,ApiViews.RegisteredDevice.class);
+                else if(path.equals("/api/v1/devices"))data=method.equals("POST")?schema(api,ApiViews.RegisteredDevice.class):schema(api,ApiViews.DeviceSummary.class);
+                else if(method.equals("PATCH")&&path.equals("/api/v1/devices/{id}"))data=schema(api,ApiViews.DeviceSummary.class);
                 else if(!path.startsWith("/api/v1/auth/")&&!path.startsWith("/api/v1/users")&&!path.startsWith("/api/v1/grants/")&&!path.equals("/api/v1/device-sessions"))data=schema(api,ApiViews.CommandResult.class);
             }
             if(data!=null){
@@ -39,7 +40,7 @@ class ReadModelDocumentation {
                 if(op.getResponses()==null)op.setResponses(new ApiResponses());
                 var response=new ApiResponse().description("当前授权范围内的业务结果；幂等重放返回原结果，一次性密钥不重复返回").content(new Content().addMediaType("application/json",new MediaType().schema(envelope)));
                 op.getResponses().addApiResponse("200",response);
-                if(method.equals("POST")&&Set.of("/api/v1/devices","/api/v1/areas","/api/v1/monitoring-points","/api/v1/network-dependencies","/api/v1/power-dependencies","/api/v1/video-channel-associations","/api/v1/incidents","/api/v1/workorders").contains(path))op.getResponses().addApiResponse("201",response);
+                if(method.equals("POST")&&(Set.of("/api/v1/devices","/api/v1/areas","/api/v1/monitoring-points","/api/v1/network-dependencies","/api/v1/power-dependencies","/api/v1/video-channel-associations","/api/v1/incidents","/api/v1/workorders").contains(path)||path.matches("/api/v1/monitoring-points/\\{[^}]+\\}/bindings")))op.getResponses().addApiResponse("201",response);
             }
             if(path.equals("/api/v1/device-sessions"))op.setSecurity(List.of());
         }
