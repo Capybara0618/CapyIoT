@@ -164,8 +164,10 @@ class DraftService:
     async def visible(self, principal, draft_id, correlation):
         view = await run_in_threadpool(self.repository.draft, principal.user_id, draft_id)
         # Current DataScope is checked on every read, including terminal proposals.
+        view["devices"] = []
         for item in view["payload"]["deviceItems"]:
-            await self.core.read("get_device_detail", principal, correlation, identity=item["deviceId"])
+            device = await self.core.read("get_device_detail", principal, correlation, identity=item["deviceId"])
+            view["devices"].append({key: device.get(key, "") for key in ("deviceId", "name", "deviceType", "assetCode")})
         if view["payload"].get("incidentId"):
             await self.core.read("get_incident_detail", principal, correlation, identity=view["payload"]["incidentId"])
         if view["relatedEvidenceReferences"]:

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import PageHeader from '../components/PageHeader.vue'
 import ValueBadge from '../components/ValueBadge.vue'
 import {
@@ -15,6 +16,7 @@ import {
 } from '../video'
 import { formatTime } from '../domain'
 
+const route = useRoute()
 const canManage = allowed('device.manage')
 const rows = ref<Page<Device>>({ items: [], total: 0, page: 1, size: 20 })
 const areas = ref<Area[]>([]),
@@ -118,6 +120,7 @@ onMounted(() =>
     await loadMe()
     areas.value = await core<Area[]>('/areas')
     await reload(1)
+    if (route.query.id) await open(String(route.query.id))
   }),
 )
 </script>

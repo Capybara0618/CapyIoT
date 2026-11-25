@@ -87,6 +87,7 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/dashboard' },
     { path: '/login', component: LoginPage, meta: { title: '登录' } },
+    { path: '/agent-drafts/:draftId?', component: () => import('./pages/AgentDraftPage.vue'), meta: { title: '工单草稿审阅', description: '核查设备范围和证据，确认后创建正式维修工单' } },
     ...pages.map((page) => ({
       path: page.path,
       component: featurePages[page.path],

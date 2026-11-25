@@ -83,6 +83,7 @@ class DraftView(BaseModel):
     sourceType: str
     actionType: str
     payload: dict
+    devices: list[dict]
     relatedEvidenceReferences: list[dict]
     summary: str
     expiresAt: UtcTime
