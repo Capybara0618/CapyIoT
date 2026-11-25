@@ -9,11 +9,13 @@ import {
   FlaskConical,
   Activity,
   ShieldCheck,
+  MessagesSquare,
 } from 'lucide-vue-next'
 import { clearSession, session } from './session'
 import LoginPage from './pages/LoginPage.vue'
 
 const featurePages = {
+  '/assistant': () => import('./pages/AgentChatPage.vue'),
   '/devices': () => import('./pages/VideoAssetsPage.vue'),
   '/events': () => import('./pages/VideoEventsPage.vue'),
   '/dashboard': () => import('./pages/VideoDashboardPage.vue'),
@@ -26,6 +28,7 @@ const featurePages = {
 }
 
 export const pages = [
+  { path: '/assistant', title: 'AI 运维助手', icon: MessagesSquare, description: '查询业务证据，核查故障线索，审阅维修工单草稿' },
   {
     path: '/administration',
     title: '账号与授权',
@@ -93,7 +96,7 @@ export const router = createRouter({
       meta: { title: '工单草稿审阅', description: '核查设备范围和证据，确认后创建正式维修工单' },
     },
     ...pages.map((page) => ({
-      path: page.path,
+      path: page.path === '/assistant' ? '/assistant/:conversationId?' : page.path,
       component: featurePages[page.path],
       meta: page,
     })),
