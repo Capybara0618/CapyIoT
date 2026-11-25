@@ -231,6 +231,7 @@ services:
       CAPYIOT_DEVICE_RUNTIME_ENABLED: 'true'
       CAPYIOT_FAULTS_ENABLED: 'true'
       CAPYIOT_FAULT_RUNTIME_ENABLED: 'true'
+      CAPYIOT_AGENT_JWKS_URI: http://agent-service:8086/.well-known/agent-jwks.json
       CAPYIOT_WORKORDERS_ENABLED: 'true'
       CAPYIOT_DOMAIN_RUNTIME_ENABLED: 'true'
       ALARM_DB_URL: jdbc:mysql://mysql:3306/alarm_db?connectionTimeZone=UTC
@@ -320,6 +321,9 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      AGENT_DISPATCH_ENABLED: 'true'
+      AGENT_DELEGATION_KEY_FILE: /keys/agent-keys.json
+      AGENT_DELEGATION_KEYS_GENERATE: 'true'
       AGENT_MODEL_TIMEOUT_SECONDS: ${AGENT_MODEL_TIMEOUT_SECONDS:-30}
       AGENT_RUN_OUTPUT_TOKEN_BUDGET: ${AGENT_RUN_OUTPUT_TOKEN_BUDGET:-8192}
     depends_on:
@@ -327,6 +331,7 @@ services:
       core-service: { condition: service_healthy }
       gateway: { condition: service_healthy }
       agent-migrate: { condition: service_completed_successfully }
+    volumes: [agent-keys:/keys]
     restart: unless-stopped
     mem_limit: 512m
     healthcheck:
@@ -397,6 +402,7 @@ networks:
   internal:
 
 volumes:
+  agent-keys:
   device-keys:
   gateway-keys:
   mysql-data:

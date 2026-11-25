@@ -60,7 +60,7 @@ class Handler(BaseHTTPRequestHandler):
             name = next(
                 tool["function"]["name"]
                 for tool in request["tools"]
-                if tool["function"]["name"] not in {pair[0] for pair in sequence}
+                if tool["function"]["name"] not in ({pair[0] for pair in sequence} | {"prepare_work_order"})
             )
 
             def refs(tool):

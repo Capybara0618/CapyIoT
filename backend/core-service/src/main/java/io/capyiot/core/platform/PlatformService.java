@@ -66,6 +66,14 @@ public class PlatformService implements io.capyiot.core.ports.UserAssignmentPort
     }
 
     public AuthorizationContext current(Jwt jwt) {
+        if(AgentDelegation.isAgent(jwt)) {
+            String actor=jwt.getClaimAsString("actorUserId");
+            if(actor==null||!actor.matches("[A-Za-z0-9_-]{1,64}"))throw invalidToken();
+            var rows=db.queryForList("SELECT * FROM app_user WHERE user_id=? AND status='ACTIVE'",actor);
+            if(rows.isEmpty())throw new ApiProblem(403,"ACTOR_UNAVAILABLE","确认用户已停用");
+            var user=rows.getFirst();
+            return new AuthorizationContext(actor,user.get("login_name").toString(),user.get("display_name").toString(),((Number)user.get("authorization_version")).longValue(),"delegation:"+jwt.getClaimAsString("confirmationId"),grants(actor));
+        }
         String sid=jwt.getClaimAsString("sid"); Object claim=jwt.getClaim("authz_ver");
         if(sid==null||sid.isBlank()||!(claim instanceof Number version)||version.longValue()<1||jwt.getId()==null) throw invalidToken();
         var rows=db.queryForList("SELECT u.*,s.session_id FROM app_user u JOIN login_session s ON s.user_id=u.user_id WHERE u.user_id=? AND s.session_id=? AND s.jti=? AND s.status='ACTIVE' AND s.expires_at>CURRENT_TIMESTAMP(3) AND u.status='ACTIVE'",jwt.getSubject(),sid,jwt.getId());

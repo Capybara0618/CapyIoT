@@ -25,12 +25,23 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Configuration
 class FoundationSecurity {
     @Bean
-    JwtDecoder userTokens(@Value("${capyiot.foundation.jwks-uri}") String uri) {
+    JwtDecoder userTokens(@Value("${capyiot.foundation.jwks-uri}") String uri,@Value("${capyiot.agent.jwks-uri:http://agent-service:8086/.well-known/agent-jwks.json}") String agentUri) {
         var decoder=NimbusJwtDecoder.withJwkSetUri(uri).jwsAlgorithm(SignatureAlgorithm.RS256).build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefaultWithIssuer("capyiot-gateway"),
                 new JwtClaimValidator<java.util.List<String>>("aud",aud->aud!=null&&aud.contains("capyiot-api")),
                 new JwtClaimValidator<String>("sub",sub->sub!=null&&!sub.isBlank())));
-        return decoder;
+        var agent=NimbusJwtDecoder.withJwkSetUri(agentUri).jwsAlgorithm(SignatureAlgorithm.RS256).build();
+        agent.setJwtValidator(new DelegatingOAuth2TokenValidator<>(new JwtTimestampValidator(java.time.Duration.ofSeconds(5)),
+                new JwtIssuerValidator("capyiot-agent-service"),
+                new JwtClaimValidator<java.util.List<String>>("aud",aud->aud!=null&&aud.size()==1&&aud.contains("capyiot-core"))));
+        return token->{
+            if(token.length()>16384)throw new BadJwtException("Invalid token");
+            try {
+                // Untrusted issuer selects a verifier; both verifiers still require their own trusted signature/issuer/audience.
+                String issuer=com.nimbusds.jwt.JWTParser.parse(token).getJWTClaimsSet().getIssuer();
+                return "capyiot-agent-service".equals(issuer)?agent.decode(token):decoder.decode(token);
+            }catch(java.text.ParseException error){throw new BadJwtException("Invalid token");}
+        };
     }
     @Bean
     SecurityFilterChain coreSecurity(HttpSecurity http,PlatformService platform,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String serviceKey) throws Exception {
@@ -43,8 +54,18 @@ class FoundationSecurity {
                         if(provided==null||!MessageDigest.isEqual(serviceKey.getBytes(StandardCharsets.UTF_8),provided.getBytes(StandardCharsets.UTF_8))) throw new ApiProblem(401,"SERVICE_UNAUTHORIZED","内部服务身份无效");
                     }
                     var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-                    if(auth!=null&&auth.getPrincipal() instanceof Jwt jwt&&!req.getRequestURI().equals("/api/v1/auth/logout")) req.setAttribute("capyiot.actor",platform.current(jwt));
-                    chain.doFilter(req,res);
+                    HttpServletRequest current=req;
+                    if(auth!=null&&auth.getPrincipal() instanceof Jwt jwt) {
+                        if(AgentDelegation.isAgent(jwt)) {
+                            String commandKey=req.getMethod().equals("GET")?req.getRequestURI().substring(req.getRequestURI().lastIndexOf('/')+1):req.getHeader("Idempotency-Key");
+                            var binding=AgentDelegation.validate(jwt,req.getMethod(),req.getRequestURI(),commandKey);
+                            var actor=platform.current(jwt);actor.require("agent.use");actor.require("agent.draft.confirm");actor.require("workorder.create");
+                            current=new org.springframework.web.util.ContentCachingRequestWrapper(req,262144);
+                            current.setAttribute("capyiot.delegation",binding);
+                            current.setAttribute("capyiot.actor",actor);
+                        } else if(!req.getRequestURI().equals("/api/v1/auth/logout"))current.setAttribute("capyiot.actor",platform.current(jwt));
+                    }
+                    chain.doFilter(current,res);
                 } catch(ApiProblem error) {
                     res.setStatus(error.status()); res.setContentType("application/json;charset=UTF-8");
                     json.writeValue(res.getOutputStream(),Map.of("code",error.code(),"message",error.getMessage(),"details",Map.of(),"traceId",req.getRequestId()));

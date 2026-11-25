@@ -54,6 +54,13 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
         var valid=checked(actor,c);
         return Map.of("parkId",valid.park(),"priority",valid.priority());
     }
+    public JsonNode commandReceipt(AuthorizationContext actor,AgentDelegation.Binding binding) {
+        actor.require("agent.draft.confirm");actor.require("workorder.create");
+        var rows=store.db.queryForList("SELECT * FROM work_order_request WHERE idempotency_key=? AND actor_user_id=? AND agent_confirmation_id=? AND agent_draft_id=? AND agent_draft_revision=? AND agent_request_hash=? AND command_type='WorkOrderCreated'",binding.idempotencyKey(),actor.userId(),binding.confirmationId(),binding.draftId(),binding.draftRevision(),binding.requestHash());
+        if(rows.isEmpty())throw ApiProblem.missing();
+        var receipt=rows.getFirst();require(actor,"workorder.create",((Number)receipt.get("order_id")).longValue());
+        try{return json.readTree(receipt.get("result_snapshot").toString());}catch(com.fasterxml.jackson.core.JsonProcessingException error){throw new IllegalStateException("Invalid receipt");}
+    }
     public JsonNode create(AuthorizationContext actor,String key,String requestId,Create c){
         var valid=checked(actor,c);var refs=valid.refs();String park=valid.park();var incident=valid.incident();String priority=valid.priority();
         var prior=commands.replay(park,key,actor.userId(),"WorkOrderCreated",c);if(prior.isPresent())return prior.get();

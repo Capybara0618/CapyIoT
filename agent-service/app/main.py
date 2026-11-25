@@ -18,6 +18,8 @@ from app.core_client import CoreApiClient
 from app.database import Database
 from app.errors import ServiceError
 from app.drafts import DraftRepository, DraftService
+from app.delegation import DelegationSigner
+from app.dispatcher import Dispatcher
 from app.runtime import QueryRuntime
 from app.tools import ToolRunner
 
@@ -55,11 +57,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.auth,
             app.state.ops_agent,
         )
+        app.state.signer, app.state.dispatcher = None, None
+        if config.dispatch_enabled:
+            app.state.signer = DelegationSigner(config.delegation_key_file, config.delegation_keys_generate)
+            app.state.dispatcher = Dispatcher(config, app.state.repository, app.state.core, app.state.signer)
+            app.state.dispatcher.start()
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("httpcore").setLevel(logging.WARNING)
         try:
             yield
         finally:
+            if app.state.dispatcher:
+                await app.state.dispatcher.close()
             await app.state.runtime.close()
             await app.state.ops_agent.close()
             await app.state.http.aclose()
@@ -133,6 +142,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "traceId": request.state.correlation_id,
             },
         )
+
+    @app.get("/.well-known/agent-jwks.json")
+    async def agent_jwks(request: Request):
+        if request.app.state.signer is None:
+            raise ServiceError("DISPATCH_DISABLED", 503, "工单派发未启用")
+        return request.app.state.signer.jwks()
 
     @app.get("/health/live")
     def live():

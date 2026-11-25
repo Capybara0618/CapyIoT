@@ -21,9 +21,20 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.*;
 
 @SpringBootTest
+@org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 @Testcontainers
 class BusinessFlowIntegrationTest {
     @Container static final MySQLContainer<?> MYSQL=new MySQLContainer<>("mysql:8.4.11").withDatabaseName("platform_test").withUsername("root").withPassword("test");
+    static final com.nimbusds.jose.jwk.RSAKey AGENT_KEY=agentKey();
+    static final com.sun.net.httpserver.HttpServer AGENT_JWKS=agentServer();
+    static com.nimbusds.jose.jwk.RSAKey agentKey(){try{return new com.nimbusds.jose.jwk.gen.RSAKeyGenerator(2048).keyID("agent-test-key").generate();}catch(Exception e){throw new IllegalStateException(e);}}
+    static com.sun.net.httpserver.HttpServer agentServer(){
+        try{
+            var server=com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+            server.createContext("/jwks",exchange->{byte[] bytes=new com.nimbusds.jose.jwk.JWKSet(AGENT_KEY.toPublicJWK()).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);exchange.getResponseHeaders().add("Content-Type","application/json");exchange.sendResponseHeaders(200,bytes.length);try(var out=exchange.getResponseBody()){out.write(bytes);}});server.start();return server;
+        }catch(Exception error){throw new IllegalStateException(error);}
+    }
+    @AfterAll static void stopAgentJwks(){AGENT_JWKS.stop(0);}
     static final String HASH=Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8().encode("test-password");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r)throws Exception{
         StringBuilder sql=new StringBuilder();for(String schema:List.of("device","fault","workflow"))sql.append("CREATE DATABASE IF NOT EXISTS ").append(schema).append("_test; CREATE USER IF NOT EXISTS '").append(schema).append("_test_app'@'%' IDENTIFIED BY 'test'; GRANT ALL ON ").append(schema).append("_test.* TO '").append(schema).append("_test_app'@'%';");
@@ -31,6 +42,7 @@ class BusinessFlowIntegrationTest {
         r.add("spring.datasource.url",MYSQL::getJdbcUrl);r.add("spring.datasource.username",()->"root");r.add("spring.datasource.password",()->"test");
         r.add("capyiot.foundation.service-key",()->"test-service-key-with-at-least-32-characters");r.add("capyiot.foundation.jwks-uri",()->"http://127.0.0.1:1/jwks");
         r.add("capyiot.foundation.bootstrap.admin-hash",()->HASH);r.add("capyiot.foundation.bootstrap.operator-hash",()->HASH);
+        r.add("capyiot.agent.jwks-uri",()->"http://127.0.0.1:"+AGENT_JWKS.getAddress().getPort()+"/jwks");
         r.add("capyiot.assets.enabled",()->true);r.add("capyiot.faults.enabled",()->true);r.add("capyiot.workorders.enabled",()->true);
         r.add("capyiot.device-key-file",()->System.getProperty("java.io.tmpdir")+"/capyiot-business-test-"+UUID.randomUUID()+".json");r.add("capyiot.device-keys-generate",()->true);
         for(var entry:Map.of("DEVICE","device","ALARM","fault","WORKFLOW","workflow").entrySet()){
@@ -38,6 +50,7 @@ class BusinessFlowIntegrationTest {
             r.add(entry.getKey()+"_DB_USER",()->entry.getValue()+"_test_app");r.add(entry.getKey()+"_DB_PASSWORD",()->"test");
         }
     }
+    @Autowired org.springframework.test.web.servlet.MockMvc http;
     @Autowired AssetService assets;@Autowired FaultService faults;@Autowired WorkOrderService orders;@Autowired ObjectMapper json;
     JdbcTemplate db;
     AuthorizationContext supervisor=actor("USER-SUPERVISOR","OPS_SUPERVISOR","PARK",null);
@@ -60,6 +73,41 @@ class BusinessFlowIntegrationTest {
         return faults.create(supervisor,key(),new FaultModels.Create("设备通信故障",List.of(anomaly),FaultModels.Priority.P3,"人工研判需维修")).path("incidentId").asText();}
     WorkOrderModels.Create create(String device,String incident){return new WorkOrderModels.Create(incident==null?WorkOrderModels.Source.MANUAL:WorkOrderModels.Source.INCIDENT,incident,List.of(new WorkOrderModels.DeviceItem(device,WorkOrderModels.DeviceRole.MAIN,"检查通信链路")),"维修通信链路","现场排查设备通信","NETWORK",incident==null?WorkOrderModels.Priority.P3:null,null,"设备通信恢复",null);}
     long version(long id){return db.queryForObject("SELECT version FROM workflow_test.work_order WHERE id=?",Long.class,id);}
+    String delegated(byte[] body,String key,String actor,long offset,com.nimbusds.jose.jwk.RSAKey signing)throws Exception{
+        var encoder=new org.springframework.security.oauth2.jwt.NimbusJwtEncoder(new com.nimbusds.jose.jwk.source.ImmutableJWKSet<>(new com.nimbusds.jose.jwk.JWKSet(signing)));
+        var stamp=Instant.now().plusSeconds(offset);
+        String hash=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(body));
+        var claims=org.springframework.security.oauth2.jwt.JwtClaimsSet.builder().issuer("capyiot-agent-service").subject("capyiot-agent-service").audience(List.of("capyiot-core")).issuedAt(stamp).expiresAt(stamp.plusSeconds(60)).id(key())
+            .claim("actorUserId",actor).claim("confirmationId","confirm-1").claim("draftId","draft-1").claim("draftRevision",1).claim("requestHash",hash).claim("idempotencyKey",key).claim("command","CREATE_WORK_ORDER").build();
+        var header=org.springframework.security.oauth2.jwt.JwsHeader.with(org.springframework.security.oauth2.jose.jws.SignatureAlgorithm.RS256).keyId(signing.getKeyID()).build();
+        return encoder.encode(org.springframework.security.oauth2.jwt.JwtEncoderParameters.from(header,claims)).getTokenValue();
+    }
+    @Test void delegatedCommandRequiresBoundBodyAndLatestUserAuthorizationAndExposesReceipt()throws Exception{
+        String device=device("IPC-AGENT",AssetModels.DeviceType.IPC);byte[] body=json.writeValueAsBytes(create(device,null));String key="agent-"+key();
+        String token=delegated(body,key,"USER-OPERATOR",0,AGENT_KEY);
+        var created=http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/workorders").header("Authorization","Bearer "+token).header("Idempotency-Key",key).contentType("application/json").content(body)).andReturn();
+        assertEquals(201,created.getResponse().getStatus(),created.getResponse().getContentAsString());
+        String id=json.readTree(created.getResponse().getContentAsString()).path("data").path("workOrderId").asText();
+        var receipt=http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/workorders/commands/"+key).header("Authorization","Bearer "+token)).andReturn();
+        assertEquals(200,receipt.getResponse().getStatus());assertEquals(id,json.readTree(receipt.getResponse().getContentAsString()).path("data").path("workOrderId").asText());
+        byte[] changed=json.writeValueAsBytes(create(device, "forged-incident"));
+        assertEquals(403,http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/workorders").header("Authorization","Bearer "+token).header("Idempotency-Key",key).contentType("application/json").content(changed)).andReturn().getResponse().getStatus());
+        assertEquals(403,http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/devices").header("Authorization","Bearer "+token)).andReturn().getResponse().getStatus());
+        db.update("UPDATE app_user SET status='DISABLED' WHERE user_id='USER-OPERATOR'");
+        try{
+            assertEquals(403,http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/workorders/commands/"+key).header("Authorization","Bearer "+token)).andReturn().getResponse().getStatus());
+        }finally{db.update("UPDATE app_user SET status='ACTIVE' WHERE user_id='USER-OPERATOR'");}
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM workflow_test.work_order",Integer.class));
+    }
+    @Test void invalidExpiredOrForgedDelegationCannotCreateAnyOrder()throws Exception{
+        String device=device("IPC-SIGNATURE",AssetModels.DeviceType.IPC);byte[] body=json.writeValueAsBytes(create(device,null));String key="agent-"+key();
+        for(String token:List.of(delegated(body,key,"USER-OPERATOR",-180,AGENT_KEY),delegated(body,key,"USER-OPERATOR",0,agentKey()))){
+            assertEquals(401,http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/workorders").header("Authorization","Bearer "+token).header("Idempotency-Key",key).contentType("application/json").content(body)).andReturn().getResponse().getStatus());
+        }
+        String token=delegated(body,key,"USER-REPAIRER",0,AGENT_KEY);
+        assertEquals(403,http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/workorders").header("Authorization","Bearer "+token).header("Idempotency-Key",key).contentType("application/json").content(body)).andReturn().getResponse().getStatus());
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM workflow_test.work_order",Integer.class));
+    }
     @Test void assignmentScopeCannotRevealAnotherPointInTheSameArea(){
         String first=device("IPC-OWN",AssetModels.DeviceType.IPC),second=device("IPC-OTHER",AssetModels.DeviceType.IPC);
         String p1=assets.createPoint(supervisor,key(),new AssetModels.CreatePoint("P-OWN","任务点位","AREA-1-1",null)).path("monitoringPointId").asText();

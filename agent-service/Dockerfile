@@ -7,7 +7,7 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY app ./app
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
-RUN useradd --create-home --uid 10001 agent
+RUN useradd --create-home --uid 10001 agent && mkdir /keys && chown agent:agent /keys
 USER agent
 ENV PATH="/app/.venv/bin:$PATH"
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8086", "--no-access-log", "--log-level", "info"]

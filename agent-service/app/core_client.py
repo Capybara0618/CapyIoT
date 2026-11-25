@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -54,6 +55,7 @@ class CoreApiClient:
             "Authorization": "Bearer " + token,
             "X-Correlation-Id": correlation,
             "X-Request-Id": correlation,
+            "Content-Type": "application/json",
         }
         if key:
             headers["Idempotency-Key"] = key
@@ -65,7 +67,7 @@ class CoreApiClient:
                     self.base_url + "/api/v1" + route,
                     headers=headers,
                     params=params,
-                    json=body,
+                    content=None if body is None else json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(),
                 ) as response:
                     if response.status_code >= 500 and method == "GET" and attempt == 0:
                         await asyncio.sleep(0.1)
@@ -108,8 +110,6 @@ class CoreApiClient:
                         raise ServiceError(
                             code, status if status in {400, 401, 403, 404, 409} else 503, message
                         )
-                    import json
-
                     try:
                         payload = json.loads(content)
                         if payload.get("code") != "OK" or "data" not in payload:
@@ -242,3 +242,9 @@ class CoreApiClient:
         principal.require("workorder.create")
         return await self._request("/workorders/validate", principal.token, correlation,
                                    body=payload, key="validate-" + correlation)
+
+    async def dispatch_work_order(self, command, token):
+        return await self._request("/workorders", token, command["commandId"], body=command["payload"], key=command["idempotencyKey"])
+
+    async def command_receipt(self, command, token):
+        return await self._request("/workorders/commands/" + identifier(command["idempotencyKey"]), token, command["commandId"])

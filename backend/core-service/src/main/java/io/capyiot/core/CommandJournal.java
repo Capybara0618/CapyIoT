@@ -47,6 +47,10 @@ public final class CommandJournal {
                 String reservation=Set.of("WorkOrderCreated","WorkOrderReopened").contains(type)?db.queryForObject("SELECT last_reservation_id FROM work_order WHERE id=?",String.class,orderId):null;
                 if(type.equals("WorkOrderCreated")&&stored instanceof ObjectNode object)object.put("created",false);
                 db.update("INSERT INTO work_order_request(campus_id,idempotency_key,actor_user_id,command_type,request_hash,fingerprint,result_snapshot,order_id,reservation_id) VALUES(?,?,?,?,?,?,?,?,?)",scope,key,actor,type,hash,hash,stored.toString(),orderId,reservation);
+                var attributes=org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+                if(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet && servlet.getRequest().getAttribute("capyiot.delegation") instanceof io.capyiot.core.platform.AgentDelegation.Binding binding) {
+                    db.update("UPDATE work_order_request SET agent_confirmation_id=?,agent_draft_id=?,agent_draft_revision=?,agent_request_hash=? WHERE campus_id=? AND idempotency_key=?",binding.confirmationId(),binding.draftId(),binding.draftRevision(),binding.requestHash(),scope,key);
+                }
             }
             else db.update("INSERT INTO command_request(scope_id,idempotency_key,actor_user_id,command_type,request_hash,result_snapshot) VALUES(?,?,?,?,?,?)",scope,key,actor,type,hash,stored.toString());
             return response;
