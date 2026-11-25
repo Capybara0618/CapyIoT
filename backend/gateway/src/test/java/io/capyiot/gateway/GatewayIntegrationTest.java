@@ -29,7 +29,7 @@ class GatewayIntegrationTest {
         catch(Exception error) { throw new IllegalStateException(error); }
     }
     private static final DisposableServer DOWNSTREAM=HttpServer.create().host("127.0.0.1").port(0).route(routes->routes
-        .get("/internal/health",(req,res)->res.header("Content-Type","application/json").sendString(Mono.just("{\"code\":\"OK\",\"data\":{\"service\":\"device-service\"}}")))
+        .get("/api/v1/health",(req,res)->res.header("Content-Type","application/json").sendString(Mono.just("{\"code\":\"OK\",\"data\":{\"service\":\"core-service\"}}")))
         .post("/internal/foundation/login",(req,res)->req.receive().aggregate().asString().flatMap(body->{
             if(!SERVICE_KEY.equals(req.requestHeaders().get("X-Core-Service-Key"))||!body.contains("test-password")) return res.status(401).send().then();
             String json="{\"userId\":\"USER-OPERATOR\",\"loginName\":\"operator\",\"displayName\":\"Operator\",\"authorizationVersion\":1,\"sessionId\":\"session-1\",\"jti\":\"token-1\",\"expiresAt\":\""+Instant.now().plusSeconds(3600)+"\",\"roleCodes\":[\"OPS_OPERATOR\"]}";
@@ -73,7 +73,7 @@ class GatewayIntegrationTest {
         Assertions.assertEquals("session-1",jwt.getClaimAsString("sid"));
         Assertions.assertEquals("RS256",jwt.getHeaders().get("alg"));
         client().get().uri("/api/v1/health").headers(h->h.setBearerAuth(token)).exchange().expectStatus().isOk()
-            .expectBody().jsonPath("$.data.service").isEqualTo("device-service");
+            .expectBody().jsonPath("$.data.service").isEqualTo("core-service");
     }
     @Test void revokedSessionAndUnavailableAuthorityFailClosed() throws Exception {
         String token=login();

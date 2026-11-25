@@ -146,7 +146,9 @@ final class VideoDeviceSimulator {
         JsonNode configs = JSON.readTree(Files.readString(Path.of(file)));
         if (!configs.isArray() || configs.isEmpty() || configs.size() > 100) throw new IllegalArgumentException("Configure 1 to 100 virtual devices");
         var devices = new ArrayList<Device>();
-        var workers = Executors.newScheduledThreadPool(8, Thread.ofPlatform().daemon().name("video-simulator-", 0).factory());
+        // Each persistent Paho connection occupies sender, receiver and callback loops;
+        // leave one extra slot per device for connect/disconnect instead of starving later devices.
+        var workers = Executors.newScheduledThreadPool(configs.size() * 4 + 2, Thread.ofPlatform().daemon().name("video-simulator-", 0).factory());
         Set<String> ids = new HashSet<>();
         Thread shutdown = new Thread(() -> devices.forEach(Device::close), "video-simulator-shutdown");
         Runtime.getRuntime().addShutdownHook(shutdown);

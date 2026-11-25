@@ -30,10 +30,11 @@ class SecureBrokerContractTest {
     @TempDir Path directory;
     @Test void realBrokerChecksRsaBindingAndDisconnectsWhenTheConnectTokenExpires()throws Exception{
         var signing=new RSAKeyGenerator(3072).keyID("ephemeral-broker-test").generate();
+        var jwksReads=new java.util.concurrent.atomic.AtomicInteger();
         var jwks=HttpServer.create(new InetSocketAddress("0.0.0.0",0),0);
         jwks.createContext("/.well-known/device-jwks.json",exchange->{
             byte[] body=new JWKSet(signing.toPublicJWK()).toString().getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type","application/json");exchange.sendResponseHeaders(200,body.length);exchange.getResponseBody().write(body);exchange.close();
+            exchange.getResponseHeaders().set("Content-Type","application/json");exchange.sendResponseHeaders(200,body.length);exchange.getResponseBody().write(body);exchange.close();jwksReads.incrementAndGet();
         });jwks.start();Testcontainers.exposeHostPorts(jwks.getAddress().getPort());
         try{
             String keytool=Path.of(System.getProperty("java.home"),"bin",System.getProperty("os.name").startsWith("Windows")?"keytool.exe":"keytool").toString();
@@ -50,29 +51,38 @@ class SecureBrokerContractTest {
                 .replace("http://core-service:8085/.well-known/device-jwks.json","http://host.testcontainers.internal:"+jwks.getAddress().getPort()+"/.well-known/device-jwks.json")
                 .replace("api_key.bootstrap_file = \"/opt/emqx/etc/local-api-keys\"","");
             try(var broker=new GenericContainer<>("emqx/emqx:5.8.9").withExposedPorts(8883)
-                .withEnv("EMQX_NODE__NAME","emqx@127.0.0.1").withEnv("ERL_FLAGS","+S 2:2")
+                .withEnv("EMQX_NODE__NAME","emqx@127.0.0.1").withEnv("EMQX_NODE__COOKIE",UUID.randomUUID().toString()).withEnv("ERL_FLAGS","+S 2:2")
                 .withCopyToContainer(Transferable.of(configuration),"/opt/emqx/etc/emqx.conf")
                 .withCopyToContainer(Transferable.of(certificate),"/opt/emqx/etc/local-tls/ca.pem")
                 .withCopyToContainer(Transferable.of(certificate),"/opt/emqx/etc/local-tls/server.pem")
                 .withCopyToContainer(Transferable.of(privateKey,0644),"/opt/emqx/etc/local-tls/server.key")
                 .waitingFor(Wait.forListeningPort()).withStartupTimeout(Duration.ofSeconds(90))){
                 broker.start();
+                try{
+                await().atMost(Duration.ofSeconds(45)).until(()->jwksReads.get()>0);
                 String url="ssl://"+broker.getHost()+":"+broker.getMappedPort(8883);
                 Instant expires=Instant.now().plusSeconds(20);String token=token(signing,expires);
-                var workers=Executors.newScheduledThreadPool(2,Thread.ofPlatform().daemon().factory());
+                // Paho runs its blocking connect, sender, receiver and callback loops on this executor.
+                var workers=Executors.newScheduledThreadPool(6,Thread.ofPlatform().daemon().factory());
                 try(var mqtt=new MqttClient(url,"ipc-contract",new MemoryPersistence(),workers)){
+                    mqtt.setTimeToWait(10000);
                     var settings=new MqttConnectOptions();settings.setSocketFactory(LocalTls.sockets(ca.toString()));settings.setHttpsHostnameVerificationEnabled(true);
                     settings.setConnectionTimeout(3);settings.setKeepAliveInterval(5);settings.setUserName("wrong-device");settings.setPassword(token.toCharArray());
                     assertThatThrownBy(()->mqtt.connect(settings)).isInstanceOf(MqttException.class);
-                    settings.setUserName("ipc-contract");
+                    settings.setUserName("ipc-contract");var lastReason=new java.util.concurrent.atomic.AtomicInteger();
                     await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(250)).until(()->{
-                        try{mqtt.connect(settings);return mqtt.isConnected();}catch(MqttException notReady){return false;}
+                        try{mqtt.connect(settings);return mqtt.isConnected();}catch(MqttException notReady){lastReason.set(notReady.getReasonCode());return false;}
                     });
                     // No 15-minute sleep and no production TTL override: only this isolated signer uses 20s.
                     await().atMost(Duration.ofSeconds(35)).until(()->!mqtt.isConnected());
                     assertThat(Instant.now()).isAfterOrEqualTo(expires.minusSeconds(1));
                     assertThatThrownBy(()->mqtt.connect(settings)).isInstanceOf(MqttException.class);
                 }finally{workers.shutdownNow();}
+                }catch(Exception|AssertionError failure){
+                    String logs=broker.getLogs().replaceAll("eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+","[REDACTED_JWT]");
+                    Path report=Path.of("../../var/verification/broker-contract-diagnostic.log");Files.createDirectories(report.getParent());Files.writeString(report,"JWKS reads="+jwksReads.get()+"\n"+logs);
+                    throw failure;
+                }
             }
         }finally{jwks.stop(0);}
     }
