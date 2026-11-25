@@ -31,7 +31,7 @@ class Repository:
         primary = next(iter(model.__table__.primary_key.columns))
         query = select(model).where(primary == identity, model.owner_user_id == owner)
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update().execution_options(populate_existing=True)
         row = session.scalar(query)
         if row is None:
             raise ServiceError("NOT_FOUND", 404, "资源不存在或不可访问")

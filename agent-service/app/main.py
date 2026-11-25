@@ -18,6 +18,8 @@ from app.core_client import CoreApiClient
 from app.database import Database
 from app.errors import ServiceError
 from app.repository import Repository
+from app.runtime import QueryRuntime
+from app.tools import ToolRunner
 
 LOG = logging.getLogger("capyiot.agent")
 
@@ -42,13 +44,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.core = CoreApiClient(app.state.http, config.core_base_url)
         app.state.auth = UserAuthenticator(app.state.http, config, app.state.core)
         app.state.repository = Repository(app.state.database.sessions)
-        # Business tools are deliberately not registered until phase 3.
-        app.state.ops_agent = OpsAgent(config)
+        app.state.tools = ToolRunner(config, app.state.repository)
+        app.state.ops_agent = OpsAgent(config, tools=app.state.tools.tools())
+        app.state.runtime = QueryRuntime(config, app.state.repository, app.state.tools, app.state.core, app.state.auth, app.state.ops_agent)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("httpcore").setLevel(logging.WARNING)
         try:
             yield
         finally:
+            await app.state.runtime.close()
             await app.state.ops_agent.close()
             await app.state.http.aclose()
             await asyncio.to_thread(app.state.database.close)
@@ -105,7 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={
                 "code": error.code,
                 "message": error.message,
-                "details": {},
+                "details": error.details,
                 "traceId": request.state.correlation_id,
             },
         )

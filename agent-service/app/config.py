@@ -40,7 +40,7 @@ class Settings(DatabaseSettings):
     allow_insecure_model_endpoint: bool = False
     http_timeout_seconds: float = Field(default=5, gt=0, le=30)
     run_timeout_seconds: float = Field(default=60, gt=0, le=180)
-    max_model_requests: int = Field(default=4, ge=1, le=10)
+    max_model_requests: int = Field(default=10, ge=1, le=10)
     max_tool_calls: int = Field(default=10, ge=1, le=20)
     max_output_tokens: int = Field(default=2048, ge=128, le=8192)
     max_input_chars: int = Field(default=12000, ge=100, le=40000)

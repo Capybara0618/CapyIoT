@@ -1,6 +1,7 @@
 class ServiceError(Exception):
-    def __init__(self, code: str, status: int, message: str):
+    def __init__(self, code: str, status: int, message: str, details=None):
         self.code, self.status, self.message = code, status, message
+        self.details = details or {}
         super().__init__(code)
 
 

@@ -104,6 +104,14 @@ class BusinessFlowIntegrationTest {
         assertEquals("CLOSED",orders.detail(operator,id).get("status"));assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM workflow_test.acceptance_record",Integer.class));
         assertThrows(ApiProblem.class,()->orders.reopen(supervisor,key(),key(),id,new WorkOrderModels.Reason(9L,"再次故障")));
     }
+    @Test void maintenanceHistoryAppliesTimeRangeBeforePagination(){
+        String device=device("IPC-HISTORY",AssetModels.DeviceType.IPC);
+        long id=Long.parseLong(orders.create(operator,key(),key(),create(device,null)).path("workOrderId").asText());
+        db.update("UPDATE workflow_test.work_order SET created_at='2025-01-01 00:00:00' WHERE id=?",id);
+        assertEquals(1,((Number)orders.maintenance(operator,device,java.time.Instant.parse("2024-12-01T00:00:00Z"),java.time.Instant.parse("2025-02-01T00:00:00Z"),1,20).get("total")).intValue());
+        assertEquals(0,((Number)orders.maintenance(operator,device,java.time.Instant.parse("2025-02-01T00:00:00Z"),java.time.Instant.parse("2025-03-01T00:00:00Z"),1,20).get("total")).intValue());
+        assertThrows(ApiProblem.class,()->orders.maintenance(operator,device,java.time.Instant.parse("2025-03-01T00:00:00Z"),java.time.Instant.parse("2025-02-01T00:00:00Z"),1,20));
+    }
     @Test void incidentMustBeConfirmedAndReservationPreventsClosingBeforeWorkIsTerminal(){
         String device=device("IPC-1",AssetModels.DeviceType.IPC),incident=incident(device);var command=create(device,incident);
         assertThrows(ApiProblem.class,()->orders.create(operator,key(),key(),command));

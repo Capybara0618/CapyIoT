@@ -36,6 +36,7 @@ class ConversationPage(BaseModel):
 class MessageView(BaseModel):
     messageId: str
     sequence: int
+    messageSeq: int
     role: Literal["USER", "ASSISTANT"]
     content: str | None
     contentStatus: str
@@ -45,3 +46,20 @@ class MessageView(BaseModel):
 
 class ConversationHistory(ConversationView):
     messages: list[MessageView]
+
+
+class RunView(BaseModel):
+    runId: str
+    conversationId: str
+    status: str
+    startedAt: UtcTime
+    finishedAt: UtcTime | None
+    answerMessageId: str | None
+    answer: dict | None
+    toolCallCount: int
+    draftId: str | None
+    executionStatus: str
+    errorCode: str | None
+    version: int
+    contentStatus: str
+    evidenceReferences: list[dict]
