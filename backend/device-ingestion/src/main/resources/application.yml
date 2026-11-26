@@ -1,6 +1,11 @@
 server:
   port: 8081
   shutdown: graceful
+  ssl:
+    enabled: ${SERVICE_TLS_ENABLED:true}
+    key-store: ${SERVICE_TLS_KEYSTORE:}
+    key-store-type: PKCS12
+    key-store-password: ${SERVICE_TLS_KEYSTORE_PASSWORD:}
 spring:
   application:
     name: device-ingestion
@@ -36,6 +41,7 @@ management:
       probes:
         enabled: true
 capyiot:
-  mqtt-url: ${MQTT_URL:tcp://localhost:1883}
+  legacy-ingress-enabled: false
+  mqtt-url: ${MQTT_URL:ssl://emqx:8883}
   mqtt-client-id: ${MQTT_CLIENT_ID:capyiot-ingestion-1}
-  device-jwt-secret: ${DEVICE_JWT_SECRET}
+  device-jwt-secret: ${DEVICE_JWT_SECRET:}

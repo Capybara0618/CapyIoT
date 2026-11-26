@@ -34,7 +34,7 @@ import org.testcontainers.kafka.KafkaContainer;
 
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,properties="server.ssl.enabled=false")
 class MqttIngestionTest {
     private static final byte[] KEY = "ingestion-test-key-at-least-32-bytes".getBytes(StandardCharsets.UTF_8);
     @Container static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.1.1")

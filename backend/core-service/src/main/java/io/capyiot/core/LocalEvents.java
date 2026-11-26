@@ -38,28 +38,13 @@ public final class LocalEvents {
     private long version(String type,String id) {
         String query=null;
         if(context.equals("fault")) query=type.startsWith("Anomaly")?"SELECT version FROM anomaly WHERE anomaly_id=?":"SELECT version FROM incident WHERE incident_id=?";
-        if(context.equals("device")) {
-            if(type.startsWith("Device")) query="SELECT version FROM device WHERE id=?";
-            else if(type.startsWith("Area")) query="SELECT version FROM area WHERE id=?";
-            else if(type.equals("MonitoringPointBindingEnded")) query="SELECT version FROM monitoring_point_binding WHERE binding_id=?";
-            else if(type.startsWith("MonitoringPoint")) query="SELECT version FROM monitoring_point WHERE monitoring_point_id=?";
-            else if(type.startsWith("Network")||type.startsWith("NETWORK"))query="SELECT version FROM network_dependency WHERE dependency_id=?";
-            else if(type.startsWith("Power")||type.startsWith("POWER"))query="SELECT version FROM power_dependency WHERE power_dependency_id=?";
-            else if(type.startsWith("Video")||type.startsWith("VIDEO"))query="SELECT version FROM video_channel_association WHERE association_id=?";
-        }
         if(query==null)return 0;
         var rows=db.queryForList(query,Long.class,id);return rows.isEmpty()?0:rows.getFirst();
     }
     private String aggregate(String type){
         if(context.equals("workorder"))return "WorkOrder";
         if(context.equals("fault"))return type.startsWith("Anomaly")?"Anomaly":"Incident";
-        if(type.startsWith("Area"))return "Area";
-        if(type.startsWith("MonitoringPointBinding"))return "MonitoringPointBinding";
-        if(type.startsWith("MonitoringPoint"))return "MonitoringPoint";
-        if(type.startsWith("Network")||type.startsWith("NETWORK"))return "NetworkDependency";
-        if(type.startsWith("Power")||type.startsWith("POWER"))return "PowerDependency";
-        if(type.startsWith("Video")||type.startsWith("VIDEO"))return "VideoChannelAssociation";
-        return type.startsWith("DeviceConnection")||type.startsWith("DeviceRuntime")||type.equals("DeviceObservationAccepted")?"DeviceRuntimeState":"Device";
+        throw new IllegalArgumentException("Unknown domain context");
     }
     private List<String> deviceIds(String type,String id,Map<String,?> body) {
         if(context.equals("workorder"))return db.queryForList("SELECT device_id FROM work_order_device_item WHERE work_order_id=? ORDER BY device_id",String.class,id);
@@ -67,21 +52,7 @@ public final class LocalEvents {
             if(type.startsWith("Anomaly"))return db.queryForList("SELECT device_id FROM anomaly WHERE anomaly_id=? AND device_id IS NOT NULL",String.class,id);
             return db.queryForList("SELECT DISTINCT a.device_id FROM incident_anomaly_link l JOIN anomaly a ON a.anomaly_id=l.anomaly_id WHERE l.incident_id=? AND a.device_id IS NOT NULL ORDER BY a.device_id",String.class,id);
         }
-        Set<String> ids=new TreeSet<>();
-        if(type.startsWith("Device"))ids.add(id);
-        if(type.equals("MonitoringPointBindingEnded"))ids.addAll(db.queryForList("SELECT ipc_device_id FROM monitoring_point_binding WHERE binding_id=?",String.class,id));
-        if(type.equals("NETWORKRelationEnded"))ids.addAll(db.queryForList("SELECT upstream_switch_id FROM network_dependency WHERE dependency_id=? UNION SELECT downstream_device_id FROM network_dependency WHERE dependency_id=?",String.class,id,id));
-        if(type.equals("POWERRelationEnded"))ids.addAll(db.queryForList("SELECT poe_switch_id FROM power_dependency WHERE power_dependency_id=? UNION SELECT ipc_device_id FROM power_dependency WHERE power_dependency_id=?",String.class,id,id));
-        if(type.equals("VIDEORelationEnded"))ids.addAll(db.queryForList("SELECT nvr_device_id FROM video_channel_association WHERE association_id=? UNION SELECT ipc_device_id FROM video_channel_association WHERE association_id=?",String.class,id,id));
-        for(String field:List.of("deviceId","ipcDeviceId","poeSwitchId","nvrDeviceId","upstreamSwitchId","downstreamDeviceId")) {
-            Object value=body.get(field);if(value instanceof String s&&!s.isBlank())ids.add(s);
-        }
-        return List.copyOf(ids);
+        throw new IllegalArgumentException("Unknown domain context");
     }
-    private List<String> areaIds(String type,String id) {
-        if(!context.equals("device"))return List.of();
-        if(type.startsWith("Area"))return List.of(id);
-        if(type.startsWith("MonitoringPoint"))return db.queryForList("SELECT area_id FROM monitoring_point WHERE monitoring_point_id=?",String.class,id);
-        return List.of();
-    }
+    private List<String> areaIds(String type,String id){return List.of();}
 }

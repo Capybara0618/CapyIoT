@@ -36,6 +36,9 @@ spring:
   application:
     name: core-service
 capyiot:
+  device:
+    url: ${DEVICE_SERVICE_URL:https://device-service:8082}
+    tls-ca-file: ${SERVICE_TLS_CA_FILE:/run/secrets/internal-ca.pem}
   platform:
     url: ${PLATFORM_SERVICE_URL:https://platform-service:8087}
     tls-ca-file: ${SERVICE_TLS_CA_FILE:/run/secrets/internal-ca.pem}

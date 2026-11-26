@@ -7,7 +7,8 @@ import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.*;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.*;
-import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpsServer;
+import com.sun.net.httpserver.HttpsConfigurator;
 import io.capyiot.contract.LocalTls;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -31,29 +32,34 @@ class SecureBrokerContractTest {
     @Test void realBrokerChecksRsaBindingAndDisconnectsWhenTheConnectTokenExpires()throws Exception{
         var signing=new RSAKeyGenerator(3072).keyID("ephemeral-broker-test").generate();
         var jwksReads=new java.util.concurrent.atomic.AtomicInteger();
-        var jwks=HttpServer.create(new InetSocketAddress("0.0.0.0",0),0);
+        var jwks=HttpsServer.create(new InetSocketAddress("0.0.0.0",0),0);
         jwks.createContext("/.well-known/device-jwks.json",exchange->{
             byte[] body=new JWKSet(signing.toPublicJWK()).toString().getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type","application/json");exchange.sendResponseHeaders(200,body.length);exchange.getResponseBody().write(body);exchange.close();jwksReads.incrementAndGet();
-        });jwks.start();Testcontainers.exposeHostPorts(jwks.getAddress().getPort());
+        });
         try{
             String keytool=Path.of(System.getProperty("java.home"),"bin",System.getProperty("os.name").startsWith("Windows")?"keytool.exe":"keytool").toString();
             Path storeFile=directory.resolve("broker.p12");
             var generated=new ProcessBuilder(keytool,"-genkeypair","-alias","broker","-keyalg","RSA","-keysize","2048","-validity","1","-dname","CN=localhost",
-                "-ext","SAN=dns:localhost,ip:127.0.0.1,dns:emqx","-storetype","PKCS12","-keystore",storeFile.toString(),"-storepass","test-only-password","-keypass","test-only-password","-noprompt")
+                "-ext","SAN=dns:localhost,ip:127.0.0.1,dns:emqx,dns:host.testcontainers.internal","-storetype","PKCS12","-keystore",storeFile.toString(),"-storepass","test-only-password","-keypass","test-only-password","-noprompt")
                 .redirectErrorStream(true).redirectOutput(directory.resolve("keytool.log").toFile()).start();
             assertThat(generated.waitFor(30,TimeUnit.SECONDS)).isTrue();assertThat(generated.exitValue()).isZero();
             var store=KeyStore.getInstance("PKCS12");try(var input=Files.newInputStream(storeFile)){store.load(input,"test-only-password".toCharArray());}
+            var managers=javax.net.ssl.KeyManagerFactory.getInstance(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());managers.init(store,"test-only-password".toCharArray());
+            var tls=javax.net.ssl.SSLContext.getInstance("TLS");tls.init(managers.getKeyManagers(),null,new java.security.SecureRandom());
+            jwks.setHttpsConfigurator(new HttpsConfigurator(tls));jwks.start();Testcontainers.exposeHostPorts(jwks.getAddress().getPort());
             byte[] certificate=pem("CERTIFICATE",store.getCertificate("broker").getEncoded());
             byte[] privateKey=pem("PRIVATE KEY",store.getKey("broker","test-only-password".toCharArray()).getEncoded());
             Path ca=directory.resolve("ca.pem");Files.write(ca,certificate);
             String configuration=Files.readString(Path.of("../../infra/emqx/emqx.conf"))
-                .replace("http://core-service:8085/.well-known/device-jwks.json","http://host.testcontainers.internal:"+jwks.getAddress().getPort()+"/.well-known/device-jwks.json")
+                .replace("https://device-service:8082/.well-known/device-jwks.json","https://host.testcontainers.internal:"+jwks.getAddress().getPort()+"/.well-known/device-jwks.json")
+                .replace("server_name_indication = \"device-service\"","server_name_indication = \"host.testcontainers.internal\"")
                 .replace("api_key.bootstrap_file = \"/opt/emqx/etc/local-api-keys\"","");
             try(var broker=new GenericContainer<>("emqx/emqx:5.8.9").withExposedPorts(8883)
                 .withEnv("EMQX_NODE__NAME","emqx@127.0.0.1").withEnv("EMQX_NODE__COOKIE",UUID.randomUUID().toString()).withEnv("ERL_FLAGS","+S 2:2")
                 .withCopyToContainer(Transferable.of(configuration),"/opt/emqx/etc/emqx.conf")
                 .withCopyToContainer(Transferable.of(certificate),"/opt/emqx/etc/local-tls/ca.pem")
+                .withCopyToContainer(Transferable.of(certificate),"/opt/emqx/etc/internal-tls/ca.pem")
                 .withCopyToContainer(Transferable.of(certificate),"/opt/emqx/etc/local-tls/server.pem")
                 .withCopyToContainer(Transferable.of(privateKey,0644),"/opt/emqx/etc/local-tls/server.key")
                 .waitingFor(Wait.forListeningPort()).withStartupTimeout(Duration.ofSeconds(90))){

@@ -106,4 +106,14 @@ class InternalContractsTest {
             }
         }
     }
+    @Test void ingestionOperationsBindBothDeviceAndSessionAndExcludeBusinessCallers() {
+        assertThat(InternalEndpoint.DEVICE_SESSION_CONTEXT.path("ipc-1","boot-1")).isEqualTo("/internal/v1/devices/ipc-1/sessions/boot-1");
+        assertThatThrownBy(()->InternalEndpoint.DEVICE_SESSION_CONTEXT.path("ipc-1")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->InternalEndpoint.DEVICE_SESSION_CONTEXT.path("ipc-1","boot-1","extra")).isInstanceOf(IllegalArgumentException.class);
+        assertThat(InternalEndpoint.DEVICE_SESSION_CONTEXT.allows(ServiceId.INGESTION)).isTrue();
+        assertThat(InternalEndpoint.DEVICE_SESSION_CONTEXT.allows(ServiceId.WORKFLOW)).isFalse();
+        assertThat(InternalEndpoint.INGESTION_TOKEN.query()).isFalse();
+        assertThat(new DeviceApi.IngestionCredential("sensitive-fixture",java.time.Instant.now()).toString()).doesNotContain("sensitive-fixture");
+        assertThatThrownBy(()->new DeviceApi.IngestionIdentity("device-client")).isInstanceOf(IllegalArgumentException.class);
+    }
 }

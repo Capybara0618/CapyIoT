@@ -8,6 +8,30 @@ public final class DeviceApi {
     public record Batch(List<String> deviceIds) {
         public Batch { deviceIds=ContractChecks.ids(deviceIds,false); }
     }
+    public record VisiblePageRequest(String permission,String afterDeviceId) {
+        public VisiblePageRequest {ContractChecks.permission(permission);ContractChecks.optionalId(afterDeviceId);}
+    }
+    public record VisiblePage(List<String> deviceIds,String nextCursor,Instant checkedAt) {
+        public VisiblePage {deviceIds=ContractChecks.ids(deviceIds,true);ContractChecks.optionalId(nextCursor);ContractChecks.required(checkedAt);}
+    }
+    public record NetworkPageRequest(String parkId,Instant asOf,String afterRelationId) {
+        public NetworkPageRequest {ContractChecks.id(parkId);ContractChecks.required(asOf);ContractChecks.optionalId(afterRelationId);}
+    }
+    public record NetworkPage(List<Relation> relations,String nextCursor,Instant asOf) {
+        public NetworkPage {relations=ContractChecks.batch(relations,true);ContractChecks.optionalId(nextCursor);ContractChecks.required(asOf);}
+    }
+    public record IngestionIdentity(String clientId) {
+        public IngestionIdentity {if(clientId==null||!clientId.matches("capyiot-ingestion-[A-Za-z0-9_-]{1,48}"))throw new IllegalArgumentException("Invalid ingestion client ID");}
+    }
+    public record IngestionCredential(String token,Instant expiresAt) {
+        public IngestionCredential {ContractChecks.text(token,16384);ContractChecks.required(expiresAt);}
+        @Override public String toString(){return "IngestionCredential[REDACTED]";}
+    }
+    public record SessionContext(String deviceId,String parkId,String deviceType,String source,String sessionId,
+                                 long sessionEpoch,long credentialVersion,Instant expiresAt,String monitoringPointId) {
+        public SessionContext {ContractChecks.id(deviceId);ContractChecks.id(parkId);ContractChecks.text(deviceType,32);ContractChecks.text(source,64);
+            ContractChecks.id(sessionId);ContractChecks.version(sessionEpoch);ContractChecks.version(credentialVersion);ContractChecks.required(expiresAt);ContractChecks.optionalId(monitoringPointId);}
+    }
     public record Resource(String deviceId, String parkId, String areaId, String assetCode, String deviceType,
                            String name, String assetStatus, List<String> ancestorAreaIds, long version) {
         public Resource {

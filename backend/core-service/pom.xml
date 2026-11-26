@@ -26,10 +26,10 @@
     <testResources>
       <testResource><directory>src/test/resources</directory></testResource>
       <testResource><directory>../platform-service/src/main/resources/db/platform</directory><targetPath>db/platform</targetPath></testResource>
+      <testResource><directory>../device-service/src/main/resources/db/migration</directory><targetPath>db/device</targetPath></testResource>
     </testResources>
     <resources>
       <resource><directory>src/main/resources</directory></resource>
-      <resource><directory>../device-service/src/main/resources/db/migration</directory><targetPath>db/device</targetPath></resource>
       <resource><directory>../alarm-service/src/main/resources/db/migration</directory><targetPath>db/fault</targetPath></resource>
       <resource><directory>../workflow-service/src/main/resources/db/migration</directory><targetPath>db/workflow</targetPath></resource>
     </resources>

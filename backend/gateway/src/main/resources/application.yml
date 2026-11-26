@@ -16,7 +16,7 @@ capyiot:
     platform-url: ${PLATFORM_SERVICE_URL:https://platform-service:8087}
     core-url: ${CORE_SERVICE_URL:http://localhost:8085}
     agent-url: ${AGENT_SERVICE_URL:http://localhost:8086}
-    device-url: ${DEVICE_SERVICE_URL:http://localhost:8082}
+    device-url: ${DEVICE_SERVICE_URL:https://device-service:8082}
     ingestion-url: ${INGESTION_SERVICE_URL:http://localhost:8081}
     alarm-url: ${ALARM_SERVICE_URL:http://localhost:8083}
     workflow-url: ${WORKFLOW_SERVICE_URL:http://localhost:8084}

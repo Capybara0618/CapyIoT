@@ -16,7 +16,7 @@ import java.util.Set;
 public final class InternalHttpClient {
     private static final Set<String> SAFE_ERRORS=Set.of("VALIDATION_ERROR","RESOURCE_NOT_FOUND","PERMISSION_DENIED",
             "TOKEN_INVALID","SESSION_INVALID","AUTHORIZATION_CHANGED","IDEMPOTENCY_CONFLICT","VERSION_CONFLICT",
-            "DUPLICATE_RESOURCE","SERVICE_SCOPE_DENIED","SERVICE_TOKEN_INVALID","ACTOR_TOKEN_INVALID");
+            "DUPLICATE_RESOURCE","SERVICE_SCOPE_DENIED","SERVICE_TOKEN_INVALID","ACTOR_TOKEN_INVALID","DEVICE_AUTHENTICATION_FAILED","DEVICE_AUTH_RATE_LIMITED");
     private final Map<ServiceId,URI> origins;
     private final ServiceTokenSigner signer;
     private final ServiceTransport transport;

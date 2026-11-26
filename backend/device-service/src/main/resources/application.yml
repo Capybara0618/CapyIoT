@@ -1,70 +1,86 @@
 server:
-  port: 8082
+  port: ${DEVICE_PORT:8082}
   shutdown: graceful
+  ssl:
+    enabled: ${SERVICE_TLS_ENABLED:true}
+    key-store: ${SERVICE_TLS_KEYSTORE:}
+    key-store-type: PKCS12
+    key-store-password: ${SERVICE_TLS_KEYSTORE_PASSWORD:}
 spring:
   application:
     name: device-service
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      timeout: 3s
+  datasource:
+    url: ${DEVICE_DB_URL:jdbc:mysql://mysql:3306/device_db?connectionTimeZone=UTC}
+    username: ${DEVICE_DB_USER:device_app}
+    password: ${DEVICE_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    locations: classpath:db/migration
+    clean-disabled: true
+  task:
+    scheduling:
+      pool:
+        size: 6
+  jackson:
+    parser:
+      strict-duplicate-detection: true
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-numbers-for-enums: true
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       properties:
         enable.idempotence: true
-        delivery.timeout.ms: 30000
-    consumer:
-      enable-auto-commit: false
-      auto-offset-reset: earliest
-      max-poll-records: 50
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     listener:
-      type: batch
-      ack-mode: manual_immediate
-      concurrency: 2
-  task:
-    scheduling:
-      pool:
-        size: 3
-  datasource:
-    url: ${DEVICE_DB_URL:jdbc:mysql://localhost:3306/device_db?connectionTimeZone=UTC}
-    username: ${DEVICE_DB_USER:device_app}
-    password: ${DEVICE_DB_PASSWORD}
-    hikari:
-      maximum-pool-size: 5
-  flyway:
+      ack-mode: record
+capyiot:
+  assets:
     enabled: true
-    clean-disabled: true
+  domain-runtime:
+    enabled: ${DEVICE_DOMAIN_RUNTIME_ENABLED:false}
+  device-runtime:
+    enabled: ${DEVICE_RUNTIME_ENABLED:false}
+    heartbeat-timeout-seconds: 45
+    freshness-timeout-seconds: 120
+    sweep-ms: 5000
+  device-key-file: ${DEVICE_KEY_FILE:/keys/device-keys.json}
+  device-keys-generate: false
+  device:
+    clients:
+      enabled: true
+    session-http-test-only: false
+    command-fingerprint-key: ${DEVICE_COMMAND_FINGERPRINT_KEY}
+    service-key-file: ${DEVICE_SERVICE_KEY_FILE:/run/secrets/device-service-keys.json}
+    tls-ca-file: ${SERVICE_TLS_CA_FILE:/run/secrets/internal-ca.pem}
+    platform-url: ${PLATFORM_SERVICE_URL:https://platform-service:8087}
+    fault-url: ${ALARM_SERVICE_URL:https://alarm-service:8083}
+    workflow-url: ${WORKFLOW_SERVICE_URL:https://workflow-service:8084}
+    user-jwks-uri: ${USER_JWKS_URI:https://gateway:8080/.well-known/jwks.json}
+    agent-jwks-uri: ${AGENT_JWKS_URI:https://agent-service:8086/.well-known/agent-jwks.json}
+    platform-jwks-uri: ${PLATFORM_SERVICE_JWKS_URI:https://platform-service:8087/.well-known/service-jwks.json}
+    fault-jwks-uri: ${FAULT_SERVICE_JWKS_URI:https://alarm-service:8083/.well-known/service-jwks.json}
+    workflow-jwks-uri: ${WORKFLOW_SERVICE_JWKS_URI:https://workflow-service:8084/.well-known/service-jwks.json}
+    ingestion-jwks-uri: ${INGESTION_SERVICE_JWKS_URI:https://device-ingestion:8081/.well-known/service-jwks.json}
+    legacy:
+      enabled: ${DEVICE_LEGACY_BRIDGE_ENABLED:false}
+      expires-at: ${DEVICE_LEGACY_BRIDGE_EXPIRES_AT:1970-01-01T00:00:00Z}
+      service-key: ${CORE_SERVICE_KEY:}
 management:
-  metrics:
-    distribution:
-      percentiles-histogram:
-        http.server.requests: true
-  endpoint:
-    health:
-      group:
-        readiness:
-          include: readinessState,db,redis
-      probes:
-        enabled: true
   endpoints:
     web:
       exposure:
         include: health,prometheus
-capyiot:
-  user-jwt-secret: ${JWT_SECRET}
-  device-jwt-secret: ${DEVICE_JWT_SECRET}
-  topology-sync-token: ${TOPOLOGY_SYNC_TOKEN:}
-  scenario-device-file: ${SCENARIO_DEVICE_FILE:}
-  scenario-mqtt-url: ${MQTT_URL:tcp://localhost:1883}
-springdoc:
-  api-docs:
-    path: /api/v1/openapi
-    version: OPENAPI_3_1
-  paths-to-match: /api/v1/**
+  endpoint:
+    health:
+      probes:
+        enabled: true
