@@ -161,8 +161,7 @@ function submitKey(event: KeyboardEvent) {
             <p>{{ phase }}</p>
             <ul v-if="progress.length">
               <li v-for="step in progress" :key="step.callId">
-                <span>{{ step.label }}</span
-                ><small>{{
+                <span>{{ step.label }}</span><small>{{
                   step.status === 'STARTED'
                     ? '进行中'
                     : ['SUCCEEDED', 'EMPTY'].includes(step.status)

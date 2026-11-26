@@ -30,8 +30,7 @@ const evidenceNumber = (id: string) =>
       <h3>{{ section.title }}</h3>
       <ul>
         <li v-for="(claim, index) in section.claims" :key="index">
-          <span>{{ claim.statement }}</span
-          ><a
+          <span>{{ claim.statement }}</span><a
             v-for="id in claim.evidenceIds"
             :key="id"
             class="agent-citation"
