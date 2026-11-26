@@ -239,3 +239,99 @@ test('chat stays readable on mobile and untrusted text is displayed as text', as
     fullPage: true,
   })
 })
+
+test('older chat messages preserve the reading position instead of jumping to the newest turn', async ({
+  page,
+}) => {
+  // A frontend-only regression check: credentials and all business API responses are local fixtures.
+  await page.addInitScript(() => {
+    const saved = {
+      accessToken: 'offline-browser-fixture',
+      expiresAt: new Date(Date.now() + 600000).toISOString(),
+      user: {
+        userId: 'fixture-user',
+        loginName: 'fixture',
+        displayName: '验收账号',
+        authorizationVersion: 1,
+        roleCodes: ['OPS_SUPERVISOR'],
+      },
+    }
+    sessionStorage.setItem('capyiot.token', saved.accessToken)
+    sessionStorage.setItem('capyiot.session', JSON.stringify(saved))
+  })
+  await page.route('**/api/v1/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        code: 'OK',
+        message: '成功',
+        data: {
+          userId: 'fixture-user',
+          loginName: 'fixture',
+          displayName: '验收账号',
+          status: 'ACTIVE',
+          authorizationVersion: 1,
+          roleCodes: ['OPS_SUPERVISOR'],
+          permissionCodes: ['agent.use'],
+          scopeSummaries: [],
+        },
+        traceId: 'fixture',
+      },
+    }),
+  )
+  await page.route('**/api/v1/health', (route) =>
+    route.fulfill({
+      json: {
+        code: 'OK',
+        message: '成功',
+        data: { service: 'frontend-fixture', status: 'UP', checkedAt: stamp() },
+        traceId: 'fixture',
+      },
+    }),
+  )
+  await mockChat(page)
+  await page.route('**/api/v1/agent/conversations/conversation-one?*', async (route) => {
+    const older = new URL(route.request().url()).searchParams.has('before')
+    const messages = Array.from({ length: older ? 1 : 5 }, (_, index) => {
+      const number = older ? 0 : index + 1,
+        run = finished('run-' + number)
+      run.answer.facts[0]!.statement = '第 ' + number + ' 轮状态核查'
+      const pair = history(run).messages
+      pair[0]!.content = '历史问题 ' + number
+      pair.forEach((message, offset) => {
+        message.messageSeq = number * 2 + offset + 1
+        message.sequence = message.messageSeq
+      })
+      return pair
+    }).flat()
+    await route.fulfill({
+      json: {
+        code: 'OK',
+        message: '成功',
+        data: {
+          ...conversation(),
+          messages,
+          firstSequence: older ? 1 : 3,
+          lastSequence: older ? 2 : 12,
+          hasMoreBefore: !older,
+          hasMoreAfter: older,
+        },
+        traceId: 'fixture',
+      },
+    })
+  })
+  await page.goto('/assistant/conversation-one')
+  const transcript = page.getByRole('log', { name: '对话记录' })
+  await expect(page.getByText('历史问题 5', { exact: true })).toBeAttached()
+  await transcript.evaluate((element) => {
+    element.scrollTop = 0
+  })
+  await page.getByRole('button', { name: '查看更早消息', exact: true }).click()
+  await expect(page.getByText('历史问题 0', { exact: true })).toBeAttached()
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) => element.scrollTop < element.scrollHeight - element.clientHeight - 50,
+      ),
+    )
+    .toBeTruthy()
+})

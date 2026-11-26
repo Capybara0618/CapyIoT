@@ -33,6 +33,7 @@ const {
   turns,
 } = chat
 const transcript = ref<HTMLElement | null>(null)
+const loadingBacklog = ref(false)
 const title = computed(
   () => list.value.find((item) => item.conversationId === id.value)?.title ?? '新的运维对话',
 )
@@ -47,11 +48,25 @@ const examples = [
 watch(
   () => [messages.value.length, sending.value],
   async () => {
+    if (loadingBacklog.value) return
     await nextTick()
     if (transcript.value && !loadingOlder.value)
       transcript.value.scrollTop = transcript.value.scrollHeight
   },
 )
+async function loadOlder() {
+  if (loadingBacklog.value) return
+  const height = transcript.value?.scrollHeight ?? 0
+  const top = transcript.value?.scrollTop ?? 0
+  loadingBacklog.value = true
+  try {
+    await chat.reload(true)
+    await nextTick()
+    if (transcript.value) transcript.value.scrollTop = top + transcript.value.scrollHeight - height
+  } finally {
+    loadingBacklog.value = false
+  }
+}
 async function draftUpdated(runId: string, draft: AgentDraft) {
   if (['EXECUTED', 'REJECTED', 'FAILED', 'EXPIRED', 'INVALIDATED'].includes(draft.status)) {
     try {
@@ -125,7 +140,7 @@ function submitKey(event: KeyboardEvent) {
             v-if="hasOlder"
             :disabled="loadingOlder"
             class="agent-load-older"
-            @click="chat.reload(true)"
+            @click="loadOlder"
           >
             {{ loadingOlder ? '正在读取…' : '查看更早消息' }}
           </button>
