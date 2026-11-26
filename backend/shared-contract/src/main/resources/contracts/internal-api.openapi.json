@@ -1,0 +1,3483 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CapyIoT Internal Service Contracts",
+    "version": "1.0.0",
+    "description": "Fixed service operations. Service JWT is bound to operation, target audience and actor token digest. No public gateway access."
+  },
+  "paths": {
+    "/internal/v1/identity/context": {
+      "post": {
+        "operationId": "IDENTITY_CONTEXT",
+        "tags": [
+          "platform-service"
+        ],
+        "servers": [
+          {
+            "url": "https://platform-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "identity.read",
+        "security": [
+          {
+            "ServiceToken": [],
+            "ActorToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PlatformApi.Identity"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformApi.IdentityRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/users/eligibility": {
+      "post": {
+        "operationId": "USER_ELIGIBILITY",
+        "tags": [
+          "platform-service"
+        ],
+        "servers": [
+          {
+            "url": "https://platform-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "users.eligibility",
+        "security": [
+          {
+            "ServiceToken": [],
+            "ActorToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PlatformApi.EligibilityResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformApi.EligibilityRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/resources/validate": {
+      "post": {
+        "operationId": "RESOURCE_VALIDATION",
+        "tags": [
+          "device-service"
+        ],
+        "servers": [
+          {
+            "url": "https://device-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "resources.validate",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DeviceApi.ResourceValidity"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceApi.ResourceValidation"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/devices/scope-check": {
+      "post": {
+        "operationId": "DEVICE_SCOPE",
+        "tags": [
+          "device-service"
+        ],
+        "servers": [
+          {
+            "url": "https://device-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "devices.scope",
+        "security": [
+          {
+            "ServiceToken": [],
+            "ActorToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DeviceApi.ScopeResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceApi.ScopeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/topology/snapshot": {
+      "post": {
+        "operationId": "TOPOLOGY_SNAPSHOT",
+        "tags": [
+          "device-service"
+        ],
+        "servers": [
+          {
+            "url": "https://device-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "topology.snapshot",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DeviceApi.TopologyResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceApi.TopologyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/devices/runtime-snapshot": {
+      "post": {
+        "operationId": "RUNTIME_SNAPSHOT",
+        "tags": [
+          "device-service"
+        ],
+        "servers": [
+          {
+            "url": "https://device-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "runtime.snapshot",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DeviceApi.RuntimeResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceApi.Batch"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/health/batch": {
+      "post": {
+        "operationId": "HEALTH_BATCH",
+        "tags": [
+          "alarm-service"
+        ],
+        "servers": [
+          {
+            "url": "https://alarm-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "health.read",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FaultApi.HealthResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceApi.Batch"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/evidence/resolve": {
+      "post": {
+        "operationId": "EVIDENCE_RESOLVE",
+        "tags": [
+          "alarm-service"
+        ],
+        "servers": [
+          {
+            "url": "https://alarm-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "evidence.resolve",
+        "security": [
+          {
+            "ServiceToken": [],
+            "ActorToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FaultApi.EvidenceResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaultApi.EvidenceRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/incidents/{id}": {
+      "get": {
+        "operationId": "INCIDENT_REFERENCE",
+        "tags": [
+          "alarm-service"
+        ],
+        "servers": [
+          {
+            "url": "https://alarm-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "incidents.read",
+        "security": [
+          {
+            "ServiceToken": [],
+            "ActorToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FaultApi.IncidentRef"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/incidents/{id}/reservations": {
+      "post": {
+        "operationId": "RESERVATION_CREATE",
+        "tags": [
+          "alarm-service"
+        ],
+        "servers": [
+          {
+            "url": "https://alarm-service"
+          }
+        ],
+        "x-capyiot-query": false,
+        "x-capyiot-scope": "reservations.create",
+        "security": [
+          {
+            "ServiceToken": [],
+            "ActorToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FaultApi.Reservation"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaultApi.Reserve"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/operations/{id}/reservation": {
+      "get": {
+        "operationId": "RESERVATION_QUERY",
+        "tags": [
+          "alarm-service"
+        ],
+        "servers": [
+          {
+            "url": "https://alarm-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "reservations.read",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FaultApi.Reservation"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/reservations/{id}/commit": {
+      "post": {
+        "operationId": "RESERVATION_COMMIT",
+        "tags": [
+          "alarm-service"
+        ],
+        "servers": [
+          {
+            "url": "https://alarm-service"
+          }
+        ],
+        "x-capyiot-query": false,
+        "x-capyiot-scope": "reservations.commit",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FaultApi.Reservation"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaultApi.Commit"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/reservations/{id}/abort-ack": {
+      "post": {
+        "operationId": "RESERVATION_ABORT",
+        "tags": [
+          "alarm-service"
+        ],
+        "servers": [
+          {
+            "url": "https://alarm-service"
+          }
+        ],
+        "x-capyiot-query": false,
+        "x-capyiot-scope": "reservations.abort",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FaultApi.Reservation"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaultApi.AbortAcknowledgement"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/assignments/scope-facts": {
+      "post": {
+        "operationId": "ASSIGNMENT_FACTS",
+        "tags": [
+          "workflow-service"
+        ],
+        "servers": [
+          {
+            "url": "https://workflow-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "assignments.read",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WorkOrderApi.AssignmentResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkOrderApi.AssignmentRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/incidents/{id}/order-state": {
+      "get": {
+        "operationId": "INCIDENT_ORDER_STATE",
+        "tags": [
+          "workflow-service"
+        ],
+        "servers": [
+          {
+            "url": "https://workflow-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "orders.authority",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WorkOrderApi.IncidentOrderState"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/operations/{id}": {
+      "get": {
+        "operationId": "OPERATION_QUERY",
+        "tags": [
+          "workflow-service"
+        ],
+        "servers": [
+          {
+            "url": "https://workflow-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "operations.read",
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WorkOrderApi.OperationResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ServiceToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Service-Authorization",
+        "description": "Bearer RS256 service JWT; issuer, target, endpoint scope and actor digest are validated."
+      },
+      "ActorToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "PlatformApi.ScopeType": {
+        "type": "string",
+        "enum": [
+          "NONE",
+          "PARK",
+          "AREA_SUBTREE",
+          "ASSIGNED_TO_ME"
+        ]
+      },
+      "PlatformApi.AssignmentRelation": {
+        "type": "string",
+        "enum": [
+          "REPAIRER",
+          "ACCEPTOR"
+        ]
+      },
+      "PlatformApi.PersonnelRole": {
+        "type": "string",
+        "enum": [
+          "REPAIR_TECH",
+          "ACCEPTANCE_STAFF"
+        ]
+      },
+      "FaultApi.ReservationState": {
+        "type": "string",
+        "enum": [
+          "RESERVED",
+          "COMMITTED",
+          "RELEASED",
+          "RECONCILIATION_REQUIRED",
+          "UNKNOWN"
+        ]
+      },
+      "WorkOrderApi.Operation": {
+        "type": "string",
+        "enum": [
+          "CREATE",
+          "REOPEN"
+        ]
+      },
+      "WorkOrderApi.OperationState": {
+        "type": "string",
+        "enum": [
+          "PREPARED",
+          "RESERVED",
+          "COMMITTED",
+          "ABORTED",
+          "RECONCILIATION_REQUIRED",
+          "UNKNOWN"
+        ]
+      },
+      "WorkOrderApi.OrderStatus": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "ASSIGNED",
+          "ACCEPTED",
+          "IN_PROGRESS",
+          "VERIFYING",
+          "RETURNED",
+          "CLOSED",
+          "CANCELLED"
+        ]
+      },
+      "PlatformApi.IdentityRequest": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "PlatformApi.Grant": {
+        "type": "object",
+        "properties": {
+          "grantId": {
+            "type": "string"
+          },
+          "roleCode": {
+            "type": "string"
+          },
+          "scopeType": {
+            "$ref": "#/components/schemas/PlatformApi.ScopeType"
+          },
+          "parkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "rootAreaIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "assignmentRelation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlatformApi.AssignmentRelation"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "grantId",
+          "roleCode",
+          "scopeType",
+          "parkId",
+          "rootAreaIds",
+          "assignmentRelation"
+        ]
+      },
+      "PlatformApi.Identity": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "loginName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "authorizationVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformApi.Grant"
+            }
+          },
+          "permissionCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "userId",
+          "loginName",
+          "displayName",
+          "authorizationVersion",
+          "sessionId",
+          "grants",
+          "permissionCodes",
+          "checkedAt"
+        ]
+      },
+      "PlatformApi.EligibilityRequest": {
+        "type": "object",
+        "properties": {
+          "candidateUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "role": {
+            "$ref": "#/components/schemas/PlatformApi.PersonnelRole"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceApi.Resource"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "candidateUserIds",
+          "role",
+          "devices"
+        ]
+      },
+      "PlatformApi.Eligibility": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/PlatformApi.PersonnelRole"
+          },
+          "eligible": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "role",
+          "eligible"
+        ]
+      },
+      "PlatformApi.EligibilityResult": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformApi.Eligibility"
+            },
+            "maxItems": 100
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "candidates",
+          "checkedAt"
+        ]
+      },
+      "DeviceApi.Batch": {
+        "type": "object",
+        "properties": {
+          "deviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "deviceIds"
+        ]
+      },
+      "DeviceApi.Resource": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "parkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "areaId": {
+            "type": "string",
+            "nullable": true
+          },
+          "assetCode": {
+            "type": "string"
+          },
+          "deviceType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "assetStatus": {
+            "type": "string"
+          },
+          "ancestorAreaIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "deviceId",
+          "parkId",
+          "areaId",
+          "assetCode",
+          "deviceType",
+          "name",
+          "assetStatus",
+          "ancestorAreaIds",
+          "version"
+        ]
+      },
+      "DeviceApi.ScopeRequest": {
+        "type": "object",
+        "properties": {
+          "permission": {
+            "type": "string"
+          },
+          "deviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "permission",
+          "deviceIds"
+        ]
+      },
+      "DeviceApi.ScopeResult": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceApi.Resource"
+            },
+            "maxItems": 100
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "devices",
+          "checkedAt"
+        ]
+      },
+      "DeviceApi.ResourceValidation": {
+        "type": "object",
+        "properties": {
+          "parkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "areaIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "parkId",
+          "areaIds"
+        ]
+      },
+      "DeviceApi.ResourceValidity": {
+        "type": "object",
+        "properties": {
+          "parkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "parkExists": {
+            "type": "boolean"
+          },
+          "allAreasBelong": {
+            "type": "boolean"
+          },
+          "topologyVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "parkId",
+          "parkExists",
+          "allAreasBelong",
+          "topologyVersion",
+          "checkedAt"
+        ]
+      },
+      "DeviceApi.TopologyRequest": {
+        "type": "object",
+        "properties": {
+          "parkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true,
+            "minItems": 1
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "parkId",
+          "deviceIds",
+          "asOf"
+        ]
+      },
+      "DeviceApi.Relation": {
+        "type": "object",
+        "properties": {
+          "relationId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "sourceDeviceId": {
+            "type": "string"
+          },
+          "targetDeviceId": {
+            "type": "string"
+          },
+          "port": {
+            "type": "string",
+            "nullable": true
+          },
+          "channel": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "relationId",
+          "type",
+          "sourceDeviceId",
+          "targetDeviceId",
+          "port",
+          "channel",
+          "validFrom",
+          "validTo",
+          "version"
+        ]
+      },
+      "DeviceApi.TopologyResult": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceApi.Resource"
+            },
+            "maxItems": 100
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceApi.Relation"
+            }
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "topologyVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "devices",
+          "relations",
+          "asOf",
+          "topologyVersion",
+          "complete"
+        ]
+      },
+      "DeviceApi.ObservationPosition": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "streamKey": {
+            "type": "string"
+          },
+          "sessionEpoch": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "eventId",
+          "streamKey",
+          "sessionEpoch",
+          "sequence"
+        ]
+      },
+      "DeviceApi.RuntimeState": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "connectivityStatus": {
+            "type": "string"
+          },
+          "operatingMode": {
+            "type": "string"
+          },
+          "dataFreshness": {
+            "type": "string"
+          },
+          "stateVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "lastHeartbeatReceivedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastBusinessDataReceivedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "requiredFaultPositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceApi.ObservationPosition"
+            }
+          }
+        },
+        "required": [
+          "deviceId",
+          "connectivityStatus",
+          "operatingMode",
+          "dataFreshness",
+          "stateVersion",
+          "lastHeartbeatReceivedAt",
+          "lastBusinessDataReceivedAt",
+          "requiredFaultPositions"
+        ]
+      },
+      "DeviceApi.RuntimeResult": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceApi.RuntimeState"
+            },
+            "maxItems": 100
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "devices",
+          "checkedAt",
+          "complete"
+        ]
+      },
+      "FaultApi.IncidentRef": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "parkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "incidentId",
+          "parkId",
+          "status",
+          "priority",
+          "version"
+        ]
+      },
+      "FaultApi.Reserve": {
+        "type": "object",
+        "properties": {
+          "binding": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkOrderApi.CommandBinding"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "binding"
+        ]
+      },
+      "FaultApi.Reservation": {
+        "type": "object",
+        "properties": {
+          "reservationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "$ref": "#/components/schemas/FaultApi.ReservationState"
+          },
+          "binding": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkOrderApi.CommandBinding"
+              }
+            ],
+            "nullable": true
+          },
+          "workOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "reservationId",
+          "state",
+          "binding",
+          "workOrderId",
+          "checkedAt"
+        ]
+      },
+      "FaultApi.Commit": {
+        "type": "object",
+        "properties": {
+          "binding": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkOrderApi.CommandBinding"
+              }
+            ],
+            "nullable": true
+          },
+          "workOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workOrderVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        "required": [
+          "binding",
+          "workOrderId",
+          "workOrderVersion"
+        ]
+      },
+      "FaultApi.AbortAcknowledgement": {
+        "type": "object",
+        "properties": {
+          "binding": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkOrderApi.CommandBinding"
+              }
+            ],
+            "nullable": true
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding",
+          "reason"
+        ]
+      },
+      "FaultApi.CloseAttempt": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "closeAttemptId": {
+            "type": "string"
+          },
+          "gateVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "expectedIncidentVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "incidentId",
+          "closeAttemptId",
+          "gateVersion",
+          "expectedIncidentVersion"
+        ]
+      },
+      "FaultApi.Health": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "healthStatus": {
+            "type": "string"
+          },
+          "sourceVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "deviceId",
+          "healthStatus",
+          "sourceVersion"
+        ]
+      },
+      "FaultApi.HealthResult": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FaultApi.Health"
+            },
+            "maxItems": 100
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "devices",
+          "checkedAt",
+          "complete"
+        ]
+      },
+      "FaultApi.EvidenceRequest": {
+        "type": "object",
+        "properties": {
+          "evidenceReferenceId": {
+            "type": "string"
+          },
+          "workOrderDeviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "evidenceReferenceId",
+          "workOrderDeviceIds"
+        ]
+      },
+      "FaultApi.EvidenceResult": {
+        "type": "object",
+        "properties": {
+          "visible": {
+            "type": "boolean"
+          },
+          "related": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "visible",
+          "related",
+          "sourceId",
+          "checkedAt"
+        ]
+      },
+      "WorkOrderApi.CommandBinding": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/WorkOrderApi.Operation"
+          },
+          "actorUserId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[!-~]+$"
+          },
+          "requestHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "operationId",
+          "incidentId",
+          "operation",
+          "actorUserId",
+          "idempotencyKey",
+          "requestHash"
+        ]
+      },
+      "WorkOrderApi.OperationResult": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WorkOrderApi.OperationState"
+          },
+          "binding": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkOrderApi.CommandBinding"
+              }
+            ],
+            "nullable": true
+          },
+          "reservationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workOrderVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "operationId",
+          "state",
+          "binding",
+          "reservationId",
+          "workOrderId",
+          "workOrderVersion",
+          "checkedAt"
+        ]
+      },
+      "WorkOrderApi.OrderRef": {
+        "type": "object",
+        "properties": {
+          "workOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workOrderNo": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkOrderApi.OrderStatus"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "workOrderId",
+          "workOrderNo",
+          "status",
+          "version"
+        ]
+      },
+      "WorkOrderApi.IncidentOrderState": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderApi.OrderRef"
+            },
+            "maxItems": 100
+          },
+          "pendingOperationIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "incidentId",
+          "orders",
+          "pendingOperationIds",
+          "complete",
+          "checkedAt",
+          "nextCursor"
+        ]
+      },
+      "WorkOrderApi.AssignmentRequest": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "parkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "relation": {
+            "$ref": "#/components/schemas/PlatformApi.AssignmentRelation"
+          },
+          "deviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "userId",
+          "parkId",
+          "relation",
+          "deviceIds"
+        ]
+      },
+      "WorkOrderApi.AssignmentResult": {
+        "type": "object",
+        "properties": {
+          "assignedDeviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "assignedDeviceIds",
+          "checkedAt"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "traceId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          },
+          "traceId": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
