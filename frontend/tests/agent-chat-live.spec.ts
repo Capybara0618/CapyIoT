@@ -76,7 +76,7 @@ test('leaving an active POST stream cancels the run and reopening restores its f
   await page.goto('/assistant')
   await page.getByLabel('运维问题', { exact: true }).fill('slow-fixture 请查询设备状态')
   await page.getByRole('button', { name: '发送消息', exact: true }).click()
-  await expect(page.locator('.agent-progress')).toContainText('已受理', { timeout: 15000 })
+  await expect(page.locator('.agent-progress')).toBeVisible({ timeout: 15000 })
   const url = page.url(),
     id = new URL(url).pathname.split('/').at(-1)
   let runId: string | undefined

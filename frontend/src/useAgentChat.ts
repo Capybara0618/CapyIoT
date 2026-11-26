@@ -438,7 +438,7 @@ export function useAgentChat() {
   watch(
     id,
     () => {
-      if (adopting === id.value) {
+      if (adopting && adopting === id.value) {
         adopting = ''
         return
       }
