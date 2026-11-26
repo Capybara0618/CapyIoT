@@ -20,6 +20,7 @@
   <modules>
     <module>shared-contract</module>
     <module>service-support</module>
+    <module>platform-service</module>
     <module>core-service</module>
     <module>gateway</module>
     <module>device-ingestion</module>

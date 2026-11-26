@@ -1,7 +1,7 @@
 package io.capyiot.core.asset;
 
 import io.capyiot.contract.ApiResponse;
-import io.capyiot.core.platform.PlatformService;
+import io.capyiot.core.platform.PlatformAuthority;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.Map;
@@ -14,8 +14,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1")
 @ConditionalOnProperty(name="capyiot.assets.enabled",havingValue="true")
 class AssetReadController {
-    private final AssetService assets;private final PlatformService platform;
-    AssetReadController(AssetService assets,PlatformService platform){this.assets=assets;this.platform=platform;}
+    private final AssetService assets;private final PlatformAuthority platform;
+    AssetReadController(AssetService assets,PlatformAuthority platform){this.assets=assets;this.platform=platform;}
     private <T> ApiResponse<T> ok(T body,HttpServletRequest req){return ApiResponse.ok(body,req.getRequestId());}
     @GetMapping("/health") ApiResponse<?> health(HttpServletRequest req){return ok(Map.of("service","core-service","status","UP","checkedAt",Instant.now()),req);}
     @GetMapping("/devices/summary") ApiResponse<?> summary(@AuthenticationPrincipal Jwt jwt,HttpServletRequest req){return ok(assets.overview(platform.current(jwt)),req);}

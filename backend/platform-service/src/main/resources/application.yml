@@ -1,0 +1,77 @@
+server:
+  port: ${PLATFORM_PORT:8087}
+  shutdown: graceful
+  ssl:
+    enabled: ${SERVICE_TLS_ENABLED:true}
+    key-store: ${SERVICE_TLS_KEYSTORE:}
+    key-store-type: PKCS12
+    key-store-password: ${SERVICE_TLS_KEYSTORE_PASSWORD:}
+spring:
+  application:
+    name: platform-service
+  datasource:
+    url: ${PLATFORM_DB_URL:jdbc:mysql://mysql:3306/platform_db?connectionTimeZone=UTC}
+    username: ${PLATFORM_DB_USER:platform_app}
+    password: ${PLATFORM_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    locations: classpath:db/platform
+  jackson:
+    parser:
+      strict-duplicate-detection: true
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-numbers-for-enums: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+    listener:
+      ack-mode: record
+capyiot:
+  domain-runtime:
+    enabled: ${PLATFORM_DOMAIN_RUNTIME_ENABLED:false}
+  platform:
+    command-fingerprint-key: ${PLATFORM_COMMAND_FINGERPRINT_KEY}
+    clients:
+      enabled: true
+    tls-ca-file: ${SERVICE_TLS_CA_FILE:/run/secrets/internal-ca.pem}
+    key-file: ${PLATFORM_SERVICE_KEY_FILE:/run/secrets/platform-service-keys.json}
+    device-url: ${DEVICE_SERVICE_URL:https://device-service:8082}
+    user-jwks-uri: ${USER_JWKS_URI:https://gateway:8080/.well-known/jwks.json}
+    agent-jwks-uri: ${AGENT_JWKS_URI:https://agent-service:8086/.well-known/agent-jwks.json}
+    gateway-service-jwks-uri: ${GATEWAY_SERVICE_JWKS_URI:https://gateway:8080/.well-known/service-jwks.json}
+    device-service-jwks-uri: ${DEVICE_SERVICE_JWKS_URI:https://device-service:8082/.well-known/service-jwks.json}
+    fault-service-jwks-uri: ${FAULT_SERVICE_JWKS_URI:https://alarm-service:8083/.well-known/service-jwks.json}
+    workflow-service-jwks-uri: ${WORKFLOW_SERVICE_JWKS_URI:https://workflow-service:8084/.well-known/service-jwks.json}
+    agent-service-jwks-uri: ${AGENT_SERVICE_JWKS_URI:https://agent-service:8086/.well-known/service-jwks.json}
+    audit:
+      allow-historical-core: ${PLATFORM_AUDIT_ALLOW_HISTORICAL_CORE:true}
+    legacy:
+      enabled: ${PLATFORM_LEGACY_BRIDGE_ENABLED:false}
+      expires-at: ${PLATFORM_LEGACY_BRIDGE_EXPIRES_AT:1970-01-01T00:00:00Z}
+      service-key: ${CORE_SERVICE_KEY:}
+  foundation:
+    bootstrap:
+      enabled: ${PLATFORM_BOOTSTRAP_ENABLED:false}
+      admin-hash: ${DEMO_ADMIN_PASSWORD_HASH:}
+      operator-hash: ${DEMO_OPERATOR_PASSWORD_HASH:}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

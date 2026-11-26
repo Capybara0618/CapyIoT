@@ -2,7 +2,7 @@ package io.capyiot.core.fault;
 
 import static io.capyiot.core.fault.FaultModels.*;
 import io.capyiot.contract.ApiResponse;
-import io.capyiot.core.platform.PlatformService;
+import io.capyiot.core.platform.PlatformAuthority;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Instant;
@@ -15,8 +15,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1")
 @ConditionalOnProperty(name="capyiot.faults.enabled",havingValue="true")
 class FaultController {
-    private final FaultService faults;private final PlatformService platform;
-    FaultController(FaultService faults,PlatformService platform){this.faults=faults;this.platform=platform;}
+    private final FaultService faults;private final PlatformAuthority platform;
+    FaultController(FaultService faults,PlatformAuthority platform){this.faults=faults;this.platform=platform;}
     private <T> ApiResponse<T> ok(T body,HttpServletRequest request){return ApiResponse.ok(body,request.getRequestId());}
     @GetMapping("/anomalies") ApiResponse<?> anomalies(@AuthenticationPrincipal Jwt jwt,@RequestParam(required=false) String deviceId,
         @RequestParam(required=false) String anomalyType,@RequestParam(required=false) String severity,@RequestParam(required=false) String status,

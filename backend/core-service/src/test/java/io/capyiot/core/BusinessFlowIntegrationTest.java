@@ -20,7 +20,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.*;
 
-@SpringBootTest
+@SpringBootTest(properties="capyiot.platform.test-fixture=true")
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 @Testcontainers
 class BusinessFlowIntegrationTest {

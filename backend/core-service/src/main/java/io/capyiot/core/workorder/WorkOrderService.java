@@ -45,7 +45,7 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
         IncidentGatePort.IncidentRef incident=c.sourceType()==Source.INCIDENT?gate.requireIncident(actor,"workorder.create",c.incidentId()):null;
         if(incident!=null&&!incident.parkId().equals(park))throw ApiProblem.invalid("工单与故障不在同一园区");
         String priority=c.priority()==null?incident==null?null:incident.priority():c.priority().name();if(priority==null)throw ApiProblem.invalid("独立工单必须指定优先级");
-        if(incident!=null&&!priority.equals(incident.priority())){actor.require("incident.priority.change");PlatformService.requireReason(c.priorityReason());}
+        if(incident!=null&&!priority.equals(incident.priority())){actor.require("incident.priority.change");io.capyiot.core.ApiProblem.requireReason(c.priorityReason());}
         if(incident!=null&&!Set.of("OPEN","PROCESSING").contains(incident.status()))throw ApiProblem.conflict("故障尚未确认或已结束，不可创建维修工单");
         return new Checked(refs,park,incident,priority);
     }
@@ -110,7 +110,7 @@ public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort 
         var order=require(actor,reassign?"workorder.reassign":"workorder.assign",id);var refs=deviceIds(id).stream().map(devices::device).toList();
         if(c.assignedRepairerId().equals(c.designatedAcceptorId()))throw ApiProblem.invalid("维修人和验收人必须不同");
         users.requireRoleForDevices(c.assignedRepairerId(),"REPAIR_TECH",refs);users.requireRoleForDevices(c.designatedAcceptorId(),"ACCEPTANCE_STAFF",refs);
-        if(reassign)PlatformService.requireReason(c.reason());
+        if(reassign)io.capyiot.core.ApiProblem.requireReason(c.reason());
         return mutate(actor,key,id,reassign?"WorkOrderReassigned":"WorkOrderAssigned",reassign?"workorder.reassign":"workorder.assign",c,c.expectedVersion(),o->{
             allowed(o,reassign?Set.of("ASSIGNED","ACCEPTED"):Set.of("OPEN"));
             store.db.update("UPDATE work_order SET assigned_repairer_id=?,designated_acceptor_id=?,assigned_at=CURRENT_TIMESTAMP(3),accepted_at=NULL,status='ASSIGNED' WHERE id=?",c.assignedRepairerId(),c.designatedAcceptorId(),id);return "ASSIGNED";

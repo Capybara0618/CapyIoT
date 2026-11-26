@@ -13,6 +13,7 @@ spring:
             response-timeout: 5s
 capyiot:
   services:
+    platform-url: ${PLATFORM_SERVICE_URL:https://platform-service:8087}
     core-url: ${CORE_SERVICE_URL:http://localhost:8085}
     agent-url: ${AGENT_SERVICE_URL:http://localhost:8086}
     device-url: ${DEVICE_SERVICE_URL:http://localhost:8082}
@@ -20,6 +21,7 @@ capyiot:
     alarm-url: ${ALARM_SERVICE_URL:http://localhost:8083}
     workflow-url: ${WORKFLOW_SERVICE_URL:http://localhost:8084}
   auth:
+    platform-ca-file: ${SERVICE_TLS_CA_FILE:/run/secrets/internal-ca.pem}
     key-file: ${USER_KEY_FILE:../var/user-keys.json}
     generate-key: ${USER_KEYS_GENERATE:false}
     core-service-key: ${CORE_SERVICE_KEY}

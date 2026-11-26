@@ -16,6 +16,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@ConditionalOnProperty(name="capyiot.platform.test-fixture",havingValue="true")
 class PlatformController {
     private final PlatformService platform;
     private final CommandJournal commands;
@@ -63,6 +64,7 @@ class PlatformController {
 }
 
 @Configuration
+@ConditionalOnProperty(name="capyiot.platform.test-fixture",havingValue="true")
 class PlatformBootstrap {
     @Bean
     @ConditionalOnProperty(name="capyiot.foundation.bootstrap.enabled",havingValue="true")

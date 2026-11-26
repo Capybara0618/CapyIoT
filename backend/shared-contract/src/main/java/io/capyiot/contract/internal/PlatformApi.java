@@ -12,6 +12,19 @@ public final class PlatformApi {
 
     /** The actor credential is in Authorization, never in this payload or response. */
     public record IdentityRequest() {}
+    public record LoginRequest(String loginName,String password) {
+        public LoginRequest { ContractChecks.text(loginName,64);if(password==null||password.isEmpty()||password.length()>256)throw new IllegalArgumentException("Invalid credential input"); }
+        @Override public String toString(){return "LoginRequest[REDACTED]";}
+    }
+    public record SessionIdentity(String userId,String loginName,String displayName,long authorizationVersion,
+                                  String sessionId,String jti,Instant expiresAt,List<String> roleCodes) {
+        public SessionIdentity {
+            ContractChecks.id(userId);ContractChecks.text(loginName,64);ContractChecks.text(displayName,100);
+            if(authorizationVersion<1)throw new IllegalArgumentException("Invalid authorization version");
+            ContractChecks.id(sessionId);ContractChecks.id(jti);ContractChecks.required(expiresAt);
+            roleCodes=ContractChecks.ids(roleCodes,true);
+        }
+    }
 
     public record Grant(String grantId, String roleCode, ScopeType scopeType, String parkId,
                         List<String> rootAreaIds, AssignmentRelation assignmentRelation) {
@@ -43,17 +56,20 @@ public final class PlatformApi {
     }
 
     public record EligibilityRequest(List<String> candidateUserIds, PersonnelRole role,
-                                     List<DeviceApi.Resource> devices) {
+                                     List<DeviceApi.Resource> devices,String afterUserId) {
+        public EligibilityRequest(List<String> candidates,PersonnelRole role,List<DeviceApi.Resource> devices){this(candidates,role,devices,null);}
         public EligibilityRequest {
             candidateUserIds = ContractChecks.ids(candidateUserIds,true);
             ContractChecks.required(role); devices = ContractChecks.batch(devices,false);
+            ContractChecks.optionalId(afterUserId);
         }
     }
 
     public record Eligibility(String userId, String displayName, PersonnelRole role, boolean eligible) {
         public Eligibility { ContractChecks.id(userId); ContractChecks.text(displayName,100); ContractChecks.required(role); }
     }
-    public record EligibilityResult(List<Eligibility> candidates, Instant checkedAt) {
-        public EligibilityResult { candidates=ContractChecks.batch(candidates,true); ContractChecks.required(checkedAt); }
+    public record EligibilityResult(List<Eligibility> candidates, Instant checkedAt,String nextCursor) {
+        public EligibilityResult(List<Eligibility> candidates,Instant checkedAt){this(candidates,checkedAt,null);}
+        public EligibilityResult { candidates=ContractChecks.batch(candidates,true); ContractChecks.required(checkedAt);ContractChecks.optionalId(nextCursor); }
     }
 }

@@ -27,6 +27,14 @@ public final class DeviceApi {
     public record ResourceValidation(String parkId, List<String> areaIds) {
         public ResourceValidation { ContractChecks.id(parkId); areaIds=ContractChecks.ids(areaIds,true); }
     }
+    public record AuditScopeRequest(String parkId,List<String> deviceIds,List<String> areaIds) {
+        public AuditScopeRequest {
+            ContractChecks.id(parkId);deviceIds=ContractChecks.ids(deviceIds,true);areaIds=ContractChecks.ids(areaIds,true);
+        }
+    }
+    public record AuditScopeResult(boolean visible,Instant checkedAt) {
+        public AuditScopeResult {ContractChecks.required(checkedAt);}
+    }
     public record ResourceValidity(String parkId, boolean parkExists, boolean allAreasBelong,
                                    long topologyVersion, Instant checkedAt) {
         public ResourceValidity { ContractChecks.id(parkId); ContractChecks.version(topologyVersion); ContractChecks.required(checkedAt); }

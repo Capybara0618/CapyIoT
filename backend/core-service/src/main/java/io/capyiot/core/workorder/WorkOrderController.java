@@ -2,7 +2,7 @@ package io.capyiot.core.workorder;
 
 import static io.capyiot.core.workorder.WorkOrderModels.*;
 import io.capyiot.contract.ApiResponse;
-import io.capyiot.core.platform.PlatformService;
+import io.capyiot.core.platform.PlatformAuthority;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Instant;
@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1")
 @ConditionalOnProperty(name="capyiot.workorders.enabled",havingValue="true")
 class WorkOrderController {
-    private final WorkOrderService orders;private final PlatformService platform;
-    WorkOrderController(WorkOrderService orders,PlatformService platform){this.orders=orders;this.platform=platform;}
+    private final WorkOrderService orders;private final PlatformAuthority platform;
+    WorkOrderController(WorkOrderService orders,PlatformAuthority platform){this.orders=orders;this.platform=platform;}
     private <T> ApiResponse<T> ok(T body,HttpServletRequest request){return ApiResponse.ok(body,request.getRequestId());}
     private String requestId(HttpServletRequest request){String id=request.getHeader("X-Request-Id");return id==null?request.getRequestId():id;}
     @GetMapping("/workorders") ApiResponse<?> list(@AuthenticationPrincipal Jwt jwt,@RequestParam(required=false) String deviceId,@RequestParam(required=false) String incidentId,

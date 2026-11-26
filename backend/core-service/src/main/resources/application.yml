@@ -2,6 +2,12 @@ server:
   port: 8085
   shutdown: graceful
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
   task:
     scheduling:
       pool:
@@ -29,15 +35,10 @@ spring:
       ack-mode: record
   application:
     name: core-service
-  datasource:
-    url: ${PLATFORM_DB_URL:jdbc:mysql://localhost:3306/platform_db?connectionTimeZone=UTC}
-    username: platform_app
-    password: ${PLATFORM_DB_PASSWORD}
-    hikari:
-      maximum-pool-size: 5
-  flyway:
-    locations: classpath:db/platform
 capyiot:
+  platform:
+    url: ${PLATFORM_SERVICE_URL:https://platform-service:8087}
+    tls-ca-file: ${SERVICE_TLS_CA_FILE:/run/secrets/internal-ca.pem}
   foundation:
     service-key: ${CORE_SERVICE_KEY}
     jwks-uri: ${USER_JWKS_URI:http://localhost:8080/.well-known/jwks.json}

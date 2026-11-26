@@ -5,12 +5,14 @@ import java.util.regex.Pattern;
 
 /** Fixed internal operations, not a caller-controlled URL or a substitute for business authorization. */
 public enum InternalEndpoint {
+    PLATFORM_LOGIN(ServiceId.PLATFORM,"POST","/identity/login",false,false,"identity.login",ServiceId.GATEWAY),
     IDENTITY_CONTEXT(ServiceId.PLATFORM, "POST", "/identity/context", true, true, "identity.read",
             ServiceId.GATEWAY, ServiceId.DEVICE, ServiceId.FAULT, ServiceId.WORKFLOW, ServiceId.AGENT),
     USER_ELIGIBILITY(ServiceId.PLATFORM, "POST", "/users/eligibility", true, true, "users.eligibility",
             ServiceId.WORKFLOW),
     RESOURCE_VALIDATION(ServiceId.DEVICE, "POST", "/resources/validate", true, false, "resources.validate",
             ServiceId.PLATFORM),
+    AUDIT_SCOPE(ServiceId.DEVICE,"POST","/resources/audit-scope",true,true,"audit.scope",ServiceId.PLATFORM),
     DEVICE_SCOPE(ServiceId.DEVICE, "POST", "/devices/scope-check", true, true, "devices.scope",
             ServiceId.FAULT, ServiceId.WORKFLOW, ServiceId.PLATFORM),
     TOPOLOGY_SNAPSHOT(ServiceId.DEVICE, "POST", "/topology/snapshot", true, false, "topology.snapshot",

@@ -6,6 +6,156 @@
     "description": "Fixed service operations. Service JWT is bound to operation, target audience and actor token digest. No public gateway access."
   },
   "paths": {
+    "/internal/v1/identity/login": {
+      "post": {
+        "operationId": "PLATFORM_LOGIN",
+        "tags": [
+          "platform-service"
+        ],
+        "servers": [
+          {
+            "url": "https://platform-service"
+          }
+        ],
+        "x-capyiot-query": false,
+        "x-capyiot-scope": "identity.login",
+        "x-capyiot-callers": [
+          "gateway"
+        ],
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PlatformApi.SessionIdentity"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformApi.LoginRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/v1/identity/context": {
       "post": {
         "operationId": "IDENTITY_CONTEXT",
@@ -456,6 +606,157 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DeviceApi.ResourceValidation"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/resources/audit-scope": {
+      "post": {
+        "operationId": "AUDIT_SCOPE",
+        "tags": [
+          "device-service"
+        ],
+        "servers": [
+          {
+            "url": "https://device-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "audit.scope",
+        "x-capyiot-callers": [
+          "platform-service"
+        ],
+        "security": [
+          {
+            "ServiceToken": [],
+            "ActorToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DeviceApi.AuditScopeResult"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceApi.AuditScopeRequest"
               }
             }
           }
@@ -2523,8 +2824,73 @@
       },
       "PlatformApi.IdentityRequest": {
         "type": "object",
-        "properties": {},
-        "required": []
+        "properties": {}
+      },
+      "PlatformApi.LoginRequest": {
+        "type": "object",
+        "properties": {
+          "loginName": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "format": "password",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "loginName",
+          "password"
+        ]
+      },
+      "PlatformApi.SessionIdentity": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "loginName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "authorizationVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "jti": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "roleCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "userId",
+          "loginName",
+          "displayName",
+          "authorizationVersion",
+          "sessionId",
+          "jti",
+          "expiresAt",
+          "roleCodes"
+        ]
       },
       "PlatformApi.Grant": {
         "type": "object",
@@ -2643,12 +3009,18 @@
               "$ref": "#/components/schemas/DeviceApi.Resource"
             },
             "maxItems": 100
+          },
+          "afterUserId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "nullable": true
           }
         },
         "required": [
           "candidateUserIds",
           "role",
-          "devices"
+          "devices",
+          "afterUserId"
         ]
       },
       "PlatformApi.Eligibility": {
@@ -2688,11 +3060,16 @@
           "checkedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
           "candidates",
-          "checkedAt"
+          "checkedAt",
+          "nextCursor"
         ]
       },
       "DeviceApi.Batch": {
@@ -2831,6 +3208,54 @@
         "required": [
           "parkId",
           "areaIds"
+        ]
+      },
+      "DeviceApi.AuditScopeRequest": {
+        "type": "object",
+        "properties": {
+          "parkId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "deviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "areaIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "parkId",
+          "deviceIds",
+          "areaIds"
+        ]
+      },
+      "DeviceApi.AuditScopeResult": {
+        "type": "object",
+        "properties": {
+          "visible": {
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "visible",
+          "checkedAt"
         ]
       },
       "DeviceApi.ResourceValidity": {

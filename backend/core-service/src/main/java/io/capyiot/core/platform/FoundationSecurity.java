@@ -44,12 +44,13 @@ class FoundationSecurity {
         };
     }
     @Bean
-    SecurityFilterChain coreSecurity(HttpSecurity http,PlatformService platform,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String serviceKey) throws Exception {
+    SecurityFilterChain coreSecurity(HttpSecurity http,PlatformAuthority platform,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String serviceKey) throws Exception {
         if(serviceKey.length()<32) throw new IllegalArgumentException("CORE_SERVICE_KEY requires at least 32 characters");
         var fresh=new OncePerRequestFilter() {
             @Override protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,FilterChain chain) throws ServletException,IOException {
                 try {
-                    if(req.getRequestURI().startsWith("/internal/")) {
+                    String path=io.capyiot.service.HttpPaths.canonical(req.getRequestURI(),req.getContextPath());
+                    if(path.startsWith("/internal/")) {
                         String provided=req.getHeader("X-Core-Service-Key");
                         if(provided==null||!MessageDigest.isEqual(serviceKey.getBytes(StandardCharsets.UTF_8),provided.getBytes(StandardCharsets.UTF_8))) throw new ApiProblem(401,"SERVICE_UNAUTHORIZED","内部服务身份无效");
                     }
@@ -57,15 +58,18 @@ class FoundationSecurity {
                     HttpServletRequest current=req;
                     if(auth!=null&&auth.getPrincipal() instanceof Jwt jwt) {
                         if(AgentDelegation.isAgent(jwt)) {
-                            String commandKey=req.getMethod().equals("GET")?req.getRequestURI().substring(req.getRequestURI().lastIndexOf('/')+1):req.getHeader("Idempotency-Key");
-                            var binding=AgentDelegation.validate(jwt,req.getMethod(),req.getRequestURI(),commandKey);
+                            String commandKey=req.getMethod().equals("GET")?path.substring(path.lastIndexOf('/')+1):req.getHeader("Idempotency-Key");
+                            var binding=AgentDelegation.validate(jwt,req.getMethod(),path,commandKey);
                             var actor=platform.current(jwt);actor.require("agent.use");actor.require("agent.draft.confirm");actor.require("workorder.create");
                             current=new org.springframework.web.util.ContentCachingRequestWrapper(req,262144);
                             current.setAttribute("capyiot.delegation",binding);
                             current.setAttribute("capyiot.actor",actor);
-                        } else if(!req.getRequestURI().equals("/api/v1/auth/logout"))current.setAttribute("capyiot.actor",platform.current(jwt));
+                        } else if(!path.equals("/api/v1/auth/logout"))current.setAttribute("capyiot.actor",platform.current(jwt));
                     }
                     chain.doFilter(current,res);
+                } catch(io.capyiot.service.ServiceFailure error) {
+                    res.setStatus(error.status());res.setContentType("application/json;charset=UTF-8");
+                    json.writeValue(res.getOutputStream(),Map.of("code",error.code(),"message","授权服务暂不可用","details",Map.of(),"traceId",req.getRequestId()));
                 } catch(ApiProblem error) {
                     res.setStatus(error.status()); res.setContentType("application/json;charset=UTF-8");
                     json.writeValue(res.getOutputStream(),Map.of("code",error.code(),"message",error.getMessage(),"details",Map.of(),"traceId",req.getRequestId()));

@@ -1,4 +1,6 @@
-package io.capyiot.core.platform;
+package io.capyiot.platform;
+
+import io.capyiot.contract.internal.DomainProducer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,14 +19,15 @@ class DomainAuditProjection {
     private final JdbcTemplate db;
     private final TransactionTemplate tx;
     private final ObjectMapper json;
-    DomainAuditProjection(JdbcTemplate db,TransactionTemplate tx,ObjectMapper json){this.db=db;this.tx=tx;this.json=json;}
+    private final boolean allowHistoricalCore;
+    DomainAuditProjection(JdbcTemplate db,TransactionTemplate tx,ObjectMapper json,@org.springframework.beans.factory.annotation.Value("${capyiot.platform.audit.allow-historical-core:true}") boolean allowHistoricalCore){this.db=db;this.tx=tx;this.json=json;this.allowHistoricalCore=allowHistoricalCore;}
 
     @KafkaListener(topics={"capyiot.domain.device.v1","capyiot.domain.fault.v1","capyiot.domain.workorder.v1"},groupId="core-platform-audit-v1")
     void consume(ConsumerRecord<String,String> record)throws Exception {
         JsonNode event=json.readTree(record.value());
         String context=text(event,"sourceContext",32),eventId=text(event,"eventId",64),id=text(event,"aggregateId",64);
         if(!Set.of("device","fault","workorder").contains(context)||!record.topic().equals("capyiot.domain."+context+".v1")
-                ||!Objects.equals(record.key(),id)||event.path("schemaVersion").asInt()!=1||!event.path("producer").asText().equals("core-service"))throw new IllegalArgumentException("Invalid domain audit envelope");
+                ||!Objects.equals(record.key(),id)||event.path("schemaVersion").asInt()!=1||!DomainProducer.valueOf(context.toUpperCase(java.util.Locale.ROOT)).accepts(record.topic(),context,event.path("producer").asText(),allowHistoricalCore))throw new IllegalArgumentException("Invalid domain audit envelope");
         UUID.fromString(eventId);
         String action=text(event,"eventType",64),park=text(event,"parkId",64),resource=text(event,"aggregateType",64);
         var actor=event.path("actor");String user=optional(actor,"userId",64),actorId=user==null?context:user;

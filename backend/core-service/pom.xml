@@ -5,6 +5,7 @@
   <artifactId>core-service</artifactId>
   <dependencies>
     <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka</artifactId></dependency>
+    <dependency><groupId>io.capyiot</groupId><artifactId>service-support</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>io.capyiot</groupId><artifactId>shared-contract</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>
@@ -22,6 +23,10 @@
     <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>
+    <testResources>
+      <testResource><directory>src/test/resources</directory></testResource>
+      <testResource><directory>../platform-service/src/main/resources/db/platform</directory><targetPath>db/platform</targetPath></testResource>
+    </testResources>
     <resources>
       <resource><directory>src/main/resources</directory></resource>
       <resource><directory>../device-service/src/main/resources/db/migration</directory><targetPath>db/device</targetPath></resource>

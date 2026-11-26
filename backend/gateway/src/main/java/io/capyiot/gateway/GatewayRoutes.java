@@ -12,11 +12,12 @@ class GatewayRoutes {
     RouteLocator routes(RouteLocatorBuilder builder,
             @Value("${capyiot.services.device-url}") String deviceUrl,
             @Value("${capyiot.services.core-url}") String coreUrl,
+            @Value("${capyiot.services.platform-url}") String platformUrl,
             @Value("${capyiot.services.agent-url}") String agentUrl,
             @Value("${capyiot.services.alarm-url}") String alarmUrl,
             @Value("${capyiot.services.workflow-url}") String workflowUrl) {
         return builder.routes()
-                .route("foundation-api",route->route.path("/api/v1/auth/me","/api/v1/auth/logout","/api/v1/users","/api/v1/users/**","/api/v1/grants/**","/api/v1/audit-records").uri(coreUrl))
+                .route("foundation-api",route->route.path("/api/v1/auth/me","/api/v1/auth/logout","/api/v1/users","/api/v1/users/**","/api/v1/grants/**","/api/v1/audit-records").uri(platformUrl))
                 .route("agent-api",route->route.path("/api/v1/agent/**").metadata("response-timeout",-1).uri(agentUrl))
                 .route("core-openapi",route->route.path("/api/v1/openapi").filters(f->f.setPath("/v3/api-docs")).uri(coreUrl))
                 .route("historical-workorders",route->route.path("/api/v1/legacy/workorders","/api/v1/legacy/workorders/**").filters(f->f.rewritePath("/api/v1/legacy/(?<rest>.*)","/api/v1/${rest}")).uri(workflowUrl))

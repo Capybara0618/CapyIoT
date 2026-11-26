@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1")
 class AssetController {
     private final AssetService assets;
-    private final PlatformService platform;
-    AssetController(AssetService assets,PlatformService platform) { this.assets=assets;this.platform=platform; }
+    private final PlatformAuthority platform;
+    AssetController(AssetService assets,PlatformAuthority platform) { this.assets=assets;this.platform=platform; }
     private <T> ApiResponse<T> ok(T data,HttpServletRequest request) { return ApiResponse.ok(data,request.getRequestId()); }
     @GetMapping("/parks") ApiResponse<?> parks(@AuthenticationPrincipal Jwt jwt,HttpServletRequest req) { return ok(assets.parks(platform.current(jwt)),req); }
     @GetMapping("/areas") ApiResponse<?> areas(@AuthenticationPrincipal Jwt jwt,@RequestParam(defaultValue="CAMPUS-A") String parkId,@RequestParam(required=false) String parentAreaId,HttpServletRequest req) { return ok(assets.areas(platform.current(jwt),parkId,parentAreaId),req); }

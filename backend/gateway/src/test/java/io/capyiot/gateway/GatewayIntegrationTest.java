@@ -46,7 +46,9 @@ class GatewayIntegrationTest {
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
         r.add("capyiot.auth.key-file",()->KEY_FILE); r.add("capyiot.auth.generate-key",()->true);
         r.add("capyiot.auth.core-service-key",()->SERVICE_KEY);
+        r.add("capyiot.auth.platform-http-test-only",()->true);
         r.add("capyiot.services.core-url",()->"http://127.0.0.1:"+DOWNSTREAM.port());
+        r.add("capyiot.services.platform-url",()->"http://127.0.0.1:"+DOWNSTREAM.port());
         r.add("capyiot.services.device-url",()->"http://127.0.0.1:"+DOWNSTREAM.port());
         r.add("management.server.port",()->0);
     }

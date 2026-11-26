@@ -22,8 +22,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping(value="/api/v1",headers="X-CapyIoT-Legacy-View=true")
 @ConditionalOnProperty(name="capyiot.assets.enabled",havingValue="true")
 class LegacyAssetController {
-    private final AssetService assets;private final AssetStore store;private final PlatformService platform;private final ObjectMapper json;private final CommandJournal commands;
-    LegacyAssetController(AssetService assets,AssetStore store,PlatformService platform,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String key){this.assets=assets;this.store=store;this.platform=platform;this.json=json;commands=new CommandJournal(store.db,store.tx,json,key);}
+    private final AssetService assets;private final AssetStore store;private final PlatformAuthority platform;private final ObjectMapper json;private final CommandJournal commands;
+    LegacyAssetController(AssetService assets,AssetStore store,PlatformAuthority platform,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String key){this.assets=assets;this.store=store;this.platform=platform;this.json=json;commands=new CommandJournal(store.db,store.tx,json,key);}
     private AuthorizationContext actor(Jwt jwt,String permission){var actor=platform.current(jwt);if(actor.require(permission).stream().noneMatch(g->g.scopeType().equals("PARK")&&"CAMPUS-A".equals(g.parkId())))throw ApiProblem.forbidden();return actor;}
     private <T> ApiResponse<T> ok(T body,HttpServletRequest req){return ApiResponse.ok(body,req.getRequestId());}
     record Create(@NotBlank @Pattern(regexp="[A-Za-z0-9_-]{1,64}") String deviceCode,@NotBlank String type,@NotBlank @Size(max=100) String name,

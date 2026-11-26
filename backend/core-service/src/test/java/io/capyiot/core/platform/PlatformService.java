@@ -15,7 +15,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import jakarta.validation.constraints.*;
 
 @Service
-public class PlatformService implements io.capyiot.core.ports.UserAssignmentPort {
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="capyiot.platform.test-fixture",havingValue="true")
+public class PlatformService implements PlatformAuthority {
     private final JdbcTemplate db;
     private final TransactionTemplate tx;
     private final ObjectProvider<AssetScopePort> assets;
@@ -25,6 +26,7 @@ public class PlatformService implements io.capyiot.core.ports.UserAssignmentPort
     public PlatformService(JdbcTemplate db,TransactionTemplate tx,ObjectProvider<AssetScopePort> assets) {
         this.db=db; this.tx=tx; this.assets=assets;
     }
+    @Override public List<Map<String,Object>> assignmentCandidates(AuthorizationContext actor,List<io.capyiot.core.ports.DeviceQueryPort.DeviceRef> devices){return assignmentCandidates(devices);}
     public record LoginCommand(String loginName,String password) {}
     public List<Map<String,Object>> assignmentCandidates(List<io.capyiot.core.ports.DeviceQueryPort.DeviceRef> devices) {
         List<Map<String,Object>> result=new ArrayList<>();

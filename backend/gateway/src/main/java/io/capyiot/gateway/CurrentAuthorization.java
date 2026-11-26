@@ -14,17 +14,17 @@ import reactor.core.publisher.Mono;
 /** Session and grants are loaded for every request. JWT role hints never authorize a route. */
 @Component
 class CurrentAuthorization {
-    private final WebClient core;
-    CurrentAuthorization(WebClient.Builder builder,@Value("${capyiot.services.core-url}") String url,
-                         @Value("${capyiot.auth.core-service-key}") String key) {
-        core=builder.clone().baseUrl(url).defaultHeader("X-Core-Service-Key",key).build();
+    private final WebClient platform;
+    CurrentAuthorization(WebClient.Builder builder,@Value("${capyiot.services.platform-url}") String url,
+                         @Value("${capyiot.auth.core-service-key}") String key,PlatformWebClientFactory platformClients) {
+        platform=platformClients.create(builder,url,key);
     }
     public Mono<Void> filter(ServerWebExchange exchange,WebFilterChain chain) {
         String path=exchange.getRequest().getPath().value();
         if(path.equals("/api/v1/auth/logout")) return chain.filter(exchange);
-        return org.springframework.security.core.context.ReactiveSecurityContextHolder.getContext()
-                .map(org.springframework.security.core.context.SecurityContext::getAuthentication).ofType(JwtAuthenticationToken.class)
-                .flatMap(auth->core.get().uri("/internal/foundation/context")
+        return org.springframework.security.platform.context.ReactiveSecurityContextHolder.getContext()
+                .map(org.springframework.security.platform.context.SecurityContext::getAuthentication).ofType(JwtAuthenticationToken.class)
+                .flatMap(auth->platform.get().uri("/internal/foundation/context")
                         .headers(h->h.setBearerAuth(auth.getToken().getTokenValue())).retrieve().bodyToMono(JsonNode.class)
                         .timeout(Duration.ofSeconds(3)).map(context->{exchange.getAttributes().put("capyiot.authorization",context); return true;}))
                 .defaultIfEmpty(false)

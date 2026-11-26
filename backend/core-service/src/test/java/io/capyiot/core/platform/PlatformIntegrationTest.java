@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @Testcontainers
-@SpringBootTest
+@SpringBootTest(properties="capyiot.platform.test-fixture=true")
 @AutoConfigureMockMvc
 class PlatformIntegrationTest {
     @Container static final MySQLContainer<?> MYSQL=new MySQLContainer<>("mysql:8.4.11");

@@ -20,10 +20,13 @@ public final class ApiProblem extends RuntimeException {
     public static ApiProblem forbidden() { return new ApiProblem(403,"PERMISSION_DENIED","当前授权不允许此操作"); }
     public static ApiProblem invalid(String message) { return new ApiProblem(400,"VALIDATION_ERROR",message); }
     public static ApiProblem conflict(String message) { return new ApiProblem(409,"VERSION_CONFLICT",message); }
+    public static void requireReason(String reason){if(reason==null||reason.isBlank()||reason.length()>1000)throw invalid("必须提供 1–1000 字的原因");}
 }
 
 @RestControllerAdvice
 class ProblemHandler {
+    @ExceptionHandler(io.capyiot.service.ServiceFailure.class)
+    ResponseEntity<?> dependency(io.capyiot.service.ServiceFailure error,HttpServletRequest request){return problem(new ApiProblem(error.status(),error.code(),"依赖服务暂不可用或无权执行"),request);}
     @ExceptionHandler(ApiProblem.class)
     ResponseEntity<?> problem(ApiProblem problem, HttpServletRequest request) {
         return ResponseEntity.status(problem.status()).body(Map.of("code",problem.code(),"message",problem.getMessage(),

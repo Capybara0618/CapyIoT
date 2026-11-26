@@ -20,17 +20,17 @@ import reactor.core.publisher.Mono;
 
 @RestController
 class AuthController {
-    private final WebClient core;
+    private final WebClient platform;
     private final UserKeyRing keys;
-    AuthController(WebClient.Builder clients,UserKeyRing keys,@Value("${capyiot.services.core-url}") String url,
-                   @Value("${capyiot.auth.core-service-key}") String serviceKey) {
-        this.core=clients.baseUrl(url).defaultHeader("X-Core-Service-Key",serviceKey).build(); this.keys=keys;
+    AuthController(WebClient.Builder clients,UserKeyRing keys,@Value("${capyiot.services.platform-url}") String url,
+                   @Value("${capyiot.auth.core-service-key}") String serviceKey,PlatformWebClientFactory platformClients) {
+        this.platform=platformClients.create(clients,url,serviceKey); this.keys=keys;
     }
     @GetMapping("/.well-known/jwks.json")
     Map<String,Object> jwks() { return keys.publicKeys(); }
     @PostMapping("/api/v1/auth/login")
     Mono<ApiResponse<LoginResult>> login(@Valid @RequestBody LoginRequest request,ServerWebExchange exchange) {
-        return core.post().uri("/internal/foundation/login").bodyValue(request).retrieve().bodyToMono(SessionIdentity.class)
+        return platform.post().uri("/internal/foundation/login").bodyValue(request).retrieve().bodyToMono(SessionIdentity.class)
                 .timeout(java.time.Duration.ofSeconds(8))
                 .map(identity->{
                     var claims=JwtClaimsSet.builder().issuer(SecurityConfiguration.ISSUER).subject(identity.userId())
@@ -45,7 +45,7 @@ class AuthController {
                 .onErrorMap(java.util.concurrent.TimeoutException.class,error->new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"认证服务暂不可用"))
                 .onErrorMap(org.springframework.web.reactive.function.client.WebClientRequestException.class,error->new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"认证服务暂不可用"));
     }
-    record LoginRequest(@JsonAlias("username") @NotBlank @Size(max=64) String loginName,@NotBlank @Size(max=256) String password) {}
+    record LoginRequest(@JsonAlias("username") @NotBlank @Size(max=64) String loginName,@NotBlank @Size(max=256) String password) { @Override public String toString(){return "LoginRequest[REDACTED]";} }
     record SessionIdentity(String userId,String loginName,String displayName,long authorizationVersion,String sessionId,String jti,Instant expiresAt,List<String> roleCodes) {}
     record UserInfo(String userId,String loginName,String displayName,long authorizationVersion,List<String> roleCodes) {}
     record LoginResult(String accessToken,String tokenType,Instant expiresAt,UserInfo user) {}
