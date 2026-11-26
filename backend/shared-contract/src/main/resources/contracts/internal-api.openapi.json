@@ -19,6 +19,13 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "identity.read",
+        "x-capyiot-callers": [
+          "gateway",
+          "device-service",
+          "alarm-service",
+          "workflow-service",
+          "agent-service"
+        ],
         "security": [
           {
             "ServiceToken": [],
@@ -167,6 +174,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "users.eligibility",
+        "x-capyiot-callers": [
+          "workflow-service"
+        ],
         "security": [
           {
             "ServiceToken": [],
@@ -315,6 +325,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "resources.validate",
+        "x-capyiot-callers": [
+          "platform-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -462,6 +475,11 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "devices.scope",
+        "x-capyiot-callers": [
+          "alarm-service",
+          "workflow-service",
+          "platform-service"
+        ],
         "security": [
           {
             "ServiceToken": [],
@@ -610,6 +628,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "topology.snapshot",
+        "x-capyiot-callers": [
+          "alarm-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -757,6 +778,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "runtime.snapshot",
+        "x-capyiot-callers": [
+          "alarm-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -904,6 +928,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "health.read",
+        "x-capyiot-callers": [
+          "device-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -1051,6 +1078,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "evidence.resolve",
+        "x-capyiot-callers": [
+          "workflow-service"
+        ],
         "security": [
           {
             "ServiceToken": [],
@@ -1199,6 +1229,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "incidents.read",
+        "x-capyiot-callers": [
+          "workflow-service"
+        ],
         "security": [
           {
             "ServiceToken": [],
@@ -1346,6 +1379,9 @@
         ],
         "x-capyiot-query": false,
         "x-capyiot-scope": "reservations.create",
+        "x-capyiot-callers": [
+          "workflow-service"
+        ],
         "security": [
           {
             "ServiceToken": [],
@@ -1503,6 +1539,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "reservations.read",
+        "x-capyiot-callers": [
+          "workflow-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -1649,6 +1688,9 @@
         ],
         "x-capyiot-query": false,
         "x-capyiot-scope": "reservations.commit",
+        "x-capyiot-callers": [
+          "workflow-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -1805,6 +1847,9 @@
         ],
         "x-capyiot-query": false,
         "x-capyiot-scope": "reservations.abort",
+        "x-capyiot-callers": [
+          "workflow-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -1961,6 +2006,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "assignments.read",
+        "x-capyiot-callers": [
+          "device-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -2108,6 +2156,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "orders.authority",
+        "x-capyiot-callers": [
+          "alarm-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -2254,6 +2305,9 @@
         ],
         "x-capyiot-query": true,
         "x-capyiot-scope": "operations.read",
+        "x-capyiot-callers": [
+          "alarm-service"
+        ],
         "security": [
           {
             "ServiceToken": []
@@ -2476,7 +2530,8 @@
         "type": "object",
         "properties": {
           "grantId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "roleCode": {
             "type": "string"
@@ -2486,12 +2541,14 @@
           },
           "parkId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "rootAreaIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true
@@ -2518,7 +2575,8 @@
         "type": "object",
         "properties": {
           "userId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "loginName": {
             "type": "string"
@@ -2538,7 +2596,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PlatformApi.Grant"
-            }
+            },
+            "maxItems": 1000
           },
           "permissionCodes": {
             "type": "array",
@@ -2569,7 +2628,8 @@
           "candidateUserIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true
@@ -2595,7 +2655,8 @@
         "type": "object",
         "properties": {
           "userId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "displayName": {
             "type": "string"
@@ -2640,7 +2701,8 @@
           "deviceIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true,
@@ -2655,14 +2717,16 @@
         "type": "object",
         "properties": {
           "deviceId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "parkId": {
             "type": "string",
-            "nullable": true
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "areaId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "assetCode": {
@@ -2680,7 +2744,8 @@
           "ancestorAreaIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true
@@ -2707,12 +2772,14 @@
         "type": "object",
         "properties": {
           "permission": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-z]+(?:\\.[a-z]+){1,4}$"
           },
           "deviceIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true,
@@ -2749,12 +2816,13 @@
         "properties": {
           "parkId": {
             "type": "string",
-            "nullable": true
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "areaIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true
@@ -2770,7 +2838,7 @@
         "properties": {
           "parkId": {
             "type": "string",
-            "nullable": true
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "parkExists": {
             "type": "boolean"
@@ -2801,12 +2869,13 @@
         "properties": {
           "parkId": {
             "type": "string",
-            "nullable": true
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "deviceIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true,
@@ -2827,16 +2896,19 @@
         "type": "object",
         "properties": {
           "relationId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "type": {
             "type": "string"
           },
           "sourceDeviceId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "targetDeviceId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "port": {
             "type": "string",
@@ -2888,7 +2960,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DeviceApi.Relation"
-            }
+            },
+            "maxItems": 1000
           },
           "asOf": {
             "type": "string",
@@ -2915,7 +2988,8 @@
         "type": "object",
         "properties": {
           "eventId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "streamKey": {
             "type": "string"
@@ -2942,7 +3016,8 @@
         "type": "object",
         "properties": {
           "deviceId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "connectivityStatus": {
             "type": "string"
@@ -2972,7 +3047,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DeviceApi.ObservationPosition"
-            }
+            },
+            "maxItems": 1000
           }
         },
         "required": [
@@ -3014,11 +3090,12 @@
         "type": "object",
         "properties": {
           "incidentId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "parkId": {
             "type": "string",
-            "nullable": true
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "status": {
             "type": "string"
@@ -3061,6 +3138,7 @@
         "properties": {
           "reservationId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "state": {
@@ -3076,6 +3154,7 @@
           },
           "workOrderId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "checkedAt": {
@@ -3104,6 +3183,7 @@
           },
           "workOrderId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "workOrderVersion": {
@@ -3143,10 +3223,12 @@
         "type": "object",
         "properties": {
           "incidentId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "closeAttemptId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "gateVersion": {
             "type": "integer",
@@ -3170,7 +3252,8 @@
         "type": "object",
         "properties": {
           "deviceId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "healthStatus": {
             "type": "string"
@@ -3215,12 +3298,14 @@
         "type": "object",
         "properties": {
           "evidenceReferenceId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "workOrderDeviceIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true
@@ -3242,6 +3327,7 @@
           },
           "sourceId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "checkedAt": {
@@ -3260,16 +3346,19 @@
         "type": "object",
         "properties": {
           "operationId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "incidentId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "operation": {
             "$ref": "#/components/schemas/WorkOrderApi.Operation"
           },
           "actorUserId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "idempotencyKey": {
             "type": "string",
@@ -3295,7 +3384,8 @@
         "type": "object",
         "properties": {
           "operationId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "state": {
             "$ref": "#/components/schemas/WorkOrderApi.OperationState"
@@ -3310,10 +3400,12 @@
           },
           "reservationId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "workOrderId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "workOrderVersion": {
@@ -3342,6 +3434,7 @@
         "properties": {
           "workOrderId": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "nullable": true
           },
           "workOrderNo": {
@@ -3367,7 +3460,8 @@
         "type": "object",
         "properties": {
           "incidentId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "orders": {
             "type": "array",
@@ -3379,7 +3473,8 @@
           "pendingOperationIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true
@@ -3409,11 +3504,12 @@
         "type": "object",
         "properties": {
           "userId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "parkId": {
             "type": "string",
-            "nullable": true
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
           },
           "relation": {
             "$ref": "#/components/schemas/PlatformApi.AssignmentRelation"
@@ -3421,7 +3517,8 @@
           "deviceIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true,
@@ -3441,7 +3538,8 @@
           "assignedDeviceIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
             "maxItems": 100,
             "uniqueItems": true

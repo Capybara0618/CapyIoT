@@ -90,4 +90,20 @@ class InternalContractsTest {
         assertThat(DomainProducer.DEVICE.accepts("capyiot.domain.device.v1","device","workflow-service",true)).isFalse();
         assertThat(DomainProducer.DEVICE.accepts("capyiot.domain.fault.v1","fault","device-service",false)).isFalse();
     }
+
+    @Test void publishedOpenApiAgreesWithExecutableEndpointPolicy() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        try(var input=getClass().getResourceAsStream("/contracts/internal-api.openapi.json")) {
+            assertThat(input).isNotNull();var spec=mapper.readTree(input);
+            for(var endpoint:InternalEndpoint.values()) {
+                var operation=spec.path("paths").path(endpoint.template()).path(endpoint.method().toLowerCase(java.util.Locale.ROOT));
+                assertThat(operation.path("operationId").asText()).isEqualTo(endpoint.name());
+                assertThat(operation.path("x-capyiot-query").asBoolean()).isEqualTo(endpoint.query());
+                assertThat(operation.path("x-capyiot-scope").asText()).isEqualTo(endpoint.scope());
+                assertThat(operation.path("security").get(0).has("ActorToken")).isEqualTo(endpoint.actorRequired());
+                var callers=new java.util.HashSet<String>();operation.path("x-capyiot-callers").forEach(c->callers.add(c.asText()));
+                for(var service:ServiceId.values())assertThat(callers.contains(service.value())).isEqualTo(endpoint.allows(service));
+            }
+        }
+    }
 }
