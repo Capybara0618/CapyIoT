@@ -227,6 +227,68 @@ async def test_changed_business_state_invalidates_before_confirmation(database, 
     assert repo.run_view(owner, run)["executionStatus"] == "NOT_EXECUTED"
 
 
+async def test_changed_evidence_cannot_hide_a_confirmed_receipt_or_bypass_current_access(
+    database, settings
+):
+    from app.business_client import Principal
+    from app.draft_schemas import DraftDecision
+    from app.drafts import DraftService
+
+    repo, owner, run = running(database)
+    draft = repo.propose(
+        owner,
+        run,
+        run + "receipt",
+        PrepareWorkOrder.model_validate(payload()).command(),
+        ["evidence-one"],
+        "park-1",
+        1800,
+    )
+
+    class Core:
+        denied = False
+
+        async def read(self, *_, **__):
+            if self.denied:
+                raise ServiceError("FORBIDDEN", 403, "无当前设备访问权")
+            return {"deviceId": "ipc-1", "name": "入口摄像机"}
+
+    class Tools:
+        async def revalidate(self, *_):
+            return False
+
+    principal = Principal(
+        owner,
+        "session",
+        1,
+        frozenset({"agent.use", "workorder.create", "agent.draft.confirm"}),
+        "token",
+    )
+    business = Core()
+    service = DraftService(settings, repo, Tools(), business)
+    with pytest.raises(ServiceError) as error:
+        await service.visible(principal, draft["draftId"], "trace")
+    assert error.value.code == "DRAFT_EVIDENCE_INVALID"
+    confirmed = decide(repo, owner, draft)
+    visible = await service.visible(principal, draft["draftId"], "trace")
+    assert visible["evidenceStatus"] == "UNAVAILABLE"
+    assert visible["relatedEvidenceReferences"] == []
+    assert visible["execution"]["executionId"] == confirmed["execution"]["executionId"]
+    repeated = await service.decision(
+        principal,
+        draft["draftId"],
+        DraftDecision(draftRevision=draft["revision"], contentHash=draft["contentHash"]),
+        "CONFIRM",
+        "repeat",
+        "trace",
+    )
+    assert repeated["execution"]["executionId"] == confirmed["execution"]["executionId"]
+    business.denied = True
+    with pytest.raises(ServiceError) as error:
+        await service.visible(principal, draft["draftId"], "trace")
+    assert error.value.status == 403
+
+
 async def test_full_length_draft_uses_bounded_audit_and_permission_denials_are_recorded(
     database, settings
 ):

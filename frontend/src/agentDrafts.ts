@@ -9,6 +9,7 @@ export interface AgentDraft {
   summary: string
   expiresAt: string
   confirmedAt: string | null
+  evidenceStatus?: 'VERIFIED' | 'UNAVAILABLE'
   devices: { deviceId: string; name: string; deviceType: string; assetCode: string }[]
   payload: {
     sourceType: 'MANUAL' | 'INCIDENT'

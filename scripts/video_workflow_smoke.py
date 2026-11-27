@@ -32,7 +32,13 @@ def main():
         action="store_true",
         help="Use a normal user prompt rather than the offline fixture marker",
     )
+    parser.add_argument(
+        "--resume-draft",
+        help="Resume only the original confirmed draft after a transport or visibility failure",
+    )
     args = parser.parse_args()
+    if args.resume_draft and not args.agent:
+        parser.error("--resume-draft requires --agent")
     tls = ssl.create_default_context(cafile=args.ca_file)
     config = dict(
         line.split("=", 1)
@@ -110,13 +116,23 @@ def main():
         }
         if {item["service"] for item in catalog} != expected:
             raise AssertionError("Independent service API catalog is incomplete")
-        candidate = wait(
-            lambda: active_outage_incident(lambda path: call(path)["data"]),
-            "simulated topology correlation",
-        )
+        if args.resume_draft:
+            resumed = call("/agent/drafts/" + args.resume_draft)["data"]
+            if resumed["execution"] is None or not resumed["payload"].get("incidentId"):
+                raise AssertionError(
+                    "Resume requires the original confirmed Incident draft"
+                )
+            candidate = {"incidentId": resumed["payload"]["incidentId"]}
+        else:
+            candidate = wait(
+                lambda: active_outage_incident(lambda path: call(path)["data"]),
+                "simulated topology correlation",
+            )
         item = call("/incidents/" + candidate["incidentId"])["data"]
         incident_id = item["incidentId"]
-        if item["rootCauseStatus"] != "UNCONFIRMED" or item["workOrders"]:
+        if item["rootCauseStatus"] != "UNCONFIRMED" or (
+            item["workOrders"] and not args.resume_draft
+        ):
             raise AssertionError(
                 "Correlation must neither confirm a root cause nor automatically create work"
             )
@@ -125,14 +141,15 @@ def main():
             raise AssertionError(
                 "Expected the switch and at least two downstream devices"
             )
-        call(
-            "/incidents/" + incident_id + "/review",
-            {
-                "decision": "CONFIRM",
-                "reason": "统一验收：根据故障及拓扑证据确认需要维修",
-                "expectedVersion": item["version"],
-            },
-        )
+        if not args.resume_draft:
+            call(
+                "/incidents/" + incident_id + "/review",
+                {
+                    "decision": "CONFIRM",
+                    "reason": "统一验收：根据故障及拓扑证据确认需要维修",
+                    "expectedVersion": item["version"],
+                },
+            )
         body = {
             "sourceType": "INCIDENT",
             "incidentId": incident_id,
@@ -156,32 +173,39 @@ def main():
         key = str(uuid.uuid4())
         if args.agent:
             before = call("/workorders")["data"]["total"]
-            conversation = call(
-                "/agent/conversations", {"title": "完整故障维修验收"}, expected=(201,)
-            )["data"]
-            prompt = (
-                "请查询故障 "
-                + incident_id
-                + " 的真实证据，为该故障关联设备生成维修工单草稿，"
-                "必须使用 INCIDENT 来源并关联这个故障，等待我在页面确认，不得自动创建正式工单。"
-                if args.real_model
-                else "draft-fixture INCIDENT "
-                + incident_id
-                + " 请根据该故障生成维修草稿，等待人工确认。"
-            )
-            wire = call(
-                "/agent/conversations/" + conversation["conversationId"] + "/messages",
-                {"content": prompt},
-                stream=True,
-            )
-            ready = next(
-                json.loads(line[6:])
-                for part in wire.split("\n\n")
-                if "event: draft.ready" in part
-                for line in part.splitlines()
-                if line.startswith("data: ")
-            )
-            draft = call("/agent/drafts/" + ready["draftId"])["data"]
+            if args.resume_draft:
+                draft = resumed
+            else:
+                conversation = call(
+                    "/agent/conversations",
+                    {"title": "完整故障维修验收"},
+                    expected=(201,),
+                )["data"]
+                prompt = (
+                    "请查询故障 "
+                    + incident_id
+                    + " 的真实证据，为该故障关联设备生成维修工单草稿，"
+                    "必须使用 INCIDENT 来源并关联这个故障，等待我在页面确认，不得自动创建正式工单。"
+                    if args.real_model
+                    else "draft-fixture INCIDENT "
+                    + incident_id
+                    + " 请根据该故障生成维修草稿，等待人工确认。"
+                )
+                wire = call(
+                    "/agent/conversations/"
+                    + conversation["conversationId"]
+                    + "/messages",
+                    {"content": prompt},
+                    stream=True,
+                )
+                ready = next(
+                    json.loads(line[6:])
+                    for part in wire.split("\n\n")
+                    if "event: draft.ready" in part
+                    for line in part.splitlines()
+                    if line.startswith("data: ")
+                )
+                draft = call("/agent/drafts/" + ready["draftId"])["data"]
             if call("/workorders")["data"]["total"] != before:
                 raise AssertionError(
                     "The Agent created a formal order before confirmation"
@@ -215,10 +239,10 @@ def main():
                 decision,
                 expected=(202,),
             )["data"]
-            if (
-                repeated["execution"]["executionId"]
-                != accepted["execution"]["executionId"]
-                or call("/workorders")["data"]["total"] != before + 1
+            if repeated["execution"]["executionId"] != accepted["execution"][
+                "executionId"
+            ] or call("/workorders")["data"]["total"] != before + (
+                0 if args.resume_draft else 1
             ):
                 raise AssertionError(
                     "Repeated confirmation created a second execution or order"

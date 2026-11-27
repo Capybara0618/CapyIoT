@@ -98,6 +98,35 @@ test('draft review requires explicit action bound to the displayed revision and 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
 })
 
+test('a confirmed receipt remains visible when historical evidence is hidden', async ({ page }) => {
+  await login(page)
+  const view = {
+    ...initial(),
+    status: 'EXECUTED',
+    evidenceStatus: 'UNAVAILABLE',
+    relatedEvidenceReferences: [],
+    execution: {
+      executionId: 'original-execution',
+      status: 'SUCCEEDED',
+      workOrderId: '101',
+      workOrderNo: 'WO-101',
+      errorCode: null,
+    },
+  }
+  await page.route('**/api/v1/agent/drafts/draft-fixture**', async (route) => {
+    expect(route.request().method()).toBe('GET')
+    await route.fulfill({ json: { code: 'OK', data: view, traceId: 'fixture' } })
+  })
+  await page.goto('/agent-drafts/draft-fixture')
+  await expect(page.getByText(/历史引用当前无法复核/)).toBeVisible()
+  await expect(page.getByRole('link', { name: '查看正式工单 WO-101' })).toHaveAttribute(
+    'href',
+    '/workorders?id=101',
+  )
+  await expect(page.getByRole('button', { name: '确认创建正式工单' })).toHaveCount(0)
+  await expect(page.getByText('当前授权范围的设备状态证据')).toHaveCount(0)
+})
+
 test('rejection is a separate explicit decision and mobile review remains readable', async ({
   page,
 }) => {

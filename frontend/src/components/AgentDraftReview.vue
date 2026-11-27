@@ -96,7 +96,10 @@ const deviceName = (id: string) => props.draft.devices.find((d) => d.deviceId ==
     <h3>预期结果</h3>
     <p class="draft-text">{{ draft.payload.expectedResult }}</p>
     <h3>来源证据</h3>
-    <p v-if="!draft.relatedEvidenceReferences.length" class="video-muted">
+    <p v-if="draft.evidenceStatus === 'UNAVAILABLE'" class="video-notice">
+      历史引用当前无法复核，已暂时隐藏。原执行回执仍保留，请先核对关联工单，避免重复建单。
+    </p>
+    <p v-else-if="!draft.relatedEvidenceReferences.length" class="video-muted">
       本草稿未引用分析证据，请结合设备与来源故障核查内容。
     </p>
     <ul v-else class="draft-evidence">

@@ -269,6 +269,7 @@ class DraftService:
                 correlation,
                 identity=view["payload"]["incidentId"],
             )
+        view["evidenceStatus"] = "VERIFIED"
         if view["relatedEvidenceReferences"]:
             rows = await run_in_threadpool(
                 self.repository.evidence, principal.user_id, view["runId"]
@@ -277,7 +278,14 @@ class DraftService:
                 row for row in rows if row["evidenceId"] in view["relatedEvidenceReferences"]
             ]
             if not await self.tools.revalidate(selected, principal, self.business, correlation):
-                raise ServiceError("DRAFT_EVIDENCE_INVALID", 409, "草稿证据已变化或不可访问")
+                if view["execution"] is None:
+                    raise ServiceError("DRAFT_EVIDENCE_INVALID", 409, "草稿证据已变化或不可访问")
+                # A successful command can itself change a paged query's disclosed objects.
+                # Hide the historical references while retaining the one durable receipt;
+                # owner, current device and Incident access were all checked above.
+                view["relatedEvidenceReferences"] = []
+                view["evidenceStatus"] = "UNAVAILABLE"
+                return view
             view["relatedEvidenceReferences"] = [
                 {
                     k: v
