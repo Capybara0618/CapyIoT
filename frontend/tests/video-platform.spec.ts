@@ -71,6 +71,19 @@ test('platform administrators manage identities without implicit business data a
   await expect(page.locator('.video-error')).toContainText(/无权|授权|允许/)
 })
 
+for (const role of ['repairer', 'acceptor']) {
+  test(`${role} can inspect assigned work without supervisor creation controls`, async ({
+    page,
+  }) => {
+    await login(page, role)
+    await page.goto('/workorders')
+    await expect(page.locator('.page-header h1')).toBeVisible()
+    await expect(page.getByText('新建独立维修工单', { exact: true })).toHaveCount(0)
+    await expect(page.locator('.video-error')).toHaveCount(0)
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  })
+}
+
 test('new assets expose a one-time credential and remain unknown until real input arrives', async ({
   page,
 }) => {

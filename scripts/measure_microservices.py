@@ -9,6 +9,8 @@ import argparse
 import json
 import math
 import os
+import platform
+import re
 import socket
 import struct
 import subprocess
@@ -22,6 +24,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from microservices_common import Target, run, sha, write_json
+from microservices_control import offsets
 from smoke_context import api_base, credentials, tls_context
 from video_protocol_smoke import encoded, packet, receive
 
@@ -41,6 +44,11 @@ def distribution(values):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--devices", required=True, type=Path)
+    parser.add_argument(
+        "--confirmation-only",
+        action="store_true",
+        help="Retest only the receipt measurement; preserve earlier API/ingress results separately",
+    )
     parser.add_argument("--policy", required=True, type=Path)
     parser.add_argument("--report-dir", required=True, type=Path)
     args = parser.parse_args()
@@ -59,12 +67,19 @@ def main():
         "startedAt": datetime.now(UTC).isoformat(),
         "policySha256": sha(args.policy),
         "interpretation": "Local baseline; no production capacity SLA was agreed",
+        "selectedMeasurements": ["confirmation"]
+        if args.confirmation_only
+        else ["api", "ingress", "confirmation"],
         "apiConcurrency": 4,
         "apiWarmupPerPath": 10,
         "apiSamplesPerPath": 120,
         "resourceWindowSeconds": 60,
         "pollIntervalSeconds": 0.1,
         "sourceCommit": run(["git", "rev-parse", "HEAD"]).decode().strip(),
+        "hostPlatform": platform.platform(),
+        "hostLogicalCpuCount": os.cpu_count(),
+        "activeMeasuredPublishers": 1,
+        "arrivalTiming": "Host monotonic publish-to-successful-API-poll upper bound, including client/network/poll overhead",
     }
     devices = json.loads(args.devices.read_text(encoding="utf-8"))
     report["simulatedDevicesInInputFile"] = len(devices)
@@ -164,6 +179,29 @@ def main():
         )
         return result.strip().splitlines()[-1] == "1"
 
+    def subscriber_acks():
+        metrics = run(
+            target.compose(
+                "exec",
+                "-T",
+                "device-ingestion",
+                "curl",
+                "--fail",
+                "--silent",
+                "--cacert",
+                "/run/secrets/internal-ca.pem",
+                "https://device-ingestion:8081/actuator/prometheus",
+            )
+        ).decode()
+        match = re.search(
+            r"^capyiot_mqtt_ack_total(?:\{[^\n]*\})? ([0-9.eE+]+)$",
+            metrics,
+            re.MULTILINE,
+        )
+        if not match:
+            raise AssertionError("Subscriber acknowledgement counter unavailable")
+        return float(match.group(1))
+
     def collect():
         end = time.monotonic() + 60
         while time.monotonic() < end:
@@ -227,126 +265,171 @@ def main():
             .decode()
             .split()
         )
+        inspected = json.loads(run(["docker", "inspect", *container_names]))
+        report["containers"] = [
+            {
+                "name": item["Name"],
+                "imageId": item["Image"],
+                "memoryLimitBytes": item["HostConfig"]["Memory"],
+                "nanoCpus": item["HostConfig"]["NanoCpus"],
+            }
+            for item in inspected
+        ]
+        report["otherRunningContainers"] = [
+            name
+            for name in run(["docker", "ps", "--format", "{{.Names}}"])
+            .decode()
+            .splitlines()
+            if name not in container_names
+        ]
         collector = threading.Thread(target=collect, daemon=True)
         collector.start()
-        api = {}
-        for path in (
-            "/devices",
-            "/incidents",
-            "/workorders",
-            "/topology/context?deviceId=" + device["deviceId"],
-        ):
-            for _ in range(10):
-                call(path)
+        if not args.confirmation_only:
+            api = {}
+            for path in (
+                "/devices",
+                "/incidents",
+                "/workorders",
+                "/topology/context?deviceId=" + device["deviceId"],
+            ):
+                print("Measuring bounded API sample: " + path.split("?")[0], flush=True)
+                for _ in range(10):
+                    call(path)
 
-            def sample(_, selected=path):
-                started = time.perf_counter()
-                try:
-                    call(selected)
-                    return (time.perf_counter() - started) * 1000, True
-                except (RuntimeError, OSError):
-                    return (time.perf_counter() - started) * 1000, False
+                def sample(_, selected=path):
+                    started = time.perf_counter()
+                    try:
+                        call(selected)
+                        return (time.perf_counter() - started) * 1000, True
+                    except (RuntimeError, OSError):
+                        return (time.perf_counter() - started) * 1000, False
 
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                samples = list(pool.map(sample, range(120)))
-            api[path] = {
-                **distribution([elapsed for elapsed, _ in samples]),
-                "rawMs": [elapsed for elapsed, _ in samples],
-                "errors": sum(not ok for _, ok in samples),
-                "errorRate": sum(not ok for _, ok in samples) / len(samples),
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    samples = list(pool.map(sample, range(120)))
+                api[path] = {
+                    **distribution([elapsed for elapsed, _ in samples]),
+                    "rawMs": [elapsed for elapsed, _ in samples],
+                    "errors": sum(not ok for _, ok in samples),
+                    "errorRate": sum(not ok for _, ok in samples) / len(samples),
+                }
+            report["api"] = api
+            write_json(args.report_dir / "measurements.json", report)
+            if any(item["errors"] for item in api.values()):
+                raise AssertionError("Unexpected API errors during baseline")
+            identity = call(
+                "/device-sessions",
+                {
+                    "deviceId": device["deviceId"],
+                    "secret": device["deviceSecret"],
+                    "sessionId": session,
+                },
+            )
+            raw = socket.create_connection(
+                ("localhost", int(target.values["MS_MQTT_PORT"])), timeout=10
+            )
+            connection = tls.wrap_socket(raw, server_hostname="localhost")
+            connection.settimeout(10)
+            body = (
+                encoded("MQTT")
+                + bytes([4, 194])
+                + struct.pack("!H", 30)
+                + encoded(device["deviceId"])
+                + encoded(device["deviceId"])
+                + encoded(identity["sessionToken"])
+            )
+            connection.sendall(packet(0x10, body))
+            assert receive(connection) == (0x20, b"\x00\x00")
+            topic = f"capyiot/v1/devices/{device['deviceId']}/sessions/{session}/events"
+            arrivals = []
+            arrival_window = time.monotonic()
+            for _ in range(30):
+                before = call("/devices/" + device["deviceId"])[
+                    "lastHeartbeatReceivedAt"
+                ]
+                start = time.perf_counter()
+                heartbeat()
+                wait(
+                    lambda original=before: (
+                        call("/devices/" + device["deviceId"])[
+                            "lastHeartbeatReceivedAt"
+                        ]
+                        != original
+                    )
+                )
+                arrivals.append((time.perf_counter() - start) * 1000)
+            report["publishToVisibleHeartbeat"] = distribution(arrivals)
+            report["heartbeatArrivalRawMs"] = arrivals
+            print("Completed 30 publish-to-state observations", flush=True)
+            report["heartbeatArrivalInputWindowSeconds"] = (
+                time.monotonic() - arrival_window
+            )
+            report["heartbeatArrivalInputRatePerSecond"] = (
+                30 / report["heartbeatArrivalInputWindowSeconds"]
+            )
+            anomalies = []
+            for _ in range(5):
+                path = "/anomalies?deviceId=" + device["deviceId"]
+                old_ids = {a["anomalyId"] for a in call(path)["items"]}
+                start = time.perf_counter()
+                fault_event = heartbeat("DEVICE_FAULT")
+                wait(
+                    lambda previous=old_ids, selected=path: any(
+                        a["anomalyId"] not in previous and a["status"] == "ACTIVE"
+                        for a in call(selected)["items"]
+                    )
+                )
+                anomalies.append((time.perf_counter() - start) * 1000)
+                fresh = next(
+                    a["anomalyId"]
+                    for a in call(path)["items"]
+                    if a["anomalyId"] not in old_ids
+                )
+                heartbeat("DEVICE_RECOVERED", fault_event)
+                wait(
+                    lambda anomaly_id=fresh: (
+                        call("/anomalies/" + anomaly_id)["status"] == "RECOVERED"
+                    )
+                )
+            report["publishToVisibleAnomaly"] = distribution(anomalies)
+            report["anomalyArrivalRawMs"] = anomalies
+            print("Completed 5 fault/recovery observations", flush=True)
+            # Isolated Kafka pause: publisher PUBACK alone must not imply a database fact.
+            kafka = target.project + "-kafka-1"
+            report["consumerOffsetsBeforeOutage"] = offsets(kafka)
+            before_acks = subscriber_acks()
+            run(["docker", "pause", kafka])
+            unpause = True
+            backlog = []
+            started = time.monotonic()
+            for _ in range(20):
+                backlog.append(heartbeat())
+                time.sleep(0.1)
+            wait_until = started + 15
+            while time.monotonic() < wait_until:
+                time.sleep(min(0.5, wait_until - time.monotonic()))
+            assert not any(applied(event_id) for event_id in backlog)
+            paused_acks = subscriber_acks()
+            assert paused_acks == before_acks, (
+                "Subscriber ACK advanced without a durable Kafka acknowledgement"
+            )
+            resumed = time.perf_counter()
+            run(["docker", "unpause", kafka])
+            unpause = False
+            wait(lambda: all(applied(event_id) for event_id in backlog), seconds=90)
+            wait(lambda: subscriber_acks() >= before_acks + len(backlog), seconds=30)
+            report["kafkaRecovery"] = {
+                "pausedSeconds": round(
+                    time.monotonic() - started - (time.perf_counter() - resumed), 3
+                ),
+                "queuedHeartbeats": 20,
+                "recoveryMs": round((time.perf_counter() - resumed) * 1000, 3),
+                "appliedExactlyOnce": True,
+                "subscriberAckBefore": before_acks,
+                "subscriberAckWhilePaused": paused_acks,
+                "subscriberAckAfter": subscriber_acks(),
             }
-        report["api"] = api
-        if any(item["errors"] for item in api.values()):
-            raise AssertionError("Unexpected API errors during baseline")
-        identity = call(
-            "/device-sessions",
-            {
-                "deviceId": device["deviceId"],
-                "secret": device["deviceSecret"],
-                "sessionId": session,
-            },
-        )
-        raw = socket.create_connection(
-            ("localhost", int(target.values["MS_MQTT_PORT"])), timeout=10
-        )
-        connection = tls.wrap_socket(raw, server_hostname="localhost")
-        connection.settimeout(10)
-        body = (
-            encoded("MQTT")
-            + bytes([4, 194])
-            + struct.pack("!H", 30)
-            + encoded(device["deviceId"])
-            + encoded(device["deviceId"])
-            + encoded(identity["sessionToken"])
-        )
-        connection.sendall(packet(0x10, body))
-        assert receive(connection) == (0x20, b"\x00\x00")
-        topic = f"capyiot/v1/devices/{device['deviceId']}/sessions/{session}/events"
-        arrivals = []
-        for _ in range(30):
-            before = call("/devices/" + device["deviceId"])["lastHeartbeatReceivedAt"]
-            start = time.perf_counter()
-            heartbeat()
-            wait(
-                lambda original=before: (
-                    call("/devices/" + device["deviceId"])["lastHeartbeatReceivedAt"]
-                    != original
-                )
-            )
-            arrivals.append((time.perf_counter() - start) * 1000)
-        report["publishToVisibleHeartbeat"] = distribution(arrivals)
-        report["heartbeatArrivalRawMs"] = arrivals
-        anomalies = []
-        for _ in range(5):
-            path = "/anomalies?deviceId=" + device["deviceId"]
-            old_ids = {a["anomalyId"] for a in call(path)["items"]}
-            start = time.perf_counter()
-            fault_event = heartbeat("DEVICE_FAULT")
-            wait(
-                lambda previous=old_ids, selected=path: any(
-                    a["anomalyId"] not in previous and a["status"] == "ACTIVE"
-                    for a in call(selected)["items"]
-                )
-            )
-            anomalies.append((time.perf_counter() - start) * 1000)
-            fresh = next(
-                a["anomalyId"]
-                for a in call(path)["items"]
-                if a["anomalyId"] not in old_ids
-            )
-            heartbeat("DEVICE_RECOVERED", fault_event)
-            wait(
-                lambda anomaly_id=fresh: (
-                    call("/anomalies/" + anomaly_id)["status"] == "RECOVERED"
-                )
-            )
-        report["publishToVisibleAnomaly"] = distribution(anomalies)
-        report["anomalyArrivalRawMs"] = anomalies
-        # Isolated Kafka pause: publisher PUBACK alone must not imply a database fact.
-        kafka = target.project + "-kafka-1"
-        run(["docker", "pause", kafka])
-        unpause = True
-        backlog = []
-        started = time.monotonic()
-        for _ in range(20):
-            backlog.append(heartbeat())
-            time.sleep(0.1)
-        wait_until = started + 15
-        while time.monotonic() < wait_until:
-            time.sleep(min(0.5, wait_until - time.monotonic()))
-        assert not any(applied(event_id) for event_id in backlog)
-        resumed = time.perf_counter()
-        run(["docker", "unpause", kafka])
-        unpause = False
-        wait(lambda: all(applied(event_id) for event_id in backlog), seconds=90)
-        report["kafkaRecovery"] = {
-            "pausedSeconds": round(
-                time.monotonic() - started - (time.perf_counter() - resumed), 3
-            ),
-            "queuedHeartbeats": 20,
-            "recoveryMs": round((time.perf_counter() - resumed) * 1000, 3),
-            "appliedExactlyOnce": True,
-        }
+            report["consumerOffsetsAfterRecovery"] = offsets(kafka)
+            print("Completed bounded Kafka pause and recovery", flush=True)
         # The model is the offline fixture; confirmation and the delegated Java
         # command/receipt still traverse the real Agent and workflow services.
         receipts = []
@@ -374,13 +457,23 @@ def main():
                 timeout=90,
             ) as response:
                 wire = response.read().decode()
+            (
+                args.report_dir / ("receipt-model-" + str(len(receipts) + 1) + ".sse")
+            ).write_text(wire, encoding="utf-8")
             ready = next(
-                json.loads(line[6:])
-                for part in wire.split("\n\n")
-                if "event: draft.ready" in part
-                for line in part.splitlines()
-                if line.startswith("data: ")
+                (
+                    json.loads(line[6:])
+                    for part in wire.split("\n\n")
+                    if "event: draft.ready" in part
+                    for line in part.splitlines()
+                    if line.startswith("data: ")
+                ),
+                None,
             )
+            if ready is None:
+                raise AssertionError(
+                    "Receipt measurement did not obtain a draft; inspect the private SSE record"
+                )
             draft = call("/agent/drafts/" + ready["draftId"])
             started = time.perf_counter()
             call(
@@ -398,6 +491,9 @@ def main():
                 seconds=45,
             )
             receipts.append((time.perf_counter() - started) * 1000)
+            print(
+                "Completed confirmed receipt sample " + str(len(receipts)), flush=True
+            )
         report["confirmationToReceipt"] = distribution(receipts)
         report["confirmationRawMs"] = receipts
         report["status"] = "PASSED_BASELINE_FUNCTIONAL_GATES"

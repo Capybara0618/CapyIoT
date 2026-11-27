@@ -2,6 +2,7 @@
 
 import json
 import ssl
+import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -35,10 +36,24 @@ def main():
             assert response.status == status, (path, response.status)
             return json.load(response)
 
-    token = call(
-        "/auth/login",
-        {"loginName": "admin", "password": credentials()["DEMO_ADMIN_PASSWORD"]},
-    )["data"]["accessToken"]
+    for attempt in range(30):
+        try:
+            token = call(
+                "/auth/login",
+                {
+                    "loginName": "admin",
+                    "password": credentials()["DEMO_ADMIN_PASSWORD"],
+                },
+            )["data"]["accessToken"]
+            break
+        except AssertionError as error:
+            if error.args != (("/auth/login", 503),) or attempt == 29:
+                raise
+            print(
+                "Startup authorization/JWKS warm-up returned 503; bounded readiness wait",
+                flush=True,
+            )
+            time.sleep(1)
     try:
         assert call("/auth/me")["data"]["userId"]
         health = call("/observability/services")["data"]["services"]

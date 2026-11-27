@@ -60,7 +60,7 @@ def main():
             data=None if body is None else json.dumps(body).encode(),
         )
         try:
-            response = urlopen(request, timeout=15, context=tls)
+            response = urlopen(request, timeout=90 if stream else 15, context=tls)
         except HTTPError as error:
             response = error
         with response:
