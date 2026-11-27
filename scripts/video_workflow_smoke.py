@@ -12,6 +12,8 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from smoke_context import active_outage_incident
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -20,6 +22,16 @@ def main():
     parser.add_argument("--base-url", default="https://localhost:8443")
     parser.add_argument("--ca-file", type=Path, default=ROOT / "var/tls/ca.pem")
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
+    parser.add_argument(
+        "--agent",
+        action="store_true",
+        help="Create through an explicitly confirmed Agent draft",
+    )
+    parser.add_argument(
+        "--real-model",
+        action="store_true",
+        help="Use a normal user prompt rather than the offline fixture marker",
+    )
     args = parser.parse_args()
     tls = ssl.create_default_context(cafile=args.ca_file)
     config = dict(
@@ -29,7 +41,7 @@ def main():
     )
     token, sessions = None, []
 
-    def call(path, body=None, method=None, expected=(200,), key=None):
+    def call(path, body=None, method=None, expected=(200,), key=None, stream=False):
         headers = {
             "Content-Type": "application/json",
             "X-Request-Id": str(uuid.uuid4()),
@@ -39,6 +51,8 @@ def main():
             headers["Authorization"] = "Bearer " + token
         if body is not None:
             headers["Idempotency-Key"] = key or str(uuid.uuid4())
+        if stream:
+            headers["Accept"] = "text/event-stream"
         request = Request(
             args.base_url.rstrip("/") + "/api/v1" + path,
             headers=headers,
@@ -51,10 +65,11 @@ def main():
             response = error
         with response:
             if response.status not in expected:
+                code = json.load(response).get("code", "UNKNOWN")
                 raise AssertionError(
-                    f"{method or ('POST' if body is not None else 'GET')} {path} returned HTTP {response.status}"
+                    f"{method or ('POST' if body is not None else 'GET')} {path} returned HTTP {response.status} ({code})"
                 )
-            return json.load(response)
+            return response.read().decode() if stream else json.load(response)
 
     def login(name):
         nonlocal token
@@ -95,11 +110,11 @@ def main():
         }
         if {item["service"] for item in catalog} != expected:
             raise AssertionError("Independent service API catalog is incomplete")
-        incidents = wait(
-            lambda: call("/incidents?status=PENDING_REVIEW")["data"]["items"],
+        candidate = wait(
+            lambda: active_outage_incident(lambda path: call(path)["data"]),
             "simulated topology correlation",
         )
-        item = call("/incidents/" + incidents[0]["incidentId"])["data"]
+        item = call("/incidents/" + candidate["incidentId"])["data"]
         incident_id = item["incidentId"]
         if item["rootCauseStatus"] != "UNCONFIRMED" or item["workOrders"]:
             raise AssertionError(
@@ -139,12 +154,85 @@ def main():
         if not any(d["deviceRole"] == "MAIN" for d in body["deviceItems"]):
             body["deviceItems"][0]["deviceRole"] = "MAIN"
         key = str(uuid.uuid4())
-        created = call("/workorders", body, expected=(201,), key=key)["data"]
-        replay = call("/workorders", body, expected=(200,), key=key)["data"]
-        if created["workOrderId"] != replay["workOrderId"] or replay["created"]:
-            raise AssertionError(
-                "Duplicate create did not return the original work order"
+        if args.agent:
+            before = call("/workorders")["data"]["total"]
+            conversation = call(
+                "/agent/conversations", {"title": "完整故障维修验收"}, expected=(201,)
+            )["data"]
+            prompt = (
+                "请查询故障 "
+                + incident_id
+                + " 的真实证据，为该故障关联设备生成维修工单草稿，"
+                "必须使用 INCIDENT 来源并关联这个故障，等待我在页面确认，不得自动创建正式工单。"
+                if args.real_model
+                else "draft-fixture INCIDENT "
+                + incident_id
+                + " 请根据该故障生成维修草稿，等待人工确认。"
             )
+            wire = call(
+                "/agent/conversations/" + conversation["conversationId"] + "/messages",
+                {"content": prompt},
+                stream=True,
+            )
+            ready = next(
+                json.loads(line[6:])
+                for part in wire.split("\n\n")
+                if "event: draft.ready" in part
+                for line in part.splitlines()
+                if line.startswith("data: ")
+            )
+            draft = call("/agent/drafts/" + ready["draftId"])["data"]
+            if call("/workorders")["data"]["total"] != before:
+                raise AssertionError(
+                    "The Agent created a formal order before confirmation"
+                )
+            decision = {
+                "draftRevision": draft["revision"],
+                "contentHash": draft["contentHash"],
+            }
+            accepted = call(
+                "/agent/drafts/" + draft["draftId"] + "/confirm",
+                decision,
+                expected=(202,),
+            )["data"]
+
+            def executed():
+                current = call("/agent/drafts/" + draft["draftId"])["data"]
+                execution = current.get("execution") or {}
+                if execution.get("status") == "FAILED":
+                    raise AssertionError(
+                        "Confirmed Agent execution failed: "
+                        + str(execution.get("errorCode"))
+                    )
+                return current if execution.get("status") == "SUCCEEDED" else None
+
+            finished = wait(executed, "confirmed Agent workflow receipt")
+            created = call("/workorders/" + finished["execution"]["workOrderId"])[
+                "data"
+            ]
+            repeated = call(
+                "/agent/drafts/" + draft["draftId"] + "/confirm",
+                decision,
+                expected=(202,),
+            )["data"]
+            if (
+                repeated["execution"]["executionId"]
+                != accepted["execution"]["executionId"]
+                or call("/workorders")["data"]["total"] != before + 1
+            ):
+                raise AssertionError(
+                    "Repeated confirmation created a second execution or order"
+                )
+            if created["incidentId"] != incident_id:
+                raise AssertionError("The confirmed draft lost its Incident binding")
+            device_ids = [d["deviceId"] for d in created["deviceItems"]]
+        else:
+            created = call("/workorders", body, expected=(201,), key=key)["data"]
+            replay = call("/workorders", body, expected=(200,), key=key)["data"]
+            if created["workOrderId"] != replay["workOrderId"] or replay["created"]:
+                raise AssertionError(
+                    "Duplicate create did not return the original work order"
+                )
         order_id = created["workOrderId"]
         current = call("/incidents/" + incident_id)["data"]
         call(
@@ -238,13 +326,27 @@ def main():
             ),
             "closure readiness projection",
         )
-        call(
-            "/incidents/" + incident_id + "/close",
-            {
-                "resolvedDisposition": "异常恢复且工单独立验收通过",
-                "reason": "统一验收：复核无活动异常与未终结工单",
-                "expectedVersion": item["version"],
-            },
+
+        def close_when_facts_covered():
+            current = call("/incidents/" + incident_id)["data"]
+            result = call(
+                "/incidents/" + incident_id + "/close",
+                {
+                    "resolvedDisposition": "异常恢复且工单独立验收通过",
+                    "reason": "统一验收：复核无活动异常与未终结工单",
+                    "expectedVersion": current["version"],
+                },
+                expected=(200, 409),
+            )
+            if result["code"] == "OK":
+                return True
+            if result["code"] not in {"FAULT_EVIDENCE_INCOMPLETE", "VERSION_CONFLICT"}:
+                raise AssertionError("Unexpected close rejection: " + result["code"])
+            return False
+
+        wait(
+            close_when_facts_covered,
+            "authoritative observation coverage before closure",
         )
         history = call("/devices/" + device_ids[0] + "/maintenance-history")["data"]
         if not any(
@@ -268,6 +370,11 @@ def main():
         print(
             "HTTPS workflow checks passed: candidate correlation, explicit creation, idempotency, Gate conflicts, separate repair/acceptance and final incident closure."
         )
+        if args.agent:
+            print(
+                "The same complete lifecycle used an evidence-backed Agent draft and explicit confirmation; real model="
+                + str(args.real_model)
+            )
     finally:
         for saved in sessions:
             token = saved

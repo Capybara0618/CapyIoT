@@ -32,6 +32,23 @@ def tls_context():
     )
 
 
+def active_outage_incident(call):
+    """Select this scenario's active outage, excluding restart-era recovered candidates."""
+    anomalies = call("/anomalies?status=ACTIVE&size=100")["items"]
+    active = {row["anomalyId"] for row in anomalies}
+    roots = {
+        row["anomalyId"]
+        for row in anomalies
+        if row["anomalyType"] == "SWITCH_DEVICE_ERROR"
+    }
+    for incident in call("/incidents?status=PENDING_REVIEW&size=100")["items"]:
+        detail = call("/incidents/" + incident["incidentId"])
+        linked = {row["anomalyId"] for row in detail["anomalyLinks"]}
+        if linked & roots and len(linked & active) >= 3:
+            return incident
+    return None
+
+
 def compose_command(*args):
     selected = os.environ.get("CAPYIOT_MS_TARGET")
     if selected:

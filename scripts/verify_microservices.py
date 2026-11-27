@@ -11,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -314,7 +315,7 @@ def verify(args):
                 target.values["MS_MQTT_PORT"],
             )
         if "workflow" in args.groups:
-            simulator = target.project + "-outage"
+            simulator = target.project + "-outage-" + uuid.uuid4().hex[:8]
             step(
                 "outage",
                 target.compose(
@@ -345,7 +346,7 @@ def verify(args):
             # later outage, and must also work when selected without the workflow group.
             if simulator:
                 step("manual-simulator-stop", ["docker", "stop", simulator])
-            simulator = target.project + "-agent-outage"
+            simulator = target.project + "-agent-outage-" + uuid.uuid4().hex[:8]
             step(
                 "agent-outage",
                 target.compose(
@@ -365,7 +366,7 @@ def verify(args):
                     "--interval-ms",
                     "1000",
                     "--fault-seconds",
-                    "60",
+                    "300",
                     active=True,
                     offline=True,
                 ),

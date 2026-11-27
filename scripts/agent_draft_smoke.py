@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from smoke_context import api_base, credentials, tls_context
+from smoke_context import active_outage_incident, api_base, credentials, tls_context
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,8 +39,9 @@ def main():
             response = error
         if response.status not in expected:
             status = response.status
+            code = json.load(response).get("code", "UNKNOWN")
             response.close()
-            raise AssertionError(f"Unexpected HTTP {status} for {path}")
+            raise AssertionError(f"Unexpected HTTP {status} for {path} ({code})")
         return response
 
     def call(path, body=None, **kwargs):
@@ -139,7 +140,13 @@ def main():
         decision(draft, "confirm", expected=(409,))
         assert call("/workorders")["total"] == before
 
-        pending = call("/incidents?status=PENDING_REVIEW")["items"][0]
+        deadline = time.monotonic() + 120
+        while not (pending := active_outage_incident(call)):
+            if time.monotonic() >= deadline:
+                raise AssertionError(
+                    "The current switch outage did not produce an active candidate"
+                )
+            time.sleep(0.5)
         call(
             "/incidents/" + pending["incidentId"] + "/review",
             {

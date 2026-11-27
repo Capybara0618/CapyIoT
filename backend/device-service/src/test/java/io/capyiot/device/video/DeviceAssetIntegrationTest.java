@@ -882,7 +882,7 @@ class DeviceAssetIntegrationTest {
                   position.eventId()));
       assertEquals("PENDING", outbox.path("status").asText());
     }
-    states.expire(at.plusSeconds(46), 45, 120);
+    states.expire(at.plusSeconds(47), 45, 120);
     var lost =
         internal
             .runtime(new DeviceApi.Batch(List.of(id)))
