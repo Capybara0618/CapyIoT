@@ -584,6 +584,110 @@ class DeviceAssetIntegrationTest {
   }
 
   @Test
+  void committedDeviceFactSurvivesAConsumerExitBeforeOffsetCommit() throws Exception {
+    try (var broker = new org.testcontainers.kafka.KafkaContainer("apache/kafka:4.1.1")) {
+      broker.start();
+      String topic = "device-crash-boundary", group = "device-crash-" + key();
+      var d = activeDevice("IPC-CONSUMER-CRASH");
+      String id = d.path("device").path("deviceId").asText();
+      var session =
+          sessions.create(
+              new DeviceSessions.SessionCommand(id, d.path("deviceSecret").asText(), "crash-boot"));
+      var event =
+          event(
+              id,
+              session,
+              "crash-boot",
+              "HEARTBEAT",
+              "HEARTBEAT",
+              1,
+              Instant.now(),
+              Map.of("bootId", "crash-boot"));
+      var producerConfig =
+          Map.<String, Object>of(
+              "bootstrap.servers",
+              broker.getBootstrapServers(),
+              "key.serializer",
+              org.apache.kafka.common.serialization.StringSerializer.class,
+              "value.serializer",
+              org.apache.kafka.common.serialization.StringSerializer.class,
+              "acks",
+              "all");
+      try (var producer =
+          new org.apache.kafka.clients.producer.KafkaProducer<String, String>(producerConfig)) {
+        producer
+            .send(
+                new org.apache.kafka.clients.producer.ProducerRecord<>(
+                    topic, id, json.writeValueAsString(event)))
+            .get(20, TimeUnit.SECONDS);
+      }
+      var config =
+          Map.<String, Object>of(
+              "bootstrap.servers",
+              broker.getBootstrapServers(),
+              "group.id",
+              group,
+              "enable.auto.commit",
+              false,
+              "auto.offset.reset",
+              "earliest",
+              "key.deserializer",
+              org.apache.kafka.common.serialization.StringDeserializer.class,
+              "value.deserializer",
+              org.apache.kafka.common.serialization.StringDeserializer.class);
+      long firstOffset = -1;
+      int outboxCount = -1;
+      for (int launch = 0; launch < 2; launch++) {
+        try (var consumer =
+            new org.apache.kafka.clients.consumer.KafkaConsumer<String, String>(config)) {
+          consumer.subscribe(List.of(topic));
+          org.apache.kafka.clients.consumer.ConsumerRecord<String, String> record = null;
+          long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+          while (record == null && System.nanoTime() < deadline) {
+            var records = consumer.poll(java.time.Duration.ofMillis(250));
+            if (!records.isEmpty()) record = records.iterator().next();
+          }
+          assertNotNull(record, "Uncommitted offset must be delivered after restart");
+          var parsed = json.readValue(record.value(), io.capyiot.contract.VideoDeviceEvent.class);
+          assertEquals(
+              launch == 0 ? "APPLIED" : "DUPLICATE",
+              states.accept(parsed, record.partition(), record.offset()));
+          if (launch == 0) {
+            firstOffset = record.offset();
+            outboxCount =
+                store.db.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class);
+            assertNull(
+                consumer
+                    .committed(
+                        Set.of(
+                            new org.apache.kafka.common.TopicPartition(topic, record.partition())))
+                    .get(new org.apache.kafka.common.TopicPartition(topic, record.partition())));
+            // Exit here after the MySQL transaction has committed, without commitSync.
+          } else {
+            assertEquals(firstOffset, record.offset());
+            assertEquals(
+                outboxCount,
+                store.db.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class));
+            consumer.commitSync();
+          }
+        }
+      }
+      assertEquals(
+          1,
+          store.db.queryForObject(
+              "SELECT COUNT(*) FROM device_event_receipt WHERE event_id=?",
+              Integer.class,
+              event.eventId()));
+      assertEquals(
+          1L,
+          store.db.queryForObject(
+              "SELECT heartbeat_generation FROM device_runtime_state WHERE device_id=?",
+              Long.class,
+              id));
+    }
+  }
+
+  @Test
   void sentBeforeCrashIsReclaimedWithTheSameEventIdentity() {
     var dataSource = java.util.Objects.requireNonNull(store.db.getDataSource());
     var crash = new java.util.concurrent.atomic.AtomicBoolean(true);
