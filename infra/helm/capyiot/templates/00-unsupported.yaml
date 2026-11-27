@@ -1,0 +1,1 @@
+{{- fail "This retained Helm chart describes the historical Core deployment and is not supported for the native microservices. Use the standalone compose.microservices.yml candidate and the explicit rollout tooling. Do not apply this chart with current images." -}}

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const env = Object.fromEntries(
-  readFileSync(resolve('../.env'), 'utf8')
+  readFileSync(resolve(process.env.CAPYIOT_CREDENTIAL_FILE ?? '../.env'), 'utf8')
     .split(/\r?\n/)
     .filter((l) => l && !l.startsWith('#'))
     .map((l) => {

@@ -1,7 +1,9 @@
 FROM maven:3.9.12-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY backend/ .
-RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -DskipTests package
+ARG SERVICE
+RUN case "$SERVICE" in gateway|device-ingestion|device-service|alarm-service|workflow-service|platform-service|core-service) ;; *) exit 1 ;; esac
+RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -pl "$SERVICE" -am -Dmaven.test.skip=true package
 RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -N dependency:copy \
     -Dartifact=io.opentelemetry.javaagent:opentelemetry-javaagent:2.33.1 \
     -DoutputDirectory=/agent -Dmdep.stripVersion=true
@@ -9,7 +11,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -N dependency:copy \
 FROM eclipse-temurin:21-jre-alpine
 ARG SERVICE
 WORKDIR /app
-RUN addgroup -S capyiot && adduser -S capyiot -G capyiot \
+RUN apk add --no-cache curl && addgroup -S capyiot && adduser -S capyiot -G capyiot \
     && mkdir /keys && chown capyiot:capyiot /keys && chmod 700 /keys
 COPY --from=build --chown=capyiot:capyiot /workspace/${SERVICE}/target/${SERVICE}-0.1.0-SNAPSHOT.jar app.jar
 COPY --from=build /agent/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar

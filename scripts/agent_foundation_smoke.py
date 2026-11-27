@@ -1,4 +1,4 @@
-"""Real Gateway/Core/Agent/MySQL checks; called only by explicit offline stage-two verification."""
+"""Real Gateway/business/Agent/MySQL checks; called only by explicit offline stage-two verification."""
 
 import json
 import os
@@ -9,14 +9,12 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from smoke_context import api_base, compose_command, credentials, tls_context
+
 
 def main():
     root = Path(__file__).resolve().parents[1]
-    config = dict(
-        line.split("=", 1)
-        for line in (root / ".env").read_text().splitlines()
-        if "=" in line and not line.startswith("#")
-    )
+    config = credentials()
     token = None
     sessions = []
 
@@ -28,12 +26,12 @@ def main():
         if token:
             headers["Authorization"] = "Bearer " + token
         request = Request(
-            "http://127.0.0.1:8080/api/v1" + path,
+            api_base() + path,
             headers=headers,
             data=None if body is None else json.dumps(body).encode(),
         )
         try:
-            response = urlopen(request, timeout=15)
+            response = urlopen(request, timeout=15, context=tls_context())
         except HTTPError as error:
             response = error
         with response:
@@ -74,18 +72,7 @@ def main():
         call("/agent/conversations", expected=(403,))
         token = supervisor
         subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                "compose.yml",
-                "-f",
-                "infra/compose.agent-test.yml",
-                "--profile",
-                "agent",
-                "restart",
-                "agent-service",
-            ],
+            compose_command("restart", "agent-service"),
             cwd=root,
             env=os.environ,
             check=True,

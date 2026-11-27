@@ -1,3 +1,4 @@
+# Historical Core deployment helper. Native deployments use init_microservices.py and microservices_control.py.
 """Back up existing business schemas and reject ambiguous location migrations before V1 cutover."""
 
 import argparse

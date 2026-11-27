@@ -1,15 +1,12 @@
-name: Agent foundation verification
+name: Historical Agent foundation workflow (retired)
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  verify:
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.10.8"
-      - run: python3 scripts/verify_stage2.py
+      - run: |
+          echo "::error::This historical Core workflow is retired. Select Native microservices unified verification with explicit check groups."
+          exit 1

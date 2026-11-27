@@ -1,0 +1,71 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+- job_name: platform-service
+  scheme: https
+  metrics_path: /actuator/prometheus
+  static_configs:
+  - targets:
+    - platform-service:8087
+    labels:
+      service: platform-service
+  tls_config:
+    ca_file: /etc/prometheus/internal-ca.pem
+    server_name: platform-service
+    insecure_skip_verify: false
+- job_name: device-service
+  scheme: https
+  metrics_path: /actuator/prometheus
+  static_configs:
+  - targets:
+    - device-service:8082
+    labels:
+      service: device-service
+  tls_config:
+    ca_file: /etc/prometheus/internal-ca.pem
+    server_name: device-service
+    insecure_skip_verify: false
+- job_name: alarm-service
+  scheme: https
+  metrics_path: /actuator/prometheus
+  static_configs:
+  - targets:
+    - alarm-service:8083
+    labels:
+      service: alarm-service
+  tls_config:
+    ca_file: /etc/prometheus/internal-ca.pem
+    server_name: alarm-service
+    insecure_skip_verify: false
+- job_name: workflow-service
+  scheme: https
+  metrics_path: /actuator/prometheus
+  static_configs:
+  - targets:
+    - workflow-service:8084
+    labels:
+      service: workflow-service
+  tls_config:
+    ca_file: /etc/prometheus/internal-ca.pem
+    server_name: workflow-service
+    insecure_skip_verify: false
+- job_name: device-ingestion
+  scheme: https
+  metrics_path: /actuator/prometheus
+  static_configs:
+  - targets:
+    - device-ingestion:8081
+    labels:
+      service: device-ingestion
+  tls_config:
+    ca_file: /etc/prometheus/internal-ca.pem
+    server_name: device-ingestion
+    insecure_skip_verify: false
+- job_name: gateway
+  scheme: http
+  metrics_path: /actuator/prometheus
+  static_configs:
+  - targets:
+    - gateway:9090
+    labels:
+      service: gateway

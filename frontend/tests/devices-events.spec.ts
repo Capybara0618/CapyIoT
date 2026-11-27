@@ -6,7 +6,7 @@ import { promisify } from 'node:util'
 
 const execute = promisify(execFile)
 const values = Object.fromEntries(
-  readFileSync(resolve('../.env'), 'utf8')
+  readFileSync(resolve(process.env.CAPYIOT_CREDENTIAL_FILE ?? '../.env'), 'utf8')
     .split(/\r?\n/)
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => {

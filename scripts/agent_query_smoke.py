@@ -9,15 +9,13 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from smoke_context import api_base, compose_command, credentials, tls_context
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    config = dict(
-        line.split("=", 1)
-        for line in (ROOT / ".env").read_text().splitlines()
-        if "=" in line and not line.startswith("#")
-    )
+    config = credentials()
     token, sessions = None, []
 
     def request(path, body=None, key=None, stream=False, expected=(200,)):
@@ -32,12 +30,12 @@ def main():
         if stream:
             headers["Accept"] = "text/event-stream"
         command = Request(
-            "http://127.0.0.1:8080/api/v1" + path,
+            api_base() + path,
             headers=headers,
             data=None if body is None else json.dumps(body).encode(),
         )
         try:
-            response = urlopen(command, timeout=90)
+            response = urlopen(command, timeout=90, context=tls_context())
         except HTTPError as error:
             response = error
         if response.status not in expected:
@@ -162,20 +160,9 @@ def main():
             if time.monotonic() > deadline:
                 raise AssertionError("Disconnected client did not cancel its Run")
             time.sleep(0.25)
-        # Restart preserves the final result; history is still reauthorized through current Core APIs.
+        # Restart preserves the final result; history is still reauthorized through current business APIs.
         subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                "compose.yml",
-                "-f",
-                "infra/compose.agent-test.yml",
-                "--profile",
-                "agent",
-                "restart",
-                "agent-service",
-            ],
+            compose_command("restart", "agent-service"),
             cwd=ROOT,
             env=os.environ,
             check=True,
@@ -210,7 +197,17 @@ def main():
         # Restore the original role/scope so subsequent stage checks can use the isolated platform.
         login("admin")
         original = me["scopeSummaries"][0]
-        call("/users/" + me["userId"] + "/grants", {"roleCode": original["roleCode"], "scopeType": original["scopeType"], "parkId": original["parkId"], "rootAreaIds": original.get("rootAreaIds", []), "assignmentRelation": original.get("assignmentRelation")}, key=str(uuid.uuid4()))
+        call(
+            "/users/" + me["userId"] + "/grants",
+            {
+                "roleCode": original["roleCode"],
+                "scopeType": original["scopeType"],
+                "parkId": original["parkId"],
+                "rootAreaIds": original.get("rootAreaIds", []),
+                "assignmentRelation": original.get("assignmentRelation"),
+            },
+            key=str(uuid.uuid4()),
+        )
         print(
             "Agent query checks passed: nine live Core tools, evidence, candidate-only analysis, read-only business, persisted answer, replay, scope isolation, disconnect cancellation and restart."
         )

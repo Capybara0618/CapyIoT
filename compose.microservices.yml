@@ -1,0 +1,928 @@
+# Standalone passive candidate. Never merge with compose.yml.
+name: ${MS_PROJECT:?Use an explicit candidate project}
+services:
+  mysql:
+    image: mysql:8.4.11
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql-root-password
+      TZ: UTC
+    volumes:
+    - mysql-data:/var/lib/mysql
+    - ./infra/mysql/01-microservices.sh:/docker-entrypoint-initdb.d/01-microservices.sh:ro
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - MYSQL_PWD="$$(cat /run/secrets/mysql-root-password)" mysql -uroot -N -e "SELECT
+        COUNT(*) FROM information_schema.schemata WHERE schema_name IN ('device_db','alarm_db','workflow_db','platform_db','agent_db')"
+        | grep -qx 5
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+    networks:
+    - internal
+    mem_limit: 768m
+    cpus: 1.0
+    secrets:
+    - source: mysql-root
+      target: mysql-root-password
+    - source: device-db
+      target: device-db-password
+    - source: alarm-db
+      target: alarm-db-password
+    - source: workflow-db
+      target: workflow-db-password
+    - source: platform-db
+      target: platform-db-password
+    - source: agent-db
+      target: agent-db-password
+  redis:
+    image: redis:7.4.8-alpine
+    command:
+    - redis-server
+    - --appendonly
+    - 'yes'
+    volumes:
+    - redis-data:/data
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+    - internal
+    mem_limit: 128m
+    cpus: 1.0
+  kafka:
+    image: apache/kafka:4.1.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_NUM_PARTITIONS: 8
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+    - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list >/dev/null
+        2>&1
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks:
+    - internal
+    mem_limit: 768m
+    cpus: 1.0
+  emqx:
+    image: emqx/emqx:5.8.9
+    environment:
+      EMQX_NODE__NAME: emqx@127.0.0.1
+    hostname: emqx
+    volumes:
+    - emqx-data:/opt/emqx/data
+    - ./infra/emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+    - ./infra/emqx/start-microservices.sh:/opt/emqx/etc/start-microservices.sh:ro
+    healthcheck:
+      test:
+      - CMD
+      - /opt/emqx/bin/emqx
+      - ctl
+      - status
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks:
+    - internal
+    mem_limit: 512m
+    cpus: 1.0
+    profiles:
+    - ingress
+    entrypoint:
+    - /bin/sh
+    - /opt/emqx/etc/start-microservices.sh
+    ports:
+    - 127.0.0.1:${MS_MQTT_PORT:?}:8883
+    secrets:
+    - source: edge-ca
+      target: /opt/emqx/etc/local-tls/ca.pem
+    - source: edge-cert
+      target: /opt/emqx/etc/local-tls/server.pem
+    - source: edge-key
+      target: /opt/emqx/etc/local-tls/server.key
+    - source: internal-ca
+      target: /opt/emqx/etc/internal-tls/ca.pem
+    - source: broker-api-file
+      target: /opt/emqx/etc/local-api-keys
+    - source: broker-cookie
+      target: emqx-node-cookie
+  platform-service:
+    restart: unless-stopped
+    networks:
+    - internal
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    security_opt:
+    - no-new-privileges:true
+    image: capyiot/platform-service:${MS_IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: infra/java/Dockerfile
+      args:
+        SERVICE: platform-service
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
+      LOGGING_PATTERN_CORRELATION: '[trace=%X{trace_id} span=%X{span_id}] '
+      SERVICE_TLS_CA_FILE: /run/secrets/internal-ca.pem
+      SERVICE_TLS_ENABLED: 'true'
+      SERVICE_TLS_KEYSTORE: /run/secrets/server.p12
+      SERVER_SSL_ENABLED: 'true'
+      SERVER_SSL_KEY_STORE: /run/secrets/server.p12
+      SERVER_SSL_KEY_STORE_TYPE: PKCS12
+      USER_KEYS_GENERATE: 'false'
+      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
+      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
+      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
+      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PLATFORM_SERVICE_URL: https://platform-service:8087
+      DEVICE_SERVICE_URL: https://device-service:8082
+      ALARM_SERVICE_URL: https://alarm-service:8083
+      WORKFLOW_SERVICE_URL: https://workflow-service:8084
+      AGENT_SERVICE_URL: https://agent-service:8086
+      INGESTION_SERVICE_URL: https://device-ingestion:8081
+      USER_JWKS_URI: https://gateway:8080/.well-known/jwks.json
+      AGENT_JWKS_URI: https://agent-service:8086/.well-known/agent-jwks.json
+      PLATFORM_SERVICE_KEY_FILE: /run/secrets/service-keys.json
+      PLATFORM_DB_URL: jdbc:mysql://mysql:3306/platform_db?connectionTimeZone=UTC
+      PLATFORM_DB_USER: platform_app
+      CAPYIOT_DB_PASSWORD_NAME: PLATFORM_DB_PASSWORD
+      CAPYIOT_FINGERPRINT_NAME: PLATFORM_COMMAND_FINGERPRINT_KEY
+      PLATFORM_DOMAIN_RUNTIME_ENABLED: ${MS_WRITERS_ENABLED:-false}
+      PLATFORM_BOOTSTRAP_ENABLED: ${MS_PLATFORM_BOOTSTRAP:-false}
+    secrets:
+    - &id001
+      source: internal-ca
+      target: internal-ca.pem
+    - source: platform-service-tls
+      target: server.p12
+    - source: tls-password
+      target: tls-password
+    - source: platform-service-identity
+      target: service-keys.json
+    - source: platform-db
+      target: db-password
+    - source: platform-fingerprint
+      target: fingerprint-key
+    - source: admin-hash
+      target: demo-admin-password-hash
+    - source: operator-hash
+      target: demo-operator-password-hash
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - --fail
+      - --silent
+      - --show-error
+      - --cacert
+      - /run/secrets/internal-ca.pem
+      - --max-time
+      - '8'
+      - https://platform-service:8087/actuator/health/readiness
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+  device-service:
+    restart: unless-stopped
+    networks:
+    - internal
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    security_opt:
+    - no-new-privileges:true
+    image: capyiot/device-service:${MS_IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: infra/java/Dockerfile
+      args:
+        SERVICE: device-service
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
+      LOGGING_PATTERN_CORRELATION: '[trace=%X{trace_id} span=%X{span_id}] '
+      SERVICE_TLS_CA_FILE: /run/secrets/internal-ca.pem
+      SERVICE_TLS_ENABLED: 'true'
+      SERVICE_TLS_KEYSTORE: /run/secrets/server.p12
+      SERVER_SSL_ENABLED: 'true'
+      SERVER_SSL_KEY_STORE: /run/secrets/server.p12
+      SERVER_SSL_KEY_STORE_TYPE: PKCS12
+      USER_KEYS_GENERATE: 'false'
+      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
+      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
+      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
+      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PLATFORM_SERVICE_URL: https://platform-service:8087
+      DEVICE_SERVICE_URL: https://device-service:8082
+      ALARM_SERVICE_URL: https://alarm-service:8083
+      WORKFLOW_SERVICE_URL: https://workflow-service:8084
+      AGENT_SERVICE_URL: https://agent-service:8086
+      INGESTION_SERVICE_URL: https://device-ingestion:8081
+      USER_JWKS_URI: https://gateway:8080/.well-known/jwks.json
+      AGENT_JWKS_URI: https://agent-service:8086/.well-known/agent-jwks.json
+      DEVICE_SERVICE_KEY_FILE: /run/secrets/service-keys.json
+      DEVICE_DB_URL: jdbc:mysql://mysql:3306/device_db?connectionTimeZone=UTC
+      DEVICE_DB_USER: device_app
+      CAPYIOT_DB_PASSWORD_NAME: DEVICE_DB_PASSWORD
+      CAPYIOT_FINGERPRINT_NAME: DEVICE_COMMAND_FINGERPRINT_KEY
+      DEVICE_DOMAIN_RUNTIME_ENABLED: ${MS_WRITERS_ENABLED:-false}
+      DEVICE_RUNTIME_ENABLED: ${MS_WRITERS_ENABLED:-false}
+      DEVICE_KEY_FILE: /run/secrets/device-keys.json
+      EMQX_MANAGEMENT_URL: http://emqx:18083
+      REDIS_HOST: redis
+    secrets:
+    - *id001
+    - source: device-service-tls
+      target: server.p12
+    - source: tls-password
+      target: tls-password
+    - source: device-service-identity
+      target: service-keys.json
+    - source: device-db
+      target: db-password
+    - source: device-fingerprint
+      target: fingerprint-key
+    - source: device-signing
+      target: device-keys.json
+    - source: broker-api-key
+      target: emqx-api-key
+    - source: broker-api-secret
+      target: emqx-api-secret
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - --fail
+      - --silent
+      - --show-error
+      - --cacert
+      - /run/secrets/internal-ca.pem
+      - --max-time
+      - '8'
+      - https://device-service:8082/actuator/health/readiness
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+  alarm-service:
+    restart: unless-stopped
+    networks:
+    - internal
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    security_opt:
+    - no-new-privileges:true
+    image: capyiot/alarm-service:${MS_IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: infra/java/Dockerfile
+      args:
+        SERVICE: alarm-service
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
+      LOGGING_PATTERN_CORRELATION: '[trace=%X{trace_id} span=%X{span_id}] '
+      SERVICE_TLS_CA_FILE: /run/secrets/internal-ca.pem
+      SERVICE_TLS_ENABLED: 'true'
+      SERVICE_TLS_KEYSTORE: /run/secrets/server.p12
+      SERVER_SSL_ENABLED: 'true'
+      SERVER_SSL_KEY_STORE: /run/secrets/server.p12
+      SERVER_SSL_KEY_STORE_TYPE: PKCS12
+      USER_KEYS_GENERATE: 'false'
+      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
+      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
+      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
+      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PLATFORM_SERVICE_URL: https://platform-service:8087
+      DEVICE_SERVICE_URL: https://device-service:8082
+      ALARM_SERVICE_URL: https://alarm-service:8083
+      WORKFLOW_SERVICE_URL: https://workflow-service:8084
+      AGENT_SERVICE_URL: https://agent-service:8086
+      INGESTION_SERVICE_URL: https://device-ingestion:8081
+      USER_JWKS_URI: https://gateway:8080/.well-known/jwks.json
+      AGENT_JWKS_URI: https://agent-service:8086/.well-known/agent-jwks.json
+      FAULT_SERVICE_KEY_FILE: /run/secrets/service-keys.json
+      ALARM_DB_URL: jdbc:mysql://mysql:3306/alarm_db?connectionTimeZone=UTC
+      ALARM_DB_USER: alarm_app
+      CAPYIOT_DB_PASSWORD_NAME: ALARM_DB_PASSWORD
+      CAPYIOT_FINGERPRINT_NAME: FAULT_COMMAND_FINGERPRINT_KEY
+      FAULT_DOMAIN_RUNTIME_ENABLED: ${MS_WRITERS_ENABLED:-false}
+      FAULT_RUNTIME_ENABLED: ${MS_WRITERS_ENABLED:-false}
+    secrets:
+    - *id001
+    - source: alarm-service-tls
+      target: server.p12
+    - source: tls-password
+      target: tls-password
+    - source: alarm-service-identity
+      target: service-keys.json
+    - source: alarm-db
+      target: db-password
+    - source: fault-fingerprint
+      target: fingerprint-key
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - --fail
+      - --silent
+      - --show-error
+      - --cacert
+      - /run/secrets/internal-ca.pem
+      - --max-time
+      - '8'
+      - https://alarm-service:8083/actuator/health/readiness
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+  workflow-service:
+    restart: unless-stopped
+    networks:
+    - internal
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    security_opt:
+    - no-new-privileges:true
+    image: capyiot/workflow-service:${MS_IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: infra/java/Dockerfile
+      args:
+        SERVICE: workflow-service
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
+      LOGGING_PATTERN_CORRELATION: '[trace=%X{trace_id} span=%X{span_id}] '
+      SERVICE_TLS_CA_FILE: /run/secrets/internal-ca.pem
+      SERVICE_TLS_ENABLED: 'true'
+      SERVICE_TLS_KEYSTORE: /run/secrets/server.p12
+      SERVER_SSL_ENABLED: 'true'
+      SERVER_SSL_KEY_STORE: /run/secrets/server.p12
+      SERVER_SSL_KEY_STORE_TYPE: PKCS12
+      USER_KEYS_GENERATE: 'false'
+      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
+      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
+      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
+      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PLATFORM_SERVICE_URL: https://platform-service:8087
+      DEVICE_SERVICE_URL: https://device-service:8082
+      ALARM_SERVICE_URL: https://alarm-service:8083
+      WORKFLOW_SERVICE_URL: https://workflow-service:8084
+      AGENT_SERVICE_URL: https://agent-service:8086
+      INGESTION_SERVICE_URL: https://device-ingestion:8081
+      USER_JWKS_URI: https://gateway:8080/.well-known/jwks.json
+      AGENT_JWKS_URI: https://agent-service:8086/.well-known/agent-jwks.json
+      WORKFLOW_SERVICE_KEY_FILE: /run/secrets/service-keys.json
+      WORKFLOW_DB_URL: jdbc:mysql://mysql:3306/workflow_db?connectionTimeZone=UTC
+      WORKFLOW_DB_USER: workflow_app
+      CAPYIOT_DB_PASSWORD_NAME: WORKFLOW_DB_PASSWORD
+      CAPYIOT_FINGERPRINT_NAME: WORKFLOW_COMMAND_FINGERPRINT_KEY
+      WORKFLOW_DOMAIN_RUNTIME_ENABLED: ${MS_WRITERS_ENABLED:-false}
+      WORKFLOW_RUNTIME_ENABLED: ${MS_WRITERS_ENABLED:-false}
+    secrets:
+    - *id001
+    - source: workflow-service-tls
+      target: server.p12
+    - source: tls-password
+      target: tls-password
+    - source: workflow-service-identity
+      target: service-keys.json
+    - source: workflow-db
+      target: db-password
+    - source: workflow-fingerprint
+      target: fingerprint-key
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - --fail
+      - --silent
+      - --show-error
+      - --cacert
+      - /run/secrets/internal-ca.pem
+      - --max-time
+      - '8'
+      - https://workflow-service:8084/actuator/health/readiness
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+  gateway:
+    restart: unless-stopped
+    networks:
+    - internal
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    security_opt:
+    - no-new-privileges:true
+    image: capyiot/gateway:${MS_IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: infra/java/Dockerfile
+      args:
+        SERVICE: gateway
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
+      LOGGING_PATTERN_CORRELATION: '[trace=%X{trace_id} span=%X{span_id}] '
+      SERVICE_TLS_CA_FILE: /run/secrets/internal-ca.pem
+      SERVICE_TLS_ENABLED: 'true'
+      SERVICE_TLS_KEYSTORE: /run/secrets/server.p12
+      SERVER_SSL_ENABLED: 'true'
+      SERVER_SSL_KEY_STORE: /run/secrets/server.p12
+      SERVER_SSL_KEY_STORE_TYPE: PKCS12
+      USER_KEYS_GENERATE: 'false'
+      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
+      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
+      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
+      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PLATFORM_SERVICE_URL: https://platform-service:8087
+      DEVICE_SERVICE_URL: https://device-service:8082
+      ALARM_SERVICE_URL: https://alarm-service:8083
+      WORKFLOW_SERVICE_URL: https://workflow-service:8084
+      AGENT_SERVICE_URL: https://agent-service:8086
+      INGESTION_SERVICE_URL: https://device-ingestion:8081
+      USER_JWKS_URI: https://gateway:8080/.well-known/jwks.json
+      AGENT_JWKS_URI: https://agent-service:8086/.well-known/agent-jwks.json
+      GATEWAY_SERVICE_KEY_FILE: /run/secrets/service-keys.json
+      USER_KEY_FILE: /run/secrets/user-keys.json
+      PROMETHEUS_URL: ${MS_PROMETHEUS_URL:-}
+      MANAGEMENT_SERVER_SSL_ENABLED: 'false'
+    secrets:
+    - *id001
+    - source: gateway-tls
+      target: server.p12
+    - source: tls-password
+      target: tls-password
+    - source: gateway-identity
+      target: service-keys.json
+    - source: user-signing
+      target: user-keys.json
+    - source: session-proxy
+      target: session-proxy-key
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - --fail
+      - --silent
+      - --show-error
+      - --max-time
+      - '8'
+      - http://localhost:9090/actuator/health/readiness
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+  device-ingestion:
+    restart: unless-stopped
+    networks:
+    - internal
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    security_opt:
+    - no-new-privileges:true
+    image: capyiot/device-ingestion:${MS_IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: infra/java/Dockerfile
+      args:
+        SERVICE: device-ingestion
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
+      LOGGING_PATTERN_CORRELATION: '[trace=%X{trace_id} span=%X{span_id}] '
+      SERVICE_TLS_CA_FILE: /run/secrets/internal-ca.pem
+      SERVICE_TLS_ENABLED: 'true'
+      SERVICE_TLS_KEYSTORE: /run/secrets/server.p12
+      SERVER_SSL_ENABLED: 'true'
+      SERVER_SSL_KEY_STORE: /run/secrets/server.p12
+      SERVER_SSL_KEY_STORE_TYPE: PKCS12
+      USER_KEYS_GENERATE: 'false'
+      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
+      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
+      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
+      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PLATFORM_SERVICE_URL: https://platform-service:8087
+      DEVICE_SERVICE_URL: https://device-service:8082
+      ALARM_SERVICE_URL: https://alarm-service:8083
+      WORKFLOW_SERVICE_URL: https://workflow-service:8084
+      AGENT_SERVICE_URL: https://agent-service:8086
+      INGESTION_SERVICE_URL: https://device-ingestion:8081
+      USER_JWKS_URI: https://gateway:8080/.well-known/jwks.json
+      AGENT_JWKS_URI: https://agent-service:8086/.well-known/agent-jwks.json
+      INGESTION_SERVICE_KEY_FILE: /run/secrets/service-keys.json
+      MQTT_URL: ssl://emqx:8883
+      MQTT_CA_FILE: /run/secrets/mqtt-ca.pem
+      MQTT_CLIENT_ID: capyiot-ingestion-1
+    secrets:
+    - *id001
+    - source: device-ingestion-tls
+      target: server.p12
+    - source: tls-password
+      target: tls-password
+    - source: device-ingestion-identity
+      target: service-keys.json
+    - source: edge-ca
+      target: mqtt-ca.pem
+    depends_on:
+      kafka:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+    profiles:
+    - ingress
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - --fail
+      - --silent
+      - --show-error
+      - --cacert
+      - /run/secrets/internal-ca.pem
+      - --max-time
+      - '8'
+      - https://device-ingestion:8081/actuator/health/readiness
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+  agent-service:
+    restart: unless-stopped
+    networks:
+    - internal
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    security_opt:
+    - no-new-privileges:true
+    image: capyiot/agent-service:${MS_IMAGE_TAG:?}
+    build:
+      context: ./agent-service
+    environment:
+      AGENT_DB_HOST: mysql
+      AGENT_SERVICE_CA_FILE: /run/secrets/internal-ca.pem
+      AGENT_SERVICE_KEY_FILE: /run/secrets/service-keys.json
+      AGENT_JWKS_URL: https://gateway:8080/.well-known/jwks.json
+      AGENT_PLATFORM_BASE_URL: https://platform-service:8087
+      AGENT_DEVICE_BASE_URL: https://device-service:8082
+      AGENT_FAULT_BASE_URL: https://alarm-service:8083
+      AGENT_WORKFLOW_BASE_URL: https://workflow-service:8084
+      AGENT_DISPATCH_ENABLED: ${MS_WRITERS_ENABLED:-false}
+      AGENT_DELEGATION_KEY_FILE: /run/secrets/agent-keys.json
+      AGENT_DELEGATION_KEYS_GENERATE: 'false'
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:?}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      AGENT_MODEL_TIMEOUT_SECONDS: ${AGENT_MODEL_TIMEOUT_SECONDS:-30}
+      AGENT_RUN_OUTPUT_TOKEN_BUDGET: ${AGENT_RUN_OUTPUT_TOKEN_BUDGET:-8192}
+    command:
+    - uvicorn
+    - app.main:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8086'
+    - --ssl-keyfile
+    - /run/secrets/server.key
+    - --ssl-certfile
+    - /run/secrets/server.pem
+    - --no-access-log
+    - --log-level
+    - info
+    secrets:
+    - *id001
+    - source: agent-db
+      target: db-password
+    - source: deepseek
+      target: deepseek-api-key
+    - source: agent-service-identity
+      target: service-keys.json
+    - source: agent-delegation
+      target: agent-keys.json
+    - source: agent-cert
+      target: server.pem
+    - source: agent-key
+      target: server.key
+    depends_on:
+      mysql:
+        condition: service_healthy
+      agent-migrate:
+        condition: service_completed_successfully
+      gateway:
+        condition: service_started
+    healthcheck:
+      test:
+      - CMD
+      - /app/.venv/bin/python
+      - -c
+      - import ssl,urllib.request; urllib.request.urlopen("https://agent-service:8086/health/ready",context=ssl.create_default_context(cafile="/run/secrets/internal-ca.pem"),timeout=15)
+      interval: 20s
+      timeout: 20s
+      retries: 15
+      start_period: 45s
+  agent-migrate:
+    image: capyiot/agent-service:${MS_IMAGE_TAG:?}
+    build:
+      context: ./agent-service
+    environment:
+      AGENT_DB_HOST: mysql
+    secrets:
+    - source: agent-db
+      target: db-password
+    command:
+    - alembic
+    - upgrade
+    - head
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+    - internal
+    mem_limit: 256m
+    restart: 'no'
+  frontend:
+    restart: unless-stopped
+    networks:
+    - internal
+    mem_limit: 128m
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    security_opt:
+    - no-new-privileges:true
+    profiles:
+    - public
+    image: capyiot/frontend:${MS_IMAGE_TAG:?}
+    build:
+      context: ./frontend
+      args:
+        NGINX_TEMPLATE: infra/nginx.microservices.conf
+        VITE_PROMETHEUS_URL: http://localhost:${MS_PROMETHEUS_PORT:?}
+        VITE_GRAFANA_URL: http://localhost:${MS_GRAFANA_PORT:?}/d/capyiot
+        VITE_JAEGER_URL: http://localhost:${MS_JAEGER_PORT:?}
+    environment:
+      NGINX_ENVSUBST_FILTER: ^SESSION_PROXY_KEY$
+    ports:
+    - 127.0.0.1:${MS_HTTP_PORT:?}:8080
+    - 127.0.0.1:${MS_HTTPS_PORT:?}:8443
+    secrets:
+    - source: edge-cert
+      target: /etc/nginx/local-tls/server.pem
+    - source: edge-key
+      target: /etc/nginx/local-tls/server.key
+    - source: internal-ca
+      target: /etc/nginx/internal-tls/ca.pem
+    - source: session-proxy
+      target: session-proxy-key
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -qO- http://localhost:8080/ >/dev/null
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  simulator:
+    profiles:
+    - simulation
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    environment:
+      API_BASE_URL: https://frontend:8443
+      MQTT_URL: ssl://emqx:8883
+      MQTT_CA_FILE: /tls/ca.pem
+      DEVICE_FILE: /data/devices.json
+    volumes:
+    - ${MS_BUNDLE:?}/video-devices.json:/data/devices.json:ro
+    - ${MS_BUNDLE:?}/pki/edge/ca.pem:/tls/ca.pem:ro
+    depends_on:
+      gateway:
+        condition: service_healthy
+      device-ingestion:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+    - internal
+    mem_limit: 256m
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles:
+    - monitoring
+    ports:
+    - 127.0.0.1:${MS_PROMETHEUS_PORT:?}:9090
+    volumes:
+    - ./infra/prometheus/microservices.yml:/etc/prometheus/prometheus.yml:ro
+    - prometheus-data:/prometheus
+    networks:
+    - internal
+    mem_limit: 256m
+    secrets:
+    - source: internal-ca
+      target: /etc/prometheus/internal-ca.pem
+  grafana:
+    image: grafana/grafana:12.3.0
+    profiles:
+    - monitoring
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana-admin-password
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+    - 127.0.0.1:${MS_GRAFANA_PORT:?}:3000
+    volumes:
+    - ./infra/helm/capyiot/files/datasources.yml:/etc/grafana/provisioning/datasources/default.yml:ro
+    - ./infra/helm/capyiot/files/dashboards.yml:/etc/grafana/provisioning/dashboards/default.yml:ro
+    - ./infra/grafana/capyiot-microservices.json:/etc/grafana/capyiot/capyiot.json:ro
+    - grafana-data:/var/lib/grafana
+    networks:
+    - internal
+    mem_limit: 256m
+    secrets:
+    - source: grafana-password
+      target: grafana-admin-password
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
+    profiles:
+    - monitoring
+    ports:
+    - 127.0.0.1:${MS_JAEGER_PORT:?}:16686
+    networks:
+    - internal
+    mem_limit: 256m
+networks:
+  internal: {}
+volumes:
+  mysql-data:
+    name: ${MS_VOLUME_PREFIX:?}_mysql-data
+  redis-data:
+    name: ${MS_VOLUME_PREFIX:?}_redis-data
+  kafka-data:
+    name: ${MS_VOLUME_PREFIX:?}_kafka-data
+  emqx-data:
+    name: ${MS_VOLUME_PREFIX:?}_emqx-data
+  prometheus-data:
+    name: ${MS_PROJECT:?}_prometheus-data
+  grafana-data:
+    name: ${MS_PROJECT:?}_grafana-data
+secrets:
+  internal-ca:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/ca.pem
+  mysql-root:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/mysql-root-password
+  device-db:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/device-db-password
+  alarm-db:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/alarm-db-password
+  workflow-db:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/workflow-db-password
+  platform-db:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/platform-db-password
+  agent-db:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/agent-db-password
+  edge-ca:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/edge/ca.pem
+  edge-cert:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/edge/server.pem
+  edge-key:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/edge/server.key
+  broker-api-file:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/emqx-api-keys
+  broker-cookie:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/emqx-node-cookie
+  platform-service-tls:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/platform-service/server.p12
+  tls-password:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/tls-password
+  platform-service-identity:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/platform-service.json
+  platform-fingerprint:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/platform-fingerprint-key
+  admin-hash:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/demo-admin-password-hash
+  operator-hash:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/demo-operator-password-hash
+  device-service-tls:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/device-service/server.p12
+  device-service-identity:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/device-service.json
+  device-fingerprint:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/device-fingerprint-key
+  device-signing:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/device-keys.json
+  broker-api-key:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/emqx-api-key
+  broker-api-secret:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/emqx-api-secret
+  alarm-service-tls:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/alarm-service/server.p12
+  alarm-service-identity:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/alarm-service.json
+  fault-fingerprint:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/fault-fingerprint-key
+  workflow-service-tls:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/workflow-service/server.p12
+  workflow-service-identity:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/workflow-service.json
+  workflow-fingerprint:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/workflow-fingerprint-key
+  gateway-tls:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/gateway/server.p12
+  gateway-identity:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/gateway.json
+  user-signing:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/user-keys.json
+  session-proxy:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/session-proxy-key
+  device-ingestion-tls:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/device-ingestion/server.p12
+  device-ingestion-identity:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/device-ingestion.json
+  deepseek:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/deepseek-api-key
+  agent-service-identity:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/agent-service.json
+  agent-delegation:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/keys/agent-keys.json
+  agent-cert:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/agent-service/server.pem
+  agent-key:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/pki/agent-service/server.key
+  grafana-password:
+    file: ${MS_BUNDLE:?Select an initialized private bundle}/secrets/grafana-admin-password

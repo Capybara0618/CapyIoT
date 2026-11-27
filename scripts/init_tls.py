@@ -1,3 +1,4 @@
+# Historical Core deployment helper. Native deployments use init_microservices.py and microservices_control.py.
 """Provision local development CA/server certificates. Secrets stay under ignored var/."""
 
 import os

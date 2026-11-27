@@ -1,3 +1,4 @@
+# Historical Core deployment helper. Native deployments use init_microservices.py and microservices_control.py.
 """Create local-only credentials. Existing configuration is preserved."""
 
 import base64

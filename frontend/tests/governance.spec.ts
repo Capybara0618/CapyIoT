@@ -9,7 +9,7 @@ import type { WorkCreated, WorkDetail, WorkOrder } from '../src/workorders'
 
 const run = promisify(execFile)
 const config = Object.fromEntries(
-  readFileSync(resolve('../.env'), 'utf8')
+  readFileSync(resolve(process.env.CAPYIOT_CREDENTIAL_FILE ?? '../.env'), 'utf8')
     .split(/\r?\n/)
     .flatMap((line) => {
       if (!line || line.startsWith('#')) return []

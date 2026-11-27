@@ -1,32 +1,50 @@
-name: Stage one unified verification
-
+name: Native microservices unified verification (manual)
 on:
   workflow_dispatch:
-
+    inputs:
+      groups:
+        type: choice
+        default: unit build
+        options:
+          - unit build
+          - unit build runtime protocol workflow agent browser recovery
 permissions:
   contents: read
-
 concurrency:
-  group: stage-one-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: native-ms-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
+    env:
+      VERIFY_PROJECT: capyiot-ms-verify-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      VERIFY_GROUPS: ${{ inputs.groups }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: '21'
           cache: maven
           cache-dependency-path: backend/**/pom.xml
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.10.8'
       - run: chmod +x backend/mvnw
-      - name: Run isolated sequential verification
-        run: python3 scripts/verify_stage1.py --install-browser
+      - name: Prepare isolated offline bundle
+        run: |
+          uv sync --project agent-service --locked
+          uv run --project agent-service --no-sync python scripts/init_microservices.py --project "$VERIFY_PROJECT" --bundle "var/bundles/$VERIFY_PROJECT" --mode fresh --model-mode offline
+      - name: Run only selected checks
+        run: |
+          python scripts/verify_microservices.py --project "$VERIFY_PROJECT" --compose-file compose.microservices.yml --env-file "var/bundles/$VERIFY_PROJECT/deployment.env" --report-dir "var/verification/$VERIFY_PROJECT" --groups $VERIFY_GROUPS --install-browser
+      # Raw SQL, keys, logs and local reports must never be uploaded as artifacts.

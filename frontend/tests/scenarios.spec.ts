@@ -9,7 +9,7 @@ import type { WorkOrder } from '../src/workorders'
 test.use({ actionTimeout: 12000, navigationTimeout: 15000 })
 
 const credentials = new Map(
-  readFileSync(resolve('../.env'), 'utf8')
+  readFileSync(resolve(process.env.CAPYIOT_CREDENTIAL_FILE ?? '../.env'), 'utf8')
     .split(/\r?\n/)
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]),

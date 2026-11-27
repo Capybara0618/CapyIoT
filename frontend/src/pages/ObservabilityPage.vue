@@ -93,9 +93,9 @@ const definitions = [
   },
 ] as const
 const links = [
-  { name: 'Prometheus', url: 'http://localhost:9095' },
-  { name: 'Grafana', url: 'http://localhost:3000/d/capyiot' },
-  { name: 'Jaeger', url: 'http://localhost:16686' },
+  { name: 'Prometheus', url: import.meta.env.VITE_PROMETHEUS_URL ?? 'http://localhost:9095' },
+  { name: 'Grafana', url: import.meta.env.VITE_GRAFANA_URL ?? 'http://localhost:3000/d/capyiot' },
+  { name: 'Jaeger', url: import.meta.env.VITE_JAEGER_URL ?? 'http://localhost:16686' },
 ]
 const health = ref<Health>()
 const metrics = ref<Metrics>()
@@ -304,7 +304,7 @@ onBeforeUnmount(() => clearInterval(timer))
       <div>
         <strong>{{ metricsError }}</strong>
         <p v-if="deployment && !deployment.k8sEnabled">
-          运行 <code>docker compose --profile monitoring up -d</code> 启动采集。
+          请按当前部署的启动说明启用监控配置后刷新。
         </p>
         <p v-else>检查 Prometheus 服务和采集状态后重试。</p>
       </div>
