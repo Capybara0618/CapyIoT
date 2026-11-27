@@ -1,4 +1,4 @@
-package io.capyiot.workflow;
+package io.capyiot.legacyworkflow;
 
 import java.io.IOException;
 import java.time.Instant;

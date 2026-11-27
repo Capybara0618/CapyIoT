@@ -1,4 +1,4 @@
-package io.capyiot.workflow;
+package io.capyiot.legacyworkflow;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.models.Components;

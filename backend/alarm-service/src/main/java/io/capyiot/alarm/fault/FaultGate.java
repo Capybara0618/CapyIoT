@@ -334,12 +334,12 @@ final class FaultGate {
             "SELECT * FROM incident_work_order_reservation WHERE status"
                 + " IN('RESERVED','RECONCILIATION_REQUIRED') AND"
                 + " next_reconcile_at<=CURRENT_TIMESTAMP(3) ORDER BY"
-                + " next_reconcile_at,reservation_id LIMIT 20"))
-      reconcileRow(r);
+                + " next_reconcile_at,reservation_id LIMIT 20")) reconcileRow(r);
   }
 
   private void reconcileRow(Map<String, Object> r) {
     try {
+      if (r.get("operation_id") == null) r = bindLegacy(r);
       var b = binding(r);
       var actual = orders.operation(b.operationId());
       if (actual.state() == WorkOrderApi.OperationState.COMMITTED)
@@ -352,6 +352,38 @@ final class FaultGate {
     } catch (RuntimeException error) {
       uncertain(r, error instanceof ServiceFailure f ? f.code() : "RECONCILIATION_REQUIRED");
     }
+  }
+
+  private Map<String, Object> bindLegacy(Map<String, Object> old) {
+    var actual = orders.legacy(old.get("reservation_id").toString());
+    var b = actual.binding();
+    if (b == null
+        || actual.state() != WorkOrderApi.OperationState.COMMITTED
+        || !b.incidentId().equals(old.get("incident_id"))
+        || !b.actorUserId().equals(old.get("actor_user_id"))
+        || !b.idempotencyKey().equals(old.get("idempotency_key"))
+        || !b.requestHash().equals(old.get("request_hash"))
+        || !b.operation().name().equals(old.get("operation_type"))
+        || !actual.reservationId().equals(old.get("reservation_id"))
+        || old.get("work_order_id") != null
+            && !old.get("work_order_id").toString().equals(actual.workOrderId()))
+      throw ApiProblem.conflict("历史预约缺少可核实的提交证明");
+    return store.tx.execute(
+        s -> {
+          lock(b.incidentId());
+          var current = row(old.get("reservation_id").toString());
+          if (current.get("operation_id") != null) {
+            match(current, b);
+            return current;
+          }
+          store.db.update(
+              "UPDATE incident_work_order_reservation SET"
+                  + " operation_id=?,updated_at=CURRENT_TIMESTAMP(3) WHERE reservation_id=? AND"
+                  + " operation_id IS NULL",
+              b.operationId(),
+              actual.reservationId());
+          return row(actual.reservationId());
+        });
   }
 
   void uncertain(Map<String, Object> r, String code) {

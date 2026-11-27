@@ -44,6 +44,7 @@ public enum InternalEndpoint {
     INCIDENT_ORDER_STATE(ServiceId.WORKFLOW, "GET", "/incidents/{id}/order-state", true, false, "orders.authority",
             ServiceId.FAULT),
     INCIDENT_ORDER_PAGE(ServiceId.WORKFLOW,"POST","/incidents/{id}/order-state-page",true,false,"orders.authority",ServiceId.FAULT),
+    LEGACY_RESERVATION_OPERATION(ServiceId.WORKFLOW,"GET","/reservations/{id}/operation",true,false,"operations.legacy",ServiceId.FAULT),
     OPERATION_QUERY(ServiceId.WORKFLOW, "GET", "/operations/{id}", true, false, "operations.read",
             ServiceId.FAULT);
 

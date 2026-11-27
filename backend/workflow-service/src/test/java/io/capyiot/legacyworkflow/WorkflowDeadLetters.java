@@ -1,4 +1,4 @@
-package io.capyiot.workflow;
+package io.capyiot.legacyworkflow;
 
 import io.capyiot.outbox.OutboxRelay;
 import java.time.Instant;

@@ -1,6 +1,6 @@
-package io.capyiot.workflow;
+package io.capyiot.legacyworkflow;
 
-import static io.capyiot.workflow.WorkOrderModels.*;
+import static io.capyiot.legacyworkflow.WorkOrderModels.*;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

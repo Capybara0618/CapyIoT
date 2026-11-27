@@ -14,7 +14,7 @@ public final class WorkOrderApi {
     public record CommandBinding(String operationId, String incidentId, Operation operation, String actorUserId,
                                  String idempotencyKey, String requestHash) {
         public CommandBinding {
-            ContractChecks.id(operationId); ContractChecks.id(incidentId); ContractChecks.required(operation);
+            ContractChecks.id(operationId); ContractChecks.optionalId(incidentId); ContractChecks.required(operation);
             ContractChecks.id(actorUserId);
             if(idempotencyKey==null || !idempotencyKey.matches("[\\x21-\\x7e]{1,128}"))
                 throw new IllegalArgumentException("Invalid idempotency key");
@@ -33,7 +33,7 @@ public final class WorkOrderApi {
                 throw new IllegalArgumentException("Missing operation binding");
             if(binding!=null && !binding.operationId().equals(operationId))throw new IllegalArgumentException("Mismatched operation");
             if(workOrderVersion!=null)ContractChecks.version(workOrderVersion);
-            if(state==OperationState.COMMITTED && (reservationId==null || workOrderId==null || workOrderVersion==null))
+            if(state==OperationState.COMMITTED && (binding.incidentId()!=null && reservationId==null || workOrderId==null || workOrderVersion==null))
                 throw new IllegalArgumentException("Incomplete committed operation");
         }
         public boolean provesAbort(CommandBinding expected) {

@@ -16,11 +16,11 @@ import org.springframework.stereotype.Service;
 @ConditionalOnProperty(name="capyiot.workorders.enabled",havingValue="true")
 public class WorkOrderService implements WorkOrderQueryPort,AssignmentQueryPort {
     private final WorkOrderStore store;private final DeviceQueryPort devices;private final IncidentGatePort gate;private final UserAssignmentPort users;
-    private final ObjectMapper json;private final CommandJournal commands;private final LocalEvents events;
+    private final ObjectMapper json;private final CommandJournal commands;private final WorkLocalEvents events;
     private final org.springframework.beans.factory.ObjectProvider<EvidenceQueryPort> evidence;
     public WorkOrderService(WorkOrderStore store,DeviceQueryPort devices,IncidentGatePort gate,UserAssignmentPort users,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String key,org.springframework.beans.factory.ObjectProvider<EvidenceQueryPort> evidence){
         this.evidence=evidence;
-        this.store=store;this.devices=devices;this.gate=gate;this.users=users;this.json=json;commands=new CommandJournal(store.db,store.tx,json,key,true);events=new LocalEvents(store.db,json,"workorder");
+        this.store=store;this.devices=devices;this.gate=gate;this.users=users;this.json=json;commands=new CommandJournal(store.db,store.tx,json,key,true);events=new WorkLocalEvents(store.db,json,"workorder");
     }
     private Map<String,Object> row(long id){var rows=store.db.queryForList("SELECT * FROM work_order WHERE id=?",id);if(rows.isEmpty())throw ApiProblem.missing();return rows.getFirst();}
     private List<String> deviceIds(long id){return store.db.queryForList("SELECT device_id FROM work_order_device_item WHERE work_order_id=? ORDER BY item_id",String.class,id);}

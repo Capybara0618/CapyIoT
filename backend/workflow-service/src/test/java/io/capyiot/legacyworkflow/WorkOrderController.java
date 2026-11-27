@@ -1,6 +1,6 @@
-package io.capyiot.workflow;
+package io.capyiot.legacyworkflow;
 
-import static io.capyiot.workflow.WorkOrderModels.*;
+import static io.capyiot.legacyworkflow.WorkOrderModels.*;
 
 import io.capyiot.contract.ApiResponse;
 import io.capyiot.outbox.OutboxRelay;

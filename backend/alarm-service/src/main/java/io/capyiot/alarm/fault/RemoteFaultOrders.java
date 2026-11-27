@@ -86,6 +86,22 @@ final class RemoteFaultOrders implements FaultOrders, WorkOrderQueryPort {
         .toList();
   }
 
+  public WorkOrderApi.OperationResult legacy(String reservation) {
+    FaultDevices.outside();
+    var result =
+        client.call(
+            InternalEndpoint.LEGACY_RESERVATION_OPERATION,
+            null,
+            null,
+            WorkOrderApi.OperationResult.class,
+            RequestCalls.budget(),
+            RequestCalls.correlation(),
+            reservation);
+    if (result.state() != WorkOrderApi.OperationState.COMMITTED
+        || !reservation.equals(result.reservationId())) throw invalid();
+    return result;
+  }
+
   private ServiceFailure invalid() {
     return ServiceFailure.unavailable("WORKORDER_AUTHORITY_INCOMPLETE", ServiceId.WORKFLOW, false);
   }

@@ -1,6 +1,6 @@
-package io.capyiot.workflow;
+package io.capyiot.legacyworkflow;
 
-import static io.capyiot.workflow.WorkOrderModels.*;
+import static io.capyiot.legacyworkflow.WorkOrderModels.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
@@ -52,7 +52,7 @@ import org.testcontainers.kafka.KafkaContainer;
 
 @Testcontainers
 @DirtiesContext
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "capyiot.outbox-enabled=false")
+@SpringBootTest(classes=LegacyWorkflowTestApplication.class,webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"spring.config.name=legacy-workflow","capyiot.outbox-enabled=false"})
 @Import(WorkflowIntegrationTest.Topic.class)
 class WorkflowIntegrationTest {
     private static final String CAMPUS = "CAMPUS-A";

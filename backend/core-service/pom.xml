@@ -28,10 +28,10 @@
       <testResource><directory>../platform-service/src/main/resources/db/platform</directory><targetPath>db/platform</targetPath></testResource>
       <testResource><directory>../device-service/src/main/resources/db/migration</directory><targetPath>db/device</targetPath></testResource>
       <testResource><directory>../alarm-service/src/main/resources/db/migration</directory><targetPath>db/fault</targetPath></testResource>
+      <testResource><directory>../workflow-service/src/main/resources/db/migration</directory><targetPath>db/workflow</targetPath></testResource>
     </testResources>
     <resources>
       <resource><directory>src/main/resources</directory></resource>
-      <resource><directory>../workflow-service/src/main/resources/db/migration</directory><targetPath>db/workflow</targetPath></resource>
     </resources>
     <plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins>
   </build>

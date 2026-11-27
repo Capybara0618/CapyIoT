@@ -1,4 +1,4 @@
-package io.capyiot.workflow;
+package io.capyiot.legacyworkflow;
 
 import java.util.Map;
 import org.springframework.http.HttpStatus;

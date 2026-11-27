@@ -1,6 +1,6 @@
-package io.capyiot.workflow;
+package io.capyiot.legacyworkflow;
 
-import static io.capyiot.workflow.WorkOrderModels.*;
+import static io.capyiot.legacyworkflow.WorkOrderModels.*;
 
 import java.util.ArrayList;
 import java.util.List;

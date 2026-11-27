@@ -19,4 +19,9 @@ interface FaultOrders {
   State state(String incident);
 
   WorkOrderApi.OperationResult operation(String operation);
+
+  default WorkOrderApi.OperationResult legacy(String reservation) {
+    throw io.capyiot.service.ServiceFailure.unavailable(
+        "LEGACY_OPERATION_UNAVAILABLE", io.capyiot.contract.internal.ServiceId.WORKFLOW, false);
+  }
 }

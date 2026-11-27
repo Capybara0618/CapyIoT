@@ -94,10 +94,18 @@ class FaultProtocolIntegrationTest {
   }
 
   static class TestOrders implements FaultOrders, WorkOrderQueryPort {
+    final Map<String, WorkOrderApi.OperationResult> legacy = new ConcurrentHashMap<>();
     final Map<String, WorkOrderApi.OperationResult> operations = new ConcurrentHashMap<>();
     final Map<String, FaultOrders.State> states = new ConcurrentHashMap<>();
     volatile boolean unavailable;
     volatile java.util.function.Function<String, FaultOrders.State> hook;
+
+    public WorkOrderApi.OperationResult legacy(String reservation) {
+      assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+      var value = legacy.get(reservation);
+      if (value == null) throw ServiceFailure.denied(404, "RESOURCE_NOT_FOUND");
+      return value;
+    }
 
     public WorkOrderApi.OperationResult operation(String id) {
       assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
@@ -175,6 +183,7 @@ class FaultProtocolIntegrationTest {
             "outbox_event",
             "command_lock")) store.db.update("DELETE FROM " + table);
     orders.operations.clear();
+    orders.legacy.clear();
     orders.states.clear();
     orders.unavailable = false;
     orders.hook = null;
@@ -335,6 +344,7 @@ class FaultProtocolIntegrationTest {
     var b = binding(id);
     var r = gate.reserve(actor(), id, b);
     orders.operations.clear();
+    orders.legacy.clear();
     store.db.update(
         "UPDATE incident_work_order_reservation SET"
             + " created_at=TIMESTAMPADD(DAY,-10,CURRENT_TIMESTAMP(3))");
@@ -789,5 +799,68 @@ class FaultProtocolIntegrationTest {
     String result = json.valueToTree(historical.list(token, 1, 20, req).data()).toString();
     assertFalse(result.contains("hidden-building"));
     assertFalse(result.contains("hidden-upstream"));
+  }
+
+  @Test
+  void legacyReservationIsBoundOnlyToAnExactlyMatchingCommittedReceipt() {
+    String id = open();
+    var b = binding(id);
+    var r = gate.reserve(actor(), id, b);
+    store.db.update(
+        "UPDATE incident_work_order_reservation SET operation_id=NULL WHERE reservation_id=?",
+        r.reservationId());
+    var old =
+        new WorkOrderApi.CommandBinding(
+            "legacy-proof",
+            id,
+            b.operation(),
+            b.actorUserId(),
+            b.idempotencyKey(),
+            b.requestHash());
+    var result =
+        new WorkOrderApi.OperationResult(
+            old.operationId(),
+            WorkOrderApi.OperationState.COMMITTED,
+            old,
+            r.reservationId(),
+            "42",
+            0L,
+            Instant.now());
+    orders.legacy.put(r.reservationId(), result);
+    orders.operations.put(old.operationId(), result);
+    gate.reconcile(id);
+    assertEquals(FaultApi.ReservationState.COMMITTED, gate.query(old.operationId()).state());
+  }
+
+  @Test
+  void mismatchedLegacyProofLeavesTheOriginalReservationUnresolved() {
+    String id = open();
+    var b = binding(id);
+    var r = gate.reserve(actor(), id, b);
+    store.db.update(
+        "UPDATE incident_work_order_reservation SET operation_id=NULL WHERE reservation_id=?",
+        r.reservationId());
+    var wrong =
+        new WorkOrderApi.CommandBinding(
+            "legacy-wrong",
+            id,
+            b.operation(),
+            "different-user",
+            b.idempotencyKey(),
+            b.requestHash());
+    orders.legacy.put(
+        r.reservationId(),
+        new WorkOrderApi.OperationResult(
+            wrong.operationId(),
+            WorkOrderApi.OperationState.COMMITTED,
+            wrong,
+            r.reservationId(),
+            "42",
+            0L,
+            Instant.now()));
+    gate.reconcile(id);
+    var row = store.db.queryForMap("SELECT * FROM incident_work_order_reservation");
+    assertNull(row.get("operation_id"));
+    assertEquals("RECONCILIATION_REQUIRED", row.get("status"));
   }
 }
