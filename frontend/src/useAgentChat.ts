@@ -386,7 +386,7 @@ export function useAgentChat() {
     reading?.abort()
     clearTimeout(poll)
     sending.value = false
-    loading.value = false
+    loading.value = true
     loadingOlder.value = false
     authorized.value = false
     clearViews()
@@ -407,6 +407,8 @@ export function useAgentChat() {
       if (current === generation) await reload()
     } catch (e) {
       if (current === generation) error.value = (e as Error).message
+    } finally {
+      if (current === generation) loading.value = false
     }
   }
   function sessionChanged() {
