@@ -2,17 +2,17 @@
 
 面向园区视频监控设备的运维平台，覆盖 IPC、NVR 和交换机的安全接入、状态与故障监控、人工派工、维修和独立验收。模拟器实现协议与故障场景，不处理视频画面，不远程控制设备，也不能替代实体硬件的兼容与现场验收。
 
-当前候选部署包含设备、故障、工单、平台和 AI 运维五个业务服务，以及 Gateway、device-ingestion，共七个后端应用。微服务重构编码已完成，统一构建、测试和运行切换待执行；此前版本的通过记录不代表本版本已验收。性能容量指标尚未实测。
+当前部署包含设备、故障、工单、平台和 AI 运维五个业务服务，以及 Gateway、device-ingestion，共七个后端应用。2026-11-27 已完成统一构建与功能验收、已有库升级和恢复演练，并切换本地体验环境。真实 DeepSeek 的查询、人工确认建单和维修验收闭环已联调；小规模延迟与消息恢复基线已实测，未约定生产容量 SLA，不将本机基线作为生产容量结论。
 
 设备连接状态、运行模式、数据新鲜度和健康状态分别展示。在线不代表录像正常；关联线索不自动确认根因或创建工单，工单验收通过也不自动关闭故障。AI 仅使用受控查询工具及待人工确认的草稿，确认后由持久化 Dispatcher 调用工单服务，同一命令重试保留原幂等键。
 
-## 候选部署文件
+## 部署文件
 
 使用独立的 `compose.microservices.yml`，必须显式指定目标文件与项目。旧默认 Compose、Core Maven/运行模块和临时桥接接口已删除，旧阶段启动脚本明确退役。默认状态关闭消费、扫描、领域 Outbox 和 Agent 派发；前端入口和设备接入需要单独启用的 profile。所有新服务调用使用固定 HTTPS 地址、内部 CA 和独立 RSA 服务身份，人类、设备、工单确认委托的密钥分别管理。工单确认委托仅接受 `capyiot-workflow`，没有可重新启用的旧 audience 窗口。
 
 数据库账号分别限定到 `device_db`、`alarm_db`、`workflow_db`、`platform_db`、`agent_db`。Gateway 和 ingestion 不持有业务库凭据，Agent 只有自身库权限。Java 服务由各自 Flyway 管理本库，Agent 使用 Alembic；应用不生成替代签名密钥，不执行 Flyway clean。
 
-准备 Docker/Compose、Python 3.12、uv；统一源码验证还需要 JDK 21、Maven Wrapper、Node.js 24。下面的命令用于后续部署与验收，不代表已经运行。
+准备 Docker/Compose、Python 3.12、uv；统一源码验证还需要 JDK 21、Maven Wrapper、Node.js 24。以下命令是部署和验收的操作示例，项目名、端口与本地路径需按目标环境显式选择。
 
 ## 全新隔离环境
 
@@ -91,6 +91,8 @@ python scripts/verify_microservices.py --project capyiot-ms-verify-local --compo
 
 测试组覆盖 Java/Python/前端、镜像、七应用与授权路由、MQTTS、维修验收、Agent 查询/确认/取消/恢复、浏览器和五库恢复。需要时加 `--install-browser`。只运行所选组，报告标记为 `PASSED_SELECTED_GROUPS`，不能将部分通过写成全部验收。恢复组另建隔离项目，完成后停止它；失败保留日志、容器和卷，不停止其他项目。
 
+失败后的定向复验可使用新的报告目录，并显式传入 `--resume-rollout <原 ACTIVE rollout.json>`，只允许恢复该隔离项目的已激活目标，保留原失败证据；这不代表重新验证了空库启动。服务账号隔离、停机与独立重启由 `scripts/microservices_failure_smoke.py` 验证；`scripts/measure_microservices.py` 提供有界 API、设备上报、Kafka 暂停恢复及确认回执采样。两者要求显式的 `CAPYIOT_MS_TARGET`、`CAPYIOT_CREDENTIAL_FILE`、`CAPYIOT_CA_FILE` 和 `CAPYIOT_API_BASE`，目标必须是隔离验证项目，原始结果只保存在忽略目录。
+
 旧 `verify_stage1–5` 只保留历史记录，新的入口不调用其默认启动流程。适用的协议、维修和 Agent 场景由新入口注入 HTTPS、CA、账号文件和精确 Compose 目标。离线模型成功不代表真实模型、硬件兼容或性能验收通过。
 
 入口的所选测试组不是完整 MS-09 的自动替代：服务故障注入、已有库升级、原历史数据连续性、真实模型、体验环境接管和量化指标必须分别保存证据，完成全部必需项后才能声明验收通过。源码边界检查可单独运行 `python scripts/check_microservices_boundaries.py --report var/verification/boundaries.json`，它只核对源码与配置，不启动或测试应用。
@@ -102,6 +104,8 @@ python scripts/verify_microservices.py --project capyiot-ms-verify-local --compo
 停用、退役或轮换凭据撤销活动 Session，并通过持久化断连任务踢除旧连接。旧 JWT 在到期前仍可能通过离线验签，但旧会话不能更新平台状态。无实体设备时使用模拟器的 steady、switch-outage 场景；模拟器内存中的待发消息随进程退出丢失，不承诺离线持久化。
 
 `GET /api/v1/openapi` 返回独立服务文档目录，需当前用户登录。主要业务路径为 `/devices`、`areas`、`monitoring-points`、`topology/context`、`events`、`anomalies`、`incidents`、`workorders`、`audit-records`。内部接口即使具有契约描述，也不能从网关直接调用。历史告警、事件、工单保持原 ID 的受范围过滤只读查询，旧 SSE 明确退役。
+
+已确认草稿的历史引用如因查询范围或业务结果变化而无法复核，页面隐藏引用并提示先核对原工单，保留同一执行回执；确认前仍严格校验证据、revision 和 contentHash。读取仍检查草稿所有者及当前设备/故障权限，重复确认不生成第二笔执行。
 
 页面保持蓝白灰浅色主题，业务数据在进入页面或手动刷新时获取。依赖不可用显示未知、缺失或待核对，不伪装为正常或零。工单未知结果保留当前登录内的原请求和幂等键，提供操作状态回查；浏览器整页重载后的手工未决请求需依据操作/工单记录核对，不从空列表推断没有执行。
 
