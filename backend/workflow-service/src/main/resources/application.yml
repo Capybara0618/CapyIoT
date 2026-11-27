@@ -59,10 +59,6 @@ capyiot:
     agent-jwks-uri: ${AGENT_JWKS_URI:https://agent-service:8086/.well-known/agent-jwks.json}
     fault-jwks-uri: ${FAULT_SERVICE_JWKS_URI:https://alarm-service:8083/.well-known/service-jwks.json}
     device-jwks-uri: ${DEVICE_SERVICE_JWKS_URI:https://device-service:8082/.well-known/service-jwks.json}
-    legacy:
-      enabled: ${WORKFLOW_LEGACY_AUDIENCE_ENABLED:false}
-      expires-at: ${WORKFLOW_LEGACY_AUDIENCE_EXPIRES_AT:1970-01-01T00:00:00Z}
-      service-key: ${CORE_SERVICE_KEY:}
   domain-runtime:
     enabled: ${WORKFLOW_DOMAIN_RUNTIME_ENABLED:false}
   workorder-runtime:

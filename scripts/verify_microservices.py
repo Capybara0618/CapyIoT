@@ -175,6 +175,15 @@ def verify(args):
     try:
         if "unit" in args.groups:
             step(
+                "source-boundaries",
+                [
+                    sys.executable,
+                    "scripts/check_microservices_boundaries.py",
+                    "--report",
+                    folder / "boundaries.json",
+                ],
+            )
+            step(
                 "backend",
                 [maven, "-B", "-ntp", "-pl", ",".join(JAVA_APPS), "-am", "verify"],
                 ROOT / "backend",
@@ -185,6 +194,16 @@ def verify(args):
                 ROOT / "backend",
             )
             step("agent-install", ["uv", "sync", "--locked"], ROOT / "agent-service")
+            step(
+                "agent-lint",
+                ["uv", "run", "--no-sync", "ruff", "check", "."],
+                ROOT / "agent-service",
+            )
+            step(
+                "agent-format",
+                ["uv", "run", "--no-sync", "ruff", "format", "--check", "."],
+                ROOT / "agent-service",
+            )
             step(
                 "agent-tests",
                 ["uv", "run", "--no-sync", "pytest", "-q"],

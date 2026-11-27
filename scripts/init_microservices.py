@@ -5,6 +5,7 @@ Run with the Agent's locked Python environment (cryptography and PyJWT).
 """
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import os
@@ -24,6 +25,13 @@ from microservices_common import (
     sha,
     write_json,
 )
+
+
+def password_hash(password):
+    salt = secrets.token_bytes(16)
+    return (
+        salt + hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310_000, 32)
+    ).hex()
 
 
 def save(path, data, *, private=False):
@@ -295,8 +303,6 @@ def initialize(args):
         )
     # Only a fresh installation may mint new database credentials and login password hashes.
     if args.mode == "fresh":
-        from init_env import password_hash
-
         admin, operator = secrets.token_urlsafe(18), secrets.token_urlsafe(18)
         defaults = {
             "MYSQL_ROOT_PASSWORD": secrets.token_hex(24),

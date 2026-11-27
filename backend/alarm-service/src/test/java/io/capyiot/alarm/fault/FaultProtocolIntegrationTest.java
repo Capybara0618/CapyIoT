@@ -648,7 +648,7 @@ class FaultProtocolIntegrationTest {
   }
 
   @Test
-  void internalRoutesNeedServiceIdentityAndBridgeIsDisabledByDefault() throws Exception {
+  void internalRoutesNeedServiceIdentityAndRetiredBridgeIsAlwaysRejected() throws Exception {
     http.perform(
             post("/internal/v1/health/batch")
                 .contentType("application/json")
@@ -659,7 +659,7 @@ class FaultProtocolIntegrationTest {
                 .header("X-Core-Service-Key", "test-key")
                 .contentType("application/json")
                 .content("{\"reservationId\":\"r\"}"))
-        .andExpect(status().isUnauthorized());
+        .andExpect(status().isForbidden());
   }
 
   @Test

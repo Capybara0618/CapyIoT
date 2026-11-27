@@ -2,7 +2,7 @@ FROM maven:3.9.12-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY backend/ .
 ARG SERVICE
-RUN case "$SERVICE" in gateway|device-ingestion|device-service|alarm-service|workflow-service|platform-service|core-service) ;; *) exit 1 ;; esac
+RUN case "$SERVICE" in gateway|device-ingestion|device-service|alarm-service|workflow-service|platform-service) ;; *) exit 1 ;; esac
 RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -pl "$SERVICE" -am -Dmaven.test.skip=true package
 RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -N dependency:copy \
     -Dartifact=io.opentelemetry.javaagent:opentelemetry-javaagent:2.33.1 \

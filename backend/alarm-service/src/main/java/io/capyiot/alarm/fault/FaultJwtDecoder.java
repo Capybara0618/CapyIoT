@@ -60,8 +60,7 @@ final class FaultJwtDecoder implements JwtDecoder {
       if (agent) {
         if (!"capyiot-agent-service".equals(claims.getSubject())
             || !"CREATE_WORK_ORDER".equals(claims.getStringClaim("command"))
-            || !(List.of("capyiot-workflow").equals(claims.getAudience())
-                || List.of("capyiot-core").equals(claims.getAudience()))
+            || !List.of("capyiot-workflow").equals(claims.getAudience())
             || Duration.between(issued.toInstant(), expires.toInstant())
                     .compareTo(Duration.ofSeconds(120))
                 > 0) throw invalid();

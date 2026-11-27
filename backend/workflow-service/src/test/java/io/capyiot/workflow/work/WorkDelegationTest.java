@@ -34,42 +34,30 @@ class WorkDelegationTest {
   void workflowAudienceAndExactConfirmedCommandPathsAreRequired() {
     var token = token("capyiot-workflow");
     assertDoesNotThrow(
-        () ->
-            AgentDelegation.validate(
-                token, "POST", "/api/v1/workorders", "agent-confirm-1", false));
+        () -> AgentDelegation.validate(token, "POST", "/api/v1/workorders", "agent-confirm-1"));
     assertDoesNotThrow(
         () ->
             AgentDelegation.validate(
-                token,
-                "GET",
-                "/api/v1/workorders/commands/agent-confirm-1",
-                "agent-confirm-1",
-                false));
+                token, "GET", "/api/v1/workorders/commands/agent-confirm-1", "agent-confirm-1"));
     for (String path :
         List.of(
             "/api/v1/workorders/1/reopen",
             "/api/v1/workorders/validate",
             "/api/v1/workorders/1/cancel"))
       assertThrows(
-          ApiProblem.class,
-          () -> AgentDelegation.validate(token, "POST", path, "agent-confirm-1", false));
+          ApiProblem.class, () -> AgentDelegation.validate(token, "POST", path, "agent-confirm-1"));
     assertThrows(
         ApiProblem.class,
-        () ->
-            AgentDelegation.validate(token, "POST", "/api/v1/workorders", "different-key", false));
+        () -> AgentDelegation.validate(token, "POST", "/api/v1/workorders", "different-key"));
   }
 
   @Test
-  void oldAudienceWorksOnlyInTheExplicitMigrationWindow() {
+  void retiredAudienceIsAlwaysRejected() {
     assertThrows(
         ApiProblem.class,
         () ->
             AgentDelegation.validate(
-                token("capyiot-core"), "POST", "/api/v1/workorders", "agent-confirm-1", false));
-    assertDoesNotThrow(
-        () ->
-            AgentDelegation.validate(
-                token("capyiot-core"), "POST", "/api/v1/workorders", "agent-confirm-1", true));
+                token("capyiot-core"), "POST", "/api/v1/workorders", "agent-confirm-1"));
   }
 
   @Test

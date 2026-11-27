@@ -38,14 +38,6 @@ def compose_command(*args):
         target = Target(**json.loads(selected), verification=True)
         target.preflight()
         return target.compose(*args, active=True, offline=True)
-    return [
-        "docker",
-        "compose",
-        "-f",
-        "compose.yml",
-        "-f",
-        "infra/compose.agent-test.yml",
-        "--profile",
-        "agent",
-        *args,
-    ]
+    raise ValueError(
+        "Explicit isolated CAPYIOT_MS_TARGET is required; no default deployment is selected"
+    )

@@ -2,13 +2,13 @@
 
 面向园区视频监控设备的运维平台，覆盖 IPC、NVR 和交换机的安全接入、状态与故障监控、人工派工、维修和独立验收。模拟器实现协议与故障场景，不处理视频画面，不远程控制设备，也不能替代实体硬件的兼容与现场验收。
 
-当前候选部署包含设备、故障、工单、平台和 AI 运维五个业务服务，以及 Gateway、device-ingestion，共七个后端应用。微服务版本尚未完成统一构建、测试和运行切换；此前版本的通过记录不代表本版本已验收。性能容量指标尚未实测。
+当前候选部署包含设备、故障、工单、平台和 AI 运维五个业务服务，以及 Gateway、device-ingestion，共七个后端应用。微服务重构编码已完成，统一构建、测试和运行切换待执行；此前版本的通过记录不代表本版本已验收。性能容量指标尚未实测。
 
 设备连接状态、运行模式、数据新鲜度和健康状态分别展示。在线不代表录像正常；关联线索不自动确认根因或创建工单，工单验收通过也不自动关闭故障。AI 仅使用受控查询工具及待人工确认的草稿，确认后由持久化 Dispatcher 调用工单服务，同一命令重试保留原幂等键。
 
 ## 候选部署文件
 
-使用独立的 `compose.microservices.yml`，不要与历史 `compose.yml` 或旧 Agent 测试覆盖文件合并。默认状态关闭消费、扫描、领域 Outbox 和 Agent 派发；前端入口和设备接入需要单独启用的 profile。所有新服务调用使用固定 HTTPS 地址、内部 CA 和独立 RSA 服务身份，人类、设备、工单确认委托的密钥分别管理。
+使用独立的 `compose.microservices.yml`，必须显式指定目标文件与项目。旧默认 Compose、Core Maven/运行模块和临时桥接接口已删除，旧阶段启动脚本明确退役。默认状态关闭消费、扫描、领域 Outbox 和 Agent 派发；前端入口和设备接入需要单独启用的 profile。所有新服务调用使用固定 HTTPS 地址、内部 CA 和独立 RSA 服务身份，人类、设备、工单确认委托的密钥分别管理。工单确认委托仅接受 `capyiot-workflow`，没有可重新启用的旧 audience 窗口。
 
 数据库账号分别限定到 `device_db`、`alarm_db`、`workflow_db`、`platform_db`、`agent_db`。Gateway 和 ingestion 不持有业务库凭据，Agent 只有自身库权限。Java 服务由各自 Flyway 管理本库，Agent 使用 Alembic；应用不生成替代签名密钥，不执行 Flyway clean。
 
@@ -43,6 +43,8 @@ python scripts/microservices_control.py activate --project capyiot-ms-verify-loc
 初始账号：`admin` 管理平台账号与授权；`supervisor` 管理园区设备、故障与工单；`operator` 查询并建单；`repairer` 处理分派任务；`acceptor` 独立验收。前两个账号使用本地 `secrets/demo-admin-password`，其余使用 `secrets/demo-operator-password`；服务端只读取哈希。全新环境生成随机密码，升级不会重置原密码或 Session。
 
 真实模型模式使用 `--model-mode real`，从本地显式提供的环境读取 `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL` 和可选 `DEEPSEEK_BASE_URL`；升级时也可从指定的原配置文件导入。密钥写入本地 Secret 文件，不能发到聊天或提交 Git。真实模式不添加离线覆盖文件，也不会自动调用模型生成验收答案。
+
+仅升级导入与受控回退工具仍识别原 Core 容器名和旧稳定指纹配置；这些代码不构建或发布 Core，也不向它发业务请求。历史 Kafka group 名、信封 producer、原预约回执恢复和只读历史查询保留，用于接续原位点和数据，不代表保留旧写入者。
 
 ## 已有数据接管
 
@@ -90,6 +92,8 @@ python scripts/verify_microservices.py --project capyiot-ms-verify-local --compo
 测试组覆盖 Java/Python/前端、镜像、七应用与授权路由、MQTTS、维修验收、Agent 查询/确认/取消/恢复、浏览器和五库恢复。需要时加 `--install-browser`。只运行所选组，报告标记为 `PASSED_SELECTED_GROUPS`，不能将部分通过写成全部验收。恢复组另建隔离项目，完成后停止它；失败保留日志、容器和卷，不停止其他项目。
 
 旧 `verify_stage1–5` 只保留历史记录，新的入口不调用其默认启动流程。适用的协议、维修和 Agent 场景由新入口注入 HTTPS、CA、账号文件和精确 Compose 目标。离线模型成功不代表真实模型、硬件兼容或性能验收通过。
+
+入口的所选测试组不是完整 MS-09 的自动替代：服务故障注入、已有库升级、原历史数据连续性、真实模型、体验环境接管和量化指标必须分别保存证据，完成全部必需项后才能声明验收通过。源码边界检查可单独运行 `python scripts/check_microservices_boundaries.py --report var/verification/boundaries.json`，它只核对源码与配置，不启动或测试应用。
 
 ## 设备接入、接口与观测
 

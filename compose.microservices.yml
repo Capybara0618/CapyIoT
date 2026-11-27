@@ -160,10 +160,6 @@ services:
       SERVER_SSL_KEY_STORE: /run/secrets/server.p12
       SERVER_SSL_KEY_STORE_TYPE: PKCS12
       USER_KEYS_GENERATE: 'false'
-      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
-      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
-      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
-      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PLATFORM_SERVICE_URL: https://platform-service:8087
       DEVICE_SERVICE_URL: https://device-service:8082
@@ -246,10 +242,6 @@ services:
       SERVER_SSL_KEY_STORE: /run/secrets/server.p12
       SERVER_SSL_KEY_STORE_TYPE: PKCS12
       USER_KEYS_GENERATE: 'false'
-      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
-      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
-      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
-      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PLATFORM_SERVICE_URL: https://platform-service:8087
       DEVICE_SERVICE_URL: https://device-service:8082
@@ -337,10 +329,6 @@ services:
       SERVER_SSL_KEY_STORE: /run/secrets/server.p12
       SERVER_SSL_KEY_STORE_TYPE: PKCS12
       USER_KEYS_GENERATE: 'false'
-      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
-      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
-      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
-      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PLATFORM_SERVICE_URL: https://platform-service:8087
       DEVICE_SERVICE_URL: https://device-service:8082
@@ -417,10 +405,6 @@ services:
       SERVER_SSL_KEY_STORE: /run/secrets/server.p12
       SERVER_SSL_KEY_STORE_TYPE: PKCS12
       USER_KEYS_GENERATE: 'false'
-      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
-      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
-      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
-      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PLATFORM_SERVICE_URL: https://platform-service:8087
       DEVICE_SERVICE_URL: https://device-service:8082
@@ -497,10 +481,6 @@ services:
       SERVER_SSL_KEY_STORE: /run/secrets/server.p12
       SERVER_SSL_KEY_STORE_TYPE: PKCS12
       USER_KEYS_GENERATE: 'false'
-      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
-      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
-      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
-      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PLATFORM_SERVICE_URL: https://platform-service:8087
       DEVICE_SERVICE_URL: https://device-service:8082
@@ -570,10 +550,6 @@ services:
       SERVER_SSL_KEY_STORE: /run/secrets/server.p12
       SERVER_SSL_KEY_STORE_TYPE: PKCS12
       USER_KEYS_GENERATE: 'false'
-      PLATFORM_LEGACY_BRIDGE_ENABLED: 'false'
-      DEVICE_LEGACY_BRIDGE_ENABLED: 'false'
-      FAULT_LEGACY_BRIDGE_ENABLED: 'false'
-      WORKFLOW_LEGACY_AUDIENCE_ENABLED: 'false'
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PLATFORM_SERVICE_URL: https://platform-service:8087
       DEVICE_SERVICE_URL: https://device-service:8082

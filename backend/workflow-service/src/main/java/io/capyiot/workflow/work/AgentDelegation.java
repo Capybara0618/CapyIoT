@@ -29,8 +29,7 @@ public final class AgentDelegation {
     return value;
   }
 
-  public static Binding validate(
-      Jwt jwt, String method, String path, String key, boolean legacyActive) {
+  public static Binding validate(Jwt jwt, String method, String path, String key) {
     if (!isAgent(jwt)
         || !"capyiot-agent-service".equals(jwt.getSubject())
         || !"CREATE_WORK_ORDER".equals(jwt.getClaimAsString("command"))) throw denied();
@@ -42,9 +41,7 @@ public final class AgentDelegation {
         || !expiry.isAfter(issued)
         || expiry.isAfter(issued.plusSeconds(120))
         || jwt.getId() == null) throw denied();
-    if (!java.util.List.of("capyiot-workflow").equals(jwt.getAudience())
-        && !(legacyActive && java.util.List.of("capyiot-core").equals(jwt.getAudience())))
-      throw denied();
+    if (!java.util.List.of("capyiot-workflow").equals(jwt.getAudience())) throw denied();
     String kid = Objects.toString(jwt.getHeaders().get("kid"), "");
     if (!kid.matches("[A-Za-z0-9_-]{1,128}")) throw denied();
     Object rev = jwt.getClaim("draftRevision");

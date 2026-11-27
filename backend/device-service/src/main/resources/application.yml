@@ -71,10 +71,6 @@ capyiot:
     fault-jwks-uri: ${FAULT_SERVICE_JWKS_URI:https://alarm-service:8083/.well-known/service-jwks.json}
     workflow-jwks-uri: ${WORKFLOW_SERVICE_JWKS_URI:https://workflow-service:8084/.well-known/service-jwks.json}
     ingestion-jwks-uri: ${INGESTION_SERVICE_JWKS_URI:https://device-ingestion:8081/.well-known/service-jwks.json}
-    legacy:
-      enabled: ${DEVICE_LEGACY_BRIDGE_ENABLED:false}
-      expires-at: ${DEVICE_LEGACY_BRIDGE_EXPIRES_AT:1970-01-01T00:00:00Z}
-      service-key: ${CORE_SERVICE_KEY:}
 management:
   endpoints:
     web:

@@ -1,7 +1,6 @@
 # Local configuration
 .env
 .env.*
-!.env.example
 !.env.microservices.example
 *.log
 

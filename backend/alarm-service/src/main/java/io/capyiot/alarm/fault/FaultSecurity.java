@@ -29,8 +29,7 @@ class FaultSecurity {
       HttpSecurity http,
       FaultIdentity platform,
       ObjectMapper json,
-      ObjectProvider<ServiceTokenVerifier> tokens,
-      LegacyWindow legacy)
+      ObjectProvider<ServiceTokenVerifier> tokens)
       throws Exception {
     var internal =
         new OncePerRequestFilter() {
@@ -82,30 +81,8 @@ class FaultSecurity {
                 req.setAttribute("capyiot.call-budget", budget);
                 req.setAttribute("capyiot.internal.principal", principal);
                 current = new BodyRequest(req, body);
-              } else if (path.startsWith("/internal/")) {
-                boolean allowed =
-                    req.getMethod().equals("POST")
-                        && java.util.Set.of(
-                                "/internal/fault-bridge/reference",
-                                "/internal/fault-bridge/evidence",
-                                "/internal/fault-bridge/reserve",
-                                "/internal/fault-bridge/commit",
-                                "/internal/fault-bridge/uncertain")
-                            .contains(path);
-                if (!allowed) throw ApiProblem.forbidden();
-                legacy.verify(req.getHeader("X-Core-Service-Key"));
-                byte[] body =
-                    req.getInputStream().readNBytes(JdkServiceTransport.MAX_RESPONSE_BYTES + 1);
-                if (body.length > JdkServiceTransport.MAX_RESPONSE_BYTES)
-                  throw ServiceFailure.denied(413, "CONTRACT_BODY_TOO_LARGE");
-                current = new BodyRequest(req, body);
-                req.setAttribute("capyiot.legacy-bridge", Boolean.TRUE);
-                String deadline = req.getHeader(InternalEndpoint.DEADLINE_HEADER);
-                req.setAttribute(
-                    "capyiot.call-budget",
-                    deadline == null
-                        ? CallBudget.start(Duration.ofSeconds(10), Clock.systemUTC())
-                        : CallBudget.receive(deadline, Duration.ofSeconds(10), Clock.systemUTC()));
+              } else if (path.equals("/internal") || path.startsWith("/internal/")) {
+                throw ApiProblem.forbidden();
               }
               chain.doFilter(current, res);
             } catch (ServiceFailure error) {
@@ -137,17 +114,8 @@ class FaultSecurity {
                                   InternalEndpoint.INCIDENT_REFERENCE,
                                   InternalEndpoint.RESERVATION_CREATE)
                               .contains(p.operation());
-                  boolean bridge =
-                      Boolean.TRUE.equals(req.getAttribute("capyiot.legacy-bridge"))
-                          && java.util.Set.of(
-                                  "/internal/fault-bridge/reference",
-                                  "/internal/fault-bridge/reserve")
-                              .contains(path);
-                  if (!(scoped || bridge)
-                      || jwt.getAudience().contains("capyiot-core") && !legacy.active())
-                    throw ApiProblem.forbidden();
-                  if (path.endsWith("/reservations")
-                      || path.equals("/internal/fault-bridge/reserve"))
+                  if (!scoped) throw ApiProblem.forbidden();
+                  if (path.endsWith("/reservations"))
                     checkDelegatedBinding(jwt, json.readTree(req.getInputStream()));
                 }
                 req.setAttribute("capyiot.actor", platform.current(jwt));
@@ -171,9 +139,7 @@ class FaultSecurity {
                         "/actuator/health/**",
                         "/actuator/prometheus",
                         "/.well-known/service-jwks.json",
-                        "/internal/v1/**",
-                        "/internal/fault-bridge/commit",
-                        "/internal/fault-bridge/uncertain")
+                        "/internal/v1/**")
                     .permitAll()
                     .requestMatchers("/actuator/**")
                     .denyAll()

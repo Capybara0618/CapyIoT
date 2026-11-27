@@ -29,8 +29,7 @@ class WorkSecurity {
       HttpSecurity http,
       WorkIdentity platform,
       ObjectMapper json,
-      ObjectProvider<ServiceTokenVerifier> tokens,
-      LegacyWindow legacy)
+      ObjectProvider<ServiceTokenVerifier> tokens)
       throws Exception {
     var internal =
         new OncePerRequestFilter() {
@@ -84,7 +83,7 @@ class WorkSecurity {
                 req.setAttribute("capyiot.call-budget", budget);
                 req.setAttribute("capyiot.internal.principal", principal);
                 current = new BodyRequest(req, body);
-              } else if (path.startsWith("/internal/")) {
+              } else if (path.equals("/internal") || path.startsWith("/internal/")) {
                 throw ApiProblem.forbidden();
               }
               if (req.getMethod().equals("POST") && path.equals("/api/v1/workorders")) {
@@ -124,7 +123,7 @@ class WorkSecurity {
                           : req.getHeader("Idempotency-Key");
                   req.setAttribute(
                       "capyiot.delegation",
-                      AgentDelegation.validate(jwt, req.getMethod(), path, key, legacy.active()));
+                      AgentDelegation.validate(jwt, req.getMethod(), path, key));
                 }
                 var currentActor = platform.current(jwt);
                 if (AgentDelegation.isAgent(jwt)) {
