@@ -3505,6 +3505,165 @@
         }
       }
     },
+    "/internal/v1/incidents/{id}/order-state-page": {
+      "post": {
+        "operationId": "INCIDENT_ORDER_PAGE",
+        "tags": [
+          "workflow-service"
+        ],
+        "servers": [
+          {
+            "url": "https://workflow-service"
+          }
+        ],
+        "x-capyiot-query": true,
+        "x-capyiot-scope": "orders.authority",
+        "x-capyiot-callers": [
+          "alarm-service"
+        ],
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "description": "Code contract for the microservices migration; the endpoint is not deployed by this specification. UNKNOWN is not rollback proof. Commands require durable binding and authority checks.",
+        "parameters": [
+          {
+            "name": "X-CapyIoT-Deadline",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Absolute Unix epoch milliseconds, bounded by server request budget."
+          },
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authoritative result or explicit UNKNOWN state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "traceId"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "OK"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WorkOrderApi.IncidentOrderState"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid contract input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid service or actor credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller or actor not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource unavailable; never implies operation rollback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version or command binding conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency or authority unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkOrderApi.IncidentOrdersPageRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/v1/operations/{id}": {
       "get": {
         "operationId": "OPERATION_QUERY",
@@ -4969,6 +5128,19 @@
           "version"
         ]
       },
+      "WorkOrderApi.IncidentOrdersPageRequest": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "cursor"
+        ]
+      },
       "WorkOrderApi.IncidentOrderState": {
         "type": "object",
         "properties": {
@@ -5001,6 +5173,8 @@
           },
           "nextCursor": {
             "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
             "nullable": true
           }
         },

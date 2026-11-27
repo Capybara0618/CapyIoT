@@ -1,4 +1,4 @@
-package io.capyiot.alarm;
+package io.capyiot.legacyalarm;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Components;

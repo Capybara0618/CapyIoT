@@ -43,6 +43,7 @@ public enum InternalEndpoint {
             ServiceId.DEVICE),
     INCIDENT_ORDER_STATE(ServiceId.WORKFLOW, "GET", "/incidents/{id}/order-state", true, false, "orders.authority",
             ServiceId.FAULT),
+    INCIDENT_ORDER_PAGE(ServiceId.WORKFLOW,"POST","/incidents/{id}/order-state-page",true,false,"orders.authority",ServiceId.FAULT),
     OPERATION_QUERY(ServiceId.WORKFLOW, "GET", "/operations/{id}", true, false, "operations.read",
             ServiceId.FAULT);
 

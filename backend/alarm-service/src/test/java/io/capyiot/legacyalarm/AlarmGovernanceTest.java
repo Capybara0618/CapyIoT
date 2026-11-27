@@ -1,4 +1,4 @@
-package io.capyiot.alarm;
+package io.capyiot.legacyalarm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,7 +29,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+@SpringBootTest(classes=LegacyAlarmTestApplication.class,webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"spring.config.name=legacy-alarm",
         "spring.kafka.listener.auto-startup=false", "spring.kafka.admin.auto-create=false", "capyiot.outbox-enabled=false"
 })
 class AlarmGovernanceTest {

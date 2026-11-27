@@ -30,6 +30,12 @@ public record VideoDeviceMessage(String eventId,int schemaVersion,String deviceI
         require(device.matches("[A-Za-z0-9_-]{1,64}")&&session.matches("[A-Za-z0-9_-]{1,64}"));
         require(topic.equals("capyiot/v1/devices/"+device+"/sessions/"+session+"/events"));
         JsonNode payload=root.path("payload");String type=text(root,"eventType",32),stream=text(root,"streamKey",128);
+        validatePayload(payload,deviceType,type,stream);
+        return new VideoDeviceMessage(root.path("eventId").asText(),1,device,session,type,stream,seq,occurred,payload);
+    }
+    /** Same payload/resource/stream policy for wire ingestion and trusted domain observations. No session credentials here. */
+    public static void validatePayload(JsonNode payload,String deviceType,String type,String stream){
+        require(stream!=null&&!stream.isBlank()&&stream.length()<=128);
         switch(type) {
             case "HEARTBEAT" -> {
                 fields(payload,Set.of("bootId","uptimeSeconds","firmwareVersion"),Set.of("bootId"));text(payload,"bootId",64);
@@ -62,7 +68,6 @@ public record VideoDeviceMessage(String eventId,int schemaVersion,String deviceI
             }
             default -> throw new IllegalArgumentException("Unsupported device event");
         }
-        return new VideoDeviceMessage(root.path("eventId").asText(),1,device,session,type,stream,seq,occurred,payload);
     }
     private static void resource(JsonNode p,String deviceType) {
         String resource=text(p,"resourceType",32),key=text(p,"resourceKey",64);

@@ -35,24 +35,8 @@ public final class LocalEvents {
                     park,context,id,type,eventId,"capyiot.domain."+context+".v1",id,json.writeValueAsString(event),io.capyiot.contract.Telemetry.traceParent());
         } catch(com.fasterxml.jackson.core.JsonProcessingException error) { throw new IllegalStateException(error); }
     }
-    private long version(String type,String id) {
-        String query=null;
-        if(context.equals("fault")) query=type.startsWith("Anomaly")?"SELECT version FROM anomaly WHERE anomaly_id=?":"SELECT version FROM incident WHERE incident_id=?";
-        if(query==null)return 0;
-        var rows=db.queryForList(query,Long.class,id);return rows.isEmpty()?0:rows.getFirst();
-    }
-    private String aggregate(String type){
-        if(context.equals("workorder"))return "WorkOrder";
-        if(context.equals("fault"))return type.startsWith("Anomaly")?"Anomaly":"Incident";
-        throw new IllegalArgumentException("Unknown domain context");
-    }
-    private List<String> deviceIds(String type,String id,Map<String,?> body) {
-        if(context.equals("workorder"))return db.queryForList("SELECT device_id FROM work_order_device_item WHERE work_order_id=? ORDER BY device_id",String.class,id);
-        if(context.equals("fault")) {
-            if(type.startsWith("Anomaly"))return db.queryForList("SELECT device_id FROM anomaly WHERE anomaly_id=? AND device_id IS NOT NULL",String.class,id);
-            return db.queryForList("SELECT DISTINCT a.device_id FROM incident_anomaly_link l JOIN anomaly a ON a.anomaly_id=l.anomaly_id WHERE l.incident_id=? AND a.device_id IS NOT NULL ORDER BY a.device_id",String.class,id);
-        }
-        throw new IllegalArgumentException("Unknown domain context");
-    }
+    private long version(String type,String id){return 0;}
+    private String aggregate(String type){if(!context.equals("workorder"))throw new IllegalArgumentException("Unknown domain");return "WorkOrder";}
+    private List<String> deviceIds(String type,String id,Map<String,?> body){return db.queryForList("SELECT device_id FROM work_order_device_item WHERE work_order_id=? ORDER BY device_id",String.class,id);}
     private List<String> areaIds(String type,String id){return List.of();}
 }

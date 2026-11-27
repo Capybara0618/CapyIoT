@@ -17,11 +17,11 @@ import org.springframework.stereotype.Service;
 @ConditionalOnProperty(name="capyiot.faults.enabled",havingValue="true")
 public class FaultService implements HealthQueryPort,IncidentGatePort,EvidenceQueryPort {
     private final FaultStore store;private final DeviceQueryPort devices;private final ObjectProvider<WorkOrderQueryPort> orders;
-    private final ObjectMapper json;private final CommandJournal commands;private final LocalEvents events;
+    private final ObjectMapper json;private final CommandJournal commands;private final FaultLocalEvents events;
     private final long correlationSeconds,healthySeconds;
     public FaultService(FaultStore store,DeviceQueryPort devices,ObjectProvider<WorkOrderQueryPort> orders,ObjectMapper json,@Value("${capyiot.foundation.service-key}") String key,
             @Value("${capyiot.faults.correlation-window-seconds:120}") long correlationSeconds,@Value("${capyiot.faults.health-observation-seconds:120}") long healthySeconds){
-        this.store=store;this.devices=devices;this.orders=orders;this.json=json;commands=new CommandJournal(store.db,store.tx,json,key);events=new LocalEvents(store.db,json,"fault");
+        this.store=store;this.devices=devices;this.orders=orders;this.json=json;commands=new CommandJournal(store.db,store.tx,json,key);events=new FaultLocalEvents(store.db,json,"fault");
         if(correlationSeconds<1||healthySeconds<1)throw new IllegalArgumentException("Fault observation windows must be positive");this.correlationSeconds=correlationSeconds;this.healthySeconds=healthySeconds;
     }
     private Map<String,Object> anomaly(String id){var rows=store.db.queryForList("SELECT * FROM anomaly WHERE anomaly_id=?",id);if(rows.isEmpty())throw ApiProblem.missing();return rows.getFirst();}

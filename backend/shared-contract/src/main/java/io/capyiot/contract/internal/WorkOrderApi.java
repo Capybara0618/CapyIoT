@@ -47,6 +47,7 @@ public final class WorkOrderApi {
             ContractChecks.required(status); ContractChecks.version(version);
         }
     }
+    public record IncidentOrdersPageRequest(String cursor){public IncidentOrdersPageRequest {ContractChecks.text(cursor,256);}}
     public record IncidentOrderState(String incidentId, List<OrderRef> orders, List<String> pendingOperationIds,
                                      boolean complete, Instant checkedAt, String nextCursor) {
         public IncidentOrderState {

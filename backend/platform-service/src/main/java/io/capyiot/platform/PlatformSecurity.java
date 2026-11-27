@@ -68,8 +68,8 @@ class PlatformSecurity {
                     if(auth!=null&&auth.getPrincipal() instanceof Jwt jwt) {
                         if("capyiot-agent-service".equals(jwt.getClaimAsString("iss"))) {
                             Object p=req.getAttribute("capyiot.internal.principal");
-                            // Device may revalidate the same confirmed actor for work-order resource preflight only.
-                            boolean workflowContext=p instanceof ServiceTokenVerifier.Principal principal&&java.util.Set.of(ServiceId.WORKFLOW,ServiceId.DEVICE).contains(principal.caller())&&principal.operation()==InternalEndpoint.IDENTITY_CONTEXT;
+                            // Fault/device may revalidate the same confirmed actor for work-order resource preflight only.
+                            boolean workflowContext=p instanceof ServiceTokenVerifier.Principal principal&&java.util.Set.of(ServiceId.WORKFLOW,ServiceId.DEVICE,ServiceId.FAULT).contains(principal.caller())&&principal.operation()==InternalEndpoint.IDENTITY_CONTEXT;
                             boolean oldContext=Boolean.TRUE.equals(req.getAttribute("capyiot.legacy-bridge"))&&path.equals("/internal/foundation/context");
                             if(!(workflowContext||oldContext)||jwt.getAudience().contains("capyiot-core")&&!legacy.active())throw ApiProblem.forbidden();
                         }

@@ -67,7 +67,7 @@ class DeviceSecurity {
                     if(auth!=null&&auth.getPrincipal() instanceof Jwt jwt) {
                         if("capyiot-agent-service".equals(jwt.getClaimAsString("iss"))){
                             var principal=req.getAttribute("capyiot.internal.principal");
-                            boolean scoped=principal instanceof ServiceTokenVerifier.Principal p&&p.caller()==ServiceId.WORKFLOW&&p.operation()==InternalEndpoint.DEVICE_SCOPE;
+                            boolean scoped=principal instanceof ServiceTokenVerifier.Principal p&&java.util.Set.of(ServiceId.WORKFLOW,ServiceId.FAULT).contains(p.caller())&&p.operation()==InternalEndpoint.DEVICE_SCOPE;
                             boolean bridge=Boolean.TRUE.equals(req.getAttribute("capyiot.legacy-bridge"))&&path.equals("/internal/device-bridge/scope");
                             if(!(scoped||bridge)||jwt.getAudience().contains("capyiot-core")&&!legacy.active())throw ApiProblem.forbidden();
                         }

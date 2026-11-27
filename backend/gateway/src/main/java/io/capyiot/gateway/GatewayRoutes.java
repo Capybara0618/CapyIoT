@@ -27,7 +27,7 @@ class GatewayRoutes {
                         "/api/v1/monitoring-point-bindings/**","/api/v1/network-dependencies","/api/v1/network-dependencies/**","/api/v1/power-dependencies","/api/v1/power-dependencies/**",
                         "/api/v1/video-channel-associations","/api/v1/video-channel-associations/**","/api/v1/topology/context","/api/v1/devices/*/status-history",
                         "/api/v1/device-sessions","/api/v1/devices/*/credential/rotate","/api/v1/devices","/api/v1/devices/*","/api/v1/devices/*/events","/api/v1/locations","/api/v1/events","/api/v1/events/**","/api/v1/health").uri(deviceUrl))
-                .route("core-faults",route->route.path("/api/v1/anomalies","/api/v1/anomalies/**","/api/v1/incidents","/api/v1/incidents/**").uri(coreUrl))
+                .route("faults",route->route.path("/api/v1/anomalies","/api/v1/anomalies/**","/api/v1/incidents","/api/v1/incidents/**").uri(alarmUrl))
                 .route("workorder-outbox-management",route->route.path("/api/v1/workorders/outbox/**").uri(workflowUrl))
                 .route("core-workorders",route->route.path("/api/v1/workorders","/api/v1/workorders/**","/api/v1/workorder-assignees","/api/v1/devices/*/maintenance-history").uri(coreUrl))
                 .route("device-stream", route -> route.path("/api/v1/stream").metadata("response-timeout", -1).uri(deviceUrl))

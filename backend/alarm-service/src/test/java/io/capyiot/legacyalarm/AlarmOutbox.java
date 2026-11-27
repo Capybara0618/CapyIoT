@@ -1,4 +1,4 @@
-package io.capyiot.alarm;
+package io.capyiot.legacyalarm;
 
 import io.capyiot.contract.AlarmEvent;
 import io.capyiot.outbox.OutboxRelay;

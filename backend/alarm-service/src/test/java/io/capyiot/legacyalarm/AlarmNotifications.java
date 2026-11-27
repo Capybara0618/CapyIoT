@@ -1,4 +1,4 @@
-package io.capyiot.alarm;
+package io.capyiot.legacyalarm;
 
 import java.io.IOException;
 import java.time.Instant;

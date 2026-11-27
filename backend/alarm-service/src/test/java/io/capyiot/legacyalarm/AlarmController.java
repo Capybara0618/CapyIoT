@@ -1,6 +1,6 @@
-package io.capyiot.alarm;
+package io.capyiot.legacyalarm;
 
-import static io.capyiot.alarm.AlarmQueries.response;
+import static io.capyiot.legacyalarm.AlarmQueries.response;
 
 import io.capyiot.contract.ApiResponse;
 import io.capyiot.contract.AlarmEvent;

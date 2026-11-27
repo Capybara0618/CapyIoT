@@ -1,4 +1,4 @@
-package io.capyiot.alarm;
+package io.capyiot.legacyalarm;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
