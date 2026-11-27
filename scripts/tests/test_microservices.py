@@ -14,6 +14,33 @@ import microservices_control as control  # noqa: E402
 
 
 class DeploymentBoundaryTest(unittest.TestCase):
+    def test_inventory_batches_probes_but_rejects_missing_checksums(self):
+        names = [schema + ".fixture" for schema in common.SCHEMAS]
+        tables = "".join(schema + "\tfixture\n" for schema in common.SCHEMAS)
+        counts = "".join(full + "\t2\n" for full in names)
+        checksums = "".join(full + "\t123\n" for full in names)
+        with patch.object(
+            control, "db", side_effect=[tables, counts, checksums, ""]
+        ) as query:
+            result = control.inventory("fixture-mysql")
+        self.assertEqual(result["tables"], dict.fromkeys(names, 2))
+        self.assertEqual(result["checksums"], dict.fromkeys(names, "123"))
+        self.assertEqual(query.call_count, 4)
+        with patch.object(
+            control,
+            "db",
+            side_effect=[tables, counts, checksums.replace("123", "NULL", 1)],
+        ):
+            with self.assertRaises(ValueError):
+                control.inventory("fixture-mysql")
+        with patch.object(
+            control,
+            "db",
+            side_effect=[tables, counts, checksums.splitlines()[0] + "\n"],
+        ):
+            with self.assertRaises(ValueError):
+                control.inventory("fixture-mysql")
+
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory(dir=common.ROOT / "var")
         self.root = Path(self.folder.name)

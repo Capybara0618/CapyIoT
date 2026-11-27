@@ -183,22 +183,53 @@ def inventory(mysql):
     result = {"tables": {}, "checksums": {}, "migrations": {}, "unfinished": {}}
     import re
 
+    names = []
     for line in tables.splitlines():
         schema, table = line.split("\t")
-        if not re.fullmatch(r"[A-Za-z0-9_]+", table):
+        if schema not in SCHEMAS or not re.fullmatch(r"[A-Za-z0-9_]+", table):
             raise ValueError("Unexpected table identifier")
-        full = schema + "." + table
-        result["tables"][full] = int(
-            db(mysql, "SELECT COUNT(*) FROM " + full + ";").strip()
+        names.append((schema, table, schema + "." + table))
+    if not names or not all(
+        any(schema == expected for schema, _, _ in names) for expected in SCHEMAS
+    ):
+        raise ValueError("All five existing schemas must be present")
+    counts = db(
+        mysql,
+        " UNION ALL ".join(
+            "SELECT '" + full + "',COUNT(*) FROM " + full for _, _, full in names
         )
-        checksum = (
-            db(mysql, "CHECKSUM TABLE " + full + " EXTENDED;").strip().split("\t")[-1]
-        )
+        + ";",
+    )
+    for line in counts.splitlines():
+        full, count = line.split("\t")
+        result["tables"][full] = int(count)
+    checksums = db(
+        mysql, "CHECKSUM TABLE " + ",".join(full for _, _, full in names) + " EXTENDED;"
+    )
+    for line in checksums.splitlines():
+        full, checksum = line.split("\t")
         if not checksum.isdigit():
             raise ValueError(
                 "A full table checksum is unavailable; do not claim restore parity"
             )
         result["checksums"][full] = checksum
+    expected_names = {full for _, _, full in names}
+    if (
+        set(result["tables"]) != expected_names
+        or set(result["checksums"]) != expected_names
+    ):
+        raise ValueError("Incomplete database inventory")
+    metadata = {}
+    columns = db(
+        mysql,
+        "SELECT table_schema,table_name,column_name FROM information_schema.columns WHERE table_schema IN ("
+        + ",".join("'" + schema + "'" for schema in SCHEMAS)
+        + ") ORDER BY table_schema,table_name,ordinal_position;",
+    )
+    for line in columns.splitlines():
+        schema, table, column = line.split("\t")
+        metadata.setdefault(schema + "." + table, []).append(column)
+    for schema, table, full in names:
         if table == "flyway_schema_history":
             result["migrations"][full] = db(
                 mysql,
@@ -214,14 +245,7 @@ def inventory(mysql):
         if any(
             word in table for word in ("outbox", "reservation", "operation", "inbox")
         ):
-            columns = db(
-                mysql,
-                "SELECT column_name FROM information_schema.columns WHERE table_schema='"
-                + schema
-                + "' AND table_name='"
-                + table
-                + "' ORDER BY ordinal_position;",
-            ).splitlines()
+            columns = metadata.get(full, [])
             selected = [
                 c
                 for c in columns
