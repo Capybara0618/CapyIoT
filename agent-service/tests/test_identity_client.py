@@ -176,6 +176,30 @@ async def test_transport_get_retries_but_post_preserves_unknown_outcome(settings
         assert calls[0].headers["Idempotency-Key"] == "stable-key"
 
 
+async def test_draft_preflight_is_a_bounded_query_while_creation_stays_a_command(settings):
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise httpx.ReadTimeout("private timeout detail", request=request)
+        return httpx.Response(
+            200, json={"code": "OK", "data": {"parkId": "PARK-A", "priority": "P3"}}
+        )
+
+    user = Principal("u", "s", 1, frozenset({"agent.draft.prepare", "workorder.create"}), "token")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
+        business = BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file))
+        result = await business.validate_work_order(user, "preflight-trace", {"title": "repair"})
+    assert result == {"parkId": "PARK-A", "priority": "P3"}
+    assert len(calls) == 2
+    assert all(
+        request.method == "POST" and request.url.path == "/api/v1/workorders/validate"
+        for request in calls
+    )
+    assert calls[0].content == calls[1].content
+
+
 async def test_route_and_scope_parameters_cannot_be_injected(settings):
     user = Principal("u", "s", 1, frozenset({"agent.use", "device.read"}), "token")
     async with httpx.AsyncClient(

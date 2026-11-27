@@ -84,7 +84,8 @@ class BusinessApiClient:
                 body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
             ).encode()
         )
-        query = method == "GET" or identity
+        # This fixed POST validates a proposal without persisting any business command.
+        query = method == "GET" or identity or route == "/workorders/validate"
         origin = self.origins["platform" if identity else self.owner(route)]
         path = route if identity else "/api/v1" + route
         # JWT iat is whole seconds; an eight-second budget also stays below Java's iat+10s ceiling.
