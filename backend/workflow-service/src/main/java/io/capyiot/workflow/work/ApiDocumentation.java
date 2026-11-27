@@ -48,7 +48,7 @@ class ApiDocumentation {
                                           e ->
                                               e.target()
                                                       == io.capyiot.contract.internal.ServiceId
-                                                          .FAULT
+                                                          .WORKFLOW
                                                   && e.template().equals(path)
                                                   && e.method().equals(method.name()))
                                       .findFirst()

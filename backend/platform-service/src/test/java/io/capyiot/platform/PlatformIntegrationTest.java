@@ -398,7 +398,7 @@ class PlatformIntegrationTest {
       throws Exception {
     var file = java.nio.file.Files.createTempFile("capyiot-platform-test-", ".json");
     try {
-      java.nio.file.Files.writeString(file, new JWKSet(RSA).toString(false));
+      java.nio.file.Files.writeString(file, new JWKSet(SERVICE_RSA).toString(false));
       var signer =
           new io.capyiot.service.ServiceTokenSigner(
               io.capyiot.contract.internal.ServiceId.GATEWAY,

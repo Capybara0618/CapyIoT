@@ -25,7 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Configuration
 class PlatformSecurity {
   @Bean
-  SecurityFilterChain platformSecurity(
+  SecurityFilterChain platformSecurityFilterChain(
       HttpSecurity http,
       PlatformService platform,
       ObjectMapper json,

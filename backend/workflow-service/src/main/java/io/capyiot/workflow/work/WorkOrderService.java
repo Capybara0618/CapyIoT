@@ -776,7 +776,10 @@ public class WorkOrderService implements WorkOrderQueryPort, AssignmentQueryPort
       String reason) {
     var before = require(actor, permission, id);
     String park = before.get("campus_id").toString();
-    store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)", park);
+    store.db.update(
+        "INSERT INTO command_lock(scope_id) VALUES(?) ON DUPLICATE KEY UPDATE"
+            + " scope_id=VALUES(scope_id)",
+        park);
     var result =
         commands.execute(
             park,

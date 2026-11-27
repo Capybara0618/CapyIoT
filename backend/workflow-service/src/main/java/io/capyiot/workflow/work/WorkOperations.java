@@ -74,7 +74,10 @@ final class WorkOperations {
   }
 
   private Map<String, Object> lock(Intent i) {
-    store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)", i.park());
+    store.db.update(
+        "INSERT INTO command_lock(scope_id) VALUES(?) ON DUPLICATE KEY UPDATE"
+            + " scope_id=VALUES(scope_id)",
+        i.park());
     store.db.queryForObject(
         "SELECT scope_id FROM command_lock WHERE scope_id=? FOR UPDATE", String.class, i.park());
     return store.db.queryForMap(
@@ -98,7 +101,10 @@ final class WorkOperations {
     String protocolHash = delegation == null ? hash : delegation.requestHash();
     return store.tx.execute(
         s -> {
-          store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)", park);
+          store.db.update(
+              "INSERT INTO command_lock(scope_id) VALUES(?) ON DUPLICATE KEY UPDATE"
+                  + " scope_id=VALUES(scope_id)",
+              park);
           store.db.queryForObject(
               "SELECT scope_id FROM command_lock WHERE scope_id=? FOR UPDATE", String.class, park);
           var prior =
@@ -208,6 +214,7 @@ final class WorkOperations {
   }
 
   Intent reserve(Intent i) {
+    committed(i);
     if (i.incident() == null) return i;
     var r = faults.reserve(i.binding());
     return store.tx.execute(

@@ -541,7 +541,8 @@ public class FaultService implements HealthQueryPort, IncidentLookup, EvidenceQu
     store.tx.executeWithoutResult(
         status -> {
           store.db.update(
-              "INSERT IGNORE INTO command_lock(scope_id) VALUES(?)",
+              "INSERT INTO command_lock(scope_id) VALUES(?) ON DUPLICATE KEY UPDATE"
+                  + " scope_id=VALUES(scope_id)",
               incident(incident).get("park_id"));
           store.db.queryForObject(
               "SELECT scope_id FROM command_lock WHERE scope_id=? FOR UPDATE",
@@ -638,7 +639,10 @@ public class FaultService implements HealthQueryPort, IncidentLookup, EvidenceQu
       String type,
       Object command,
       Supplier<?> mutation) {
-    store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)", park);
+    store.db.update(
+        "INSERT INTO command_lock(scope_id) VALUES(?) ON DUPLICATE KEY UPDATE"
+            + " scope_id=VALUES(scope_id)",
+        park);
     return commands.execute(
         park,
         key,
@@ -728,7 +732,10 @@ public class FaultService implements HealthQueryPort, IncidentLookup, EvidenceQu
     }
     store.tx.execute(
         status -> {
-          store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)", park);
+          store.db.update(
+              "INSERT INTO command_lock(scope_id) VALUES(?) ON DUPLICATE KEY UPDATE"
+                  + " scope_id=VALUES(scope_id)",
+              park);
           store.db.queryForObject(
               "SELECT scope_id FROM command_lock WHERE scope_id=? FOR UPDATE", String.class, park);
           if (Boolean.TRUE.equals(
@@ -993,7 +1000,10 @@ public class FaultService implements HealthQueryPort, IncidentLookup, EvidenceQu
     for (var edge : network)
       parent.put(
           edge.get("downstreamDeviceId").toString(), edge.get("upstreamSwitchId").toString());
-    store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)", park);
+    store.db.update(
+        "INSERT INTO command_lock(scope_id) VALUES(?) ON DUPLICATE KEY UPDATE"
+            + " scope_id=VALUES(scope_id)",
+        park);
     store.tx.executeWithoutResult(
         status -> {
           store.db.queryForObject(

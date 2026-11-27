@@ -419,14 +419,16 @@ class FaultProtocolIntegrationTest {
   }
 
   @Test
-  void healthyCloseCommitsJournalAndOutboxAndReplaysWithoutAnotherClose() {
+  void healthyCloseCommitsJournalAndOutboxAndReplaysWithoutAnotherClose() throws Exception {
     String id = open();
     recovered(id);
     long expected = version(id);
     var c = new FaultModels.Close("NO_REPAIR_REQUIRED", "恢复事实已核查", expected);
     var result = faults.close(actor(), "close-same-key", id, c);
     assertEquals("CLOSED", result.path("status").asText());
-    assertEquals(result, faults.close(actor(), "close-same-key", id, c));
+    assertEquals(
+        new com.fasterxml.jackson.databind.ObjectMapper().readTree(result.toString()),
+        faults.close(actor(), "close-same-key", id, c));
     assertEquals(
         1,
         store.db.queryForObject(

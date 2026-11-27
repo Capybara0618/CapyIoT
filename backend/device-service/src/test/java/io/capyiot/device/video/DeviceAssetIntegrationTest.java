@@ -584,6 +584,111 @@ class DeviceAssetIntegrationTest {
   }
 
   @Test
+  void sentBeforeCrashIsReclaimedWithTheSameEventIdentity() {
+    var dataSource = java.util.Objects.requireNonNull(store.db.getDataSource());
+    var crash = new java.util.concurrent.atomic.AtomicBoolean(true);
+    var crashAfterSend =
+        new org.springframework.jdbc.core.JdbcTemplate(dataSource) {
+          @Override
+          public int update(String sql, Object... args) {
+            if (sql.contains("status='SENT'") && crash.getAndSet(false))
+              throw new AssertionError("simulated process exit after broker acknowledgement");
+            return super.update(sql, args);
+          }
+        };
+    @SuppressWarnings("unchecked")
+    org.springframework.kafka.core.KafkaTemplate<String, String> kafka =
+        org.mockito.Mockito.mock(org.springframework.kafka.core.KafkaTemplate.class);
+    org.mockito.Mockito.when(
+            kafka.send(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
+    var relay =
+        new io.capyiot.outbox.OutboxRelay(
+            crashAfterSend,
+            kafka,
+            json,
+            new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource),
+            false,
+            8);
+    String eventId = UUID.randomUUID().toString();
+    store.tx.executeWithoutResult(
+        tx ->
+            relay.enqueue(
+                "CAMPUS-A",
+                "DEVICE",
+                "fixture-device",
+                "DeviceRegistered",
+                eventId,
+                "fixture-domain-topic",
+                Map.of("eventId", eventId)));
+    assertThrows(AssertionError.class, relay::dispatch);
+    assertEquals(
+        "PENDING", store.db.queryForObject("SELECT status FROM outbox_event", String.class));
+    assertNotNull(store.db.queryForObject("SELECT delivery_token FROM outbox_event", String.class));
+    // Advance the durable lease, rather than sleeping a minute in the test.
+    store.db.update(
+        "UPDATE outbox_event SET next_retry_at=TIMESTAMPADD(SECOND,-1,CURRENT_TIMESTAMP(3))");
+    var restarted =
+        new io.capyiot.outbox.OutboxRelay(
+            store.db,
+            kafka,
+            json,
+            new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource),
+            false,
+            8);
+    restarted.dispatch();
+    assertEquals("SENT", store.db.queryForObject("SELECT status FROM outbox_event", String.class));
+    var payloads = org.mockito.ArgumentCaptor.forClass(String.class);
+    org.mockito.Mockito.verify(kafka, org.mockito.Mockito.times(2))
+        .send(
+            org.mockito.ArgumentMatchers.eq("fixture-domain-topic"),
+            org.mockito.ArgumentMatchers.eq("fixture-device"),
+            payloads.capture());
+    assertEquals(payloads.getAllValues().get(0), payloads.getAllValues().get(1));
+    assertTrue(payloads.getValue().contains(eventId));
+    assertEquals(1, store.db.queryForObject("SELECT COUNT(*) FROM outbox_event", Integer.class));
+  }
+
+  @Test
+  void failedRejectionPublishMustEscapeSoTheOffsetCannotBeAcknowledged() throws Exception {
+    @SuppressWarnings("unchecked")
+    org.springframework.kafka.core.KafkaTemplate<String, String> kafka =
+        org.mockito.Mockito.mock(org.springframework.kafka.core.KafkaTemplate.class);
+    org.mockito.Mockito.when(
+            kafka.send(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(
+            java.util.concurrent.CompletableFuture.failedFuture(
+                new java.io.IOException("broker unavailable")))
+        .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
+    var runtime =
+        new DeviceStateRuntime(
+            states,
+            json,
+            kafka,
+            45,
+            120,
+            new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    var record =
+        new org.apache.kafka.clients.consumer.ConsumerRecord<String, String>(
+            "capyiot.device.status.v1", 0, 19, "fixture-device", "invalid-json");
+    assertThrows(java.util.concurrent.ExecutionException.class, () -> runtime.consume(record));
+    runtime.consume(record);
+    org.mockito.Mockito.verify(kafka, org.mockito.Mockito.times(2))
+        .send(
+            org.mockito.ArgumentMatchers.eq("capyiot.device.rejected.v1"),
+            org.mockito.ArgumentMatchers.eq("fixture-device"),
+            org.mockito.ArgumentMatchers.anyString());
+    assertEquals(
+        0, store.db.queryForObject("SELECT COUNT(*) FROM device_event_receipt", Integer.class));
+  }
+
+  @Test
   void tokenClaimsSessionRenewalRotationAndOldEpochRejection() throws Exception {
     var d = activeDevice("IPC-SESSION");
     String id = d.path("device").path("deviceId").asText(),

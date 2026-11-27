@@ -72,7 +72,10 @@ final class FaultGate {
 
   private Map<String, Object> lock(String id) {
     String park = incident(id).get("park_id").toString();
-    store.db.update("INSERT IGNORE INTO command_lock(scope_id) VALUES(?)", park);
+    store.db.update(
+        "INSERT INTO command_lock(scope_id) VALUES(?) ON DUPLICATE KEY UPDATE"
+            + " scope_id=VALUES(scope_id)",
+        park);
     store.db.queryForObject(
         "SELECT scope_id FROM command_lock WHERE scope_id=? FOR UPDATE", String.class, park);
     return store.db.queryForMap("SELECT * FROM incident WHERE incident_id=? FOR UPDATE", id);

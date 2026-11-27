@@ -25,7 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Configuration
 class WorkSecurity {
   @Bean
-  SecurityFilterChain workSecurity(
+  SecurityFilterChain workSecurityFilterChain(
       HttpSecurity http,
       WorkIdentity platform,
       ObjectMapper json,

@@ -179,8 +179,7 @@ class WorkOperationsIntegrationTest {
               outside();
               return new FaultApi.IncidentRef(i.getArgument(0), "PARK-A", "OPEN", "P2", 1);
             });
-    when(faults.reserve(any()))
-        .thenAnswer(
+    doAnswer(
             i -> {
               outside();
               WorkOrderApi.CommandBinding binding = i.getArgument(0);
@@ -193,7 +192,9 @@ class WorkOperationsIntegrationTest {
                   binding,
                   null,
                   Instant.now());
-            });
+            })
+        .when(faults)
+        .reserve(any());
     doAnswer(
             i -> {
               outside();
@@ -287,8 +288,7 @@ class WorkOperationsIntegrationTest {
   @Test
   void lostReservationResponseKeepsOneIntentAndSameOperationOnRetry() {
     var calls = new java.util.concurrent.atomic.AtomicInteger();
-    when(faults.reserve(any()))
-        .thenAnswer(
+    doAnswer(
             i -> {
               WorkOrderApi.CommandBinding b = i.getArgument(0);
               if (calls.incrementAndGet() == 1)
@@ -296,7 +296,9 @@ class WorkOperationsIntegrationTest {
                     .unknown();
               return new FaultApi.Reservation(
                   "r-1", FaultApi.ReservationState.RESERVED, b, null, Instant.now());
-            });
+            })
+        .when(faults)
+        .reserve(any());
     String key = key();
     var failure =
         assertThrows(
@@ -329,15 +331,16 @@ class WorkOperationsIntegrationTest {
   void abortedIntentFencesAReservationArrivingLate() {
     var intent = prepare(key());
     operations.abort(intent, "VALIDATION_FAILED");
-    when(faults.reserve(any()))
-        .thenAnswer(
+    doAnswer(
             i ->
                 new FaultApi.Reservation(
                     "late-r",
                     FaultApi.ReservationState.RESERVED,
                     i.getArgument(0),
                     null,
-                    Instant.now()));
+                    Instant.now()))
+        .when(faults)
+        .reserve(any());
     assertThrows(ApiProblem.class, () -> operations.reserve(intent));
     assertThrows(
         ApiProblem.class,
@@ -399,6 +402,30 @@ class WorkOperationsIntegrationTest {
     assertEquals(1, store.db.queryForObject("SELECT COUNT(*) FROM work_order", Integer.class));
     assertEquals(
         1, store.db.queryForObject("SELECT COUNT(*) FROM work_order_request", Integer.class));
+  }
+
+  @Test
+  void publishedApiDocumentCanBeGenerated() throws Exception {
+    var result =
+        http.perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/v3/api-docs")
+                    .with(
+                        org.springframework.security.test.web.servlet.request
+                            .SecurityMockMvcRequestPostProcessors.jwt()))
+            .andReturn();
+    assertEquals(
+        200,
+        result.getResponse().getStatus(),
+        () -> {
+          var error = result.getResolvedException();
+          if (error == null) return "OpenAPI document unavailable";
+          var trace = new java.io.StringWriter();
+          error.printStackTrace(new java.io.PrintWriter(trace));
+          return trace.toString();
+        });
+    assertTrue(
+        new ObjectMapper().readTree(result.getResponse().getContentAsString()).has("openapi"));
   }
 
   @Test
@@ -572,8 +599,7 @@ class WorkOperationsIntegrationTest {
             + " status='CLOSED',assigned_repairer_id='repairer',designated_acceptor_id='acceptor'"
             + " WHERE id=?",
         id);
-    when(faults.reserve(any()))
-        .thenAnswer(
+    doAnswer(
             i -> {
               WorkOrderApi.CommandBinding b = i.getArgument(0);
               outside();
@@ -584,7 +610,9 @@ class WorkOperationsIntegrationTest {
                       "SELECT status FROM work_order WHERE id=?", String.class, id));
               return new FaultApi.Reservation(
                   "reopen-r", FaultApi.ReservationState.RESERVED, b, null, Instant.now());
-            });
+            })
+        .when(faults)
+        .reserve(any());
     var result = orders.reopen(supervisor(), key(), key(), id, new Reason(0L, "验收后发现问题"));
     assertEquals("ASSIGNED", result.path("status").asText());
     assertEquals(
@@ -782,7 +810,7 @@ class WorkOperationsIntegrationTest {
 
   @Test
   void knownReservationRejectionAbortsBeforeAnyLocalOrderCanCommit() {
-    when(faults.reserve(any())).thenThrow(ServiceFailure.denied(409, "VERSION_CONFLICT"));
+    doThrow(ServiceFailure.denied(409, "VERSION_CONFLICT")).when(faults).reserve(any());
     var error =
         assertThrows(
             ApiProblem.class,

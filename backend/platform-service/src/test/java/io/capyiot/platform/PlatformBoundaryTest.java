@@ -38,7 +38,7 @@ class PlatformBoundaryTest {
         Jwt.withTokenValue("token")
             .header("alg", "RS256")
             .subject("u")
-            .id("jti")
+            .claim("jti", "jti")
             .claim("sid", "s")
             .claim("authz_ver", 1L)
             .build();

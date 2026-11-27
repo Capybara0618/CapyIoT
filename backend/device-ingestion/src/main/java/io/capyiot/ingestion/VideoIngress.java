@@ -226,7 +226,14 @@ class VideoIngress implements SmartLifecycle, HealthIndicator {
     } catch (Exception failure) {
       subscribed = false;
       reconnect.set(true);
-      LOG.log(System.Logger.Level.WARNING, "Secure MQTT connection will retry");
+      LOG.log(
+          System.Logger.Level.WARNING,
+          "Secure MQTT connection will retry: "
+              + (failure instanceof ServiceFailure service
+                  ? service.code()
+                  : failure instanceof MqttException mqttFailure
+                      ? "MQTT_" + mqttFailure.getReasonCode()
+                      : failure.getClass().getSimpleName()));
     }
   }
 

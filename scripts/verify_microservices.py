@@ -185,7 +185,17 @@ def verify(args):
             )
             step(
                 "backend",
-                [maven, "-B", "-ntp", "-pl", ",".join(JAVA_APPS), "-am", "verify"],
+                [
+                    maven,
+                    "-B",
+                    "-ntp",
+                    "--fail-at-end",
+                    "-pl",
+                    ",".join(JAVA_APPS),
+                    "-am",
+                    "clean",
+                    "verify",
+                ],
                 ROOT / "backend",
             )
             step(
@@ -242,17 +252,54 @@ def verify(args):
             )
         runtime = bool(set(args.groups) - {"unit", "build"})
         if runtime:
-            if containers(target.project):
+            if args.resume_rollout:
+                previous = json.loads(
+                    private_path(args.resume_rollout).read_text(encoding="utf-8")
+                )
+                if (
+                    previous.get("project") != target.project
+                    or previous.get("bundle") != str(target.bundle)
+                    or previous.get("phase") != "ACTIVE"
+                    or previous.get("everActivated") is not True
+                    or not containers(target.project)
+                ):
+                    raise ValueError(
+                        "Resume requires this isolated target's activated rollout record"
+                    )
+                # Keep the first report immutable; this is explicitly a later regression
+                # against retained data, not a claim that fresh startup passed again.
+                report["resumedFrom"] = str(args.resume_rollout.resolve())
+                (folder / "rollout").mkdir()
+                write_json(folder / "rollout/rollout.json", previous)
+                launched = True
+                step(
+                    "resume-active",
+                    target.compose(
+                        "--profile",
+                        "public",
+                        "--profile",
+                        "ingress",
+                        "up",
+                        "-d",
+                        "--wait",
+                        "--wait-timeout",
+                        "360",
+                        active=True,
+                        offline=True,
+                    ),
+                )
+            elif containers(target.project):
                 raise ValueError(
                     "An existing target is not a fresh verification environment"
                 )
-            for key in ("MS_HTTP_PORT", "MS_HTTPS_PORT", "MS_MQTT_PORT"):
-                with socket.socket() as probe:
-                    probe.bind(("127.0.0.1", int(target.values[key])))
-            control("preflight")
-            launched = True
-            control("start-passive")
-            control("activate")
+            else:
+                for key in ("MS_HTTP_PORT", "MS_HTTPS_PORT", "MS_MQTT_PORT"):
+                    with socket.socket() as probe:
+                        probe.bind(("127.0.0.1", int(target.values[key])))
+                control("preflight")
+                launched = True
+                control("start-passive")
+                control("activate")
             step(
                 "seven-app-boundary", [sys.executable, "scripts/microservices_smoke.py"]
             )
@@ -294,6 +341,35 @@ def verify(args):
             )
             scenario("video_workflow_smoke")
         if "agent" in args.groups:
+            # The manual workflow closes its Incident. Agent scenarios need their own
+            # later outage, and must also work when selected without the workflow group.
+            if simulator:
+                step("manual-simulator-stop", ["docker", "stop", simulator])
+            simulator = target.project + "-agent-outage"
+            step(
+                "agent-outage",
+                target.compose(
+                    "--profile",
+                    "public",
+                    "--profile",
+                    "ingress",
+                    "--profile",
+                    "simulation",
+                    "run",
+                    "-d",
+                    "--name",
+                    simulator,
+                    "simulator",
+                    "--scenario",
+                    "switch-outage",
+                    "--interval-ms",
+                    "1000",
+                    "--fault-seconds",
+                    "60",
+                    active=True,
+                    offline=True,
+                ),
+            )
             for script in (
                 "agent_foundation_smoke",
                 "agent_query_smoke",
@@ -440,6 +516,11 @@ def main():
     parser.add_argument("--report-dir", type=Path, required=True)
     parser.add_argument("--groups", nargs="+", choices=GROUPS, required=True)
     parser.add_argument("--install-browser", action="store_true")
+    parser.add_argument(
+        "--resume-rollout",
+        type=Path,
+        help="Explicit ACTIVE rollout record for a retained isolated regression target",
+    )
     args = parser.parse_args()
     try:
         verify(args)

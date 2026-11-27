@@ -25,7 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Configuration
 class FaultSecurity {
   @Bean
-  SecurityFilterChain faultSecurity(
+  SecurityFilterChain faultSecurityFilterChain(
       HttpSecurity http,
       FaultIdentity platform,
       ObjectMapper json,

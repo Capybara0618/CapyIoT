@@ -25,7 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Configuration
 class DeviceSecurity {
   @Bean
-  SecurityFilterChain deviceSecurity(
+  SecurityFilterChain deviceSecurityFilterChain(
       HttpSecurity http,
       DeviceIdentity platform,
       ObjectMapper json,
