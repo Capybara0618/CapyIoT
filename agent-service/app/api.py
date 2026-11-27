@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from app.auth import current_principal
-from app.core_client import Principal
+from app.business_client import Principal
 from app.draft_schemas import DraftDecision, DraftRejection
 from app.errors import ServiceError
 from app.schemas import (

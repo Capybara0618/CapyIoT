@@ -226,8 +226,13 @@ class DraftRepository(Repository):
 
 
 class DraftService:
-    def __init__(self, settings, repository, tools, core):
-        self.settings, self.repository, self.tools, self.core = settings, repository, tools, core
+    def __init__(self, settings, repository, tools, business):
+        self.settings, self.repository, self.tools, self.business = (
+            settings,
+            repository,
+            tools,
+            business,
+        )
 
     async def validate(self, principal, payload, evidence_ids, run_id, correlation):
         principal.require("agent.draft.prepare")
@@ -236,19 +241,19 @@ class DraftService:
         selected = [row for row in rows if row["evidenceId"] in evidence_ids]
         if len(selected) != len(evidence_ids) or (
             selected
-            and not await self.tools.revalidate(selected, principal, self.core, correlation)
+            and not await self.tools.revalidate(selected, principal, self.business, correlation)
         ):
             raise ServiceError(
                 "DRAFT_EVIDENCE_INVALID", 409, "草稿证据已变化或不可访问，请重新查询"
             )
-        return await self.core.validate_work_order(principal, correlation, payload)
+        return await self.business.validate_work_order(principal, correlation, payload)
 
     async def visible(self, principal, draft_id, correlation):
         view = await run_in_threadpool(self.repository.draft, principal.user_id, draft_id)
         # Current DataScope is checked on every read, including terminal proposals.
         view["devices"] = []
         for item in view["payload"]["deviceItems"]:
-            device = await self.core.read(
+            device = await self.business.read(
                 "get_device_detail", principal, correlation, identity=item["deviceId"]
             )
             view["devices"].append(
@@ -258,7 +263,7 @@ class DraftService:
                 }
             )
         if view["payload"].get("incidentId"):
-            await self.core.read(
+            await self.business.read(
                 "get_incident_detail",
                 principal,
                 correlation,
@@ -271,7 +276,7 @@ class DraftService:
             selected = [
                 row for row in rows if row["evidenceId"] in view["relatedEvidenceReferences"]
             ]
-            if not await self.tools.revalidate(selected, principal, self.core, correlation):
+            if not await self.tools.revalidate(selected, principal, self.business, correlation):
                 raise ServiceError("DRAFT_EVIDENCE_INVALID", 409, "草稿证据已变化或不可访问")
             view["relatedEvidenceReferences"] = [
                 {

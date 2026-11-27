@@ -10,13 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.errors import ServiceError, unavailable
 
-LOG = logging.getLogger("capyiot.agent.core")
+LOG = logging.getLogger("capyiot.agent.business")
 
 
 class CurrentUser(BaseModel):
     model_config = ConfigDict(extra="ignore")
     userId: str
-    status: str
+    sessionId: str
+    status: str = "ACTIVE"
     authorizationVersion: int
     permissionCodes: list[str]
     roleCodes: list[str] = Field(default_factory=list)
@@ -41,15 +42,32 @@ def identifier(value):
     return value
 
 
-class CoreApiClient:
+class BusinessApiClient:
     """Only fixed business routes, with user context injected by server code."""
 
-    def __init__(self, http: httpx.AsyncClient, base_url: str):
-        self.http, self.base_url = http, base_url.rstrip("/")
+    def __init__(self, http: httpx.AsyncClient, settings, service_identity=None):
+        self.http, self.origins = http, settings.business_origins
+        self.identity = service_identity
 
-    async def _request(self, route, token, correlation, *, params=None, body=None, key=None):
+    @staticmethod
+    def owner(route):
+        if route.startswith(("/workorders", "/workorder-operations")) or route.endswith(
+            "/maintenance-history"
+        ):
+            return "workflow"
+        if route.startswith(("/anomalies", "/incidents")):
+            return "fault"
+        return "device"
+
+    async def _request(
+        self, route, token, correlation, *, params=None, body=None, key=None, identity=False
+    ):
         method = "GET" if body is None else "POST"
-        if method == "POST" and (not key or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", key)):
+        if (
+            method == "POST"
+            and not identity
+            and (not key or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", key))
+        ):
             raise ServiceError("INVALID_ARGUMENT", 400, "写请求必须提供有效的幂等键")
         headers = {
             "Authorization": "Bearer " + token,
@@ -59,28 +77,77 @@ class CoreApiClient:
         }
         if key:
             headers["Idempotency-Key"] = key
-        for attempt in range(2 if method == "GET" else 1):
+        content_bytes = (
+            None
+            if body is None
+            else json.dumps(
+                body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode()
+        )
+        query = method == "GET" or identity
+        origin = self.origins["platform" if identity else self.owner(route)]
+        path = route if identity else "/api/v1" + route
+        # JWT iat is whole seconds; an eight-second budget also stays below Java's iat+10s ceiling.
+        deadline = int(time.time() * 1000) + 8000
+        try:
+            async with asyncio.timeout(8):
+                return await self._exchange(
+                    method,
+                    origin + path,
+                    headers,
+                    params,
+                    content_bytes,
+                    token,
+                    path,
+                    correlation,
+                    deadline,
+                    query,
+                    identity,
+                )
+        except TimeoutError:
+            raise ServiceError(
+                "UPSTREAM_TIMEOUT" if query else "COMMAND_OUTCOME_UNKNOWN",
+                503,
+                "依赖服务超时" if query else "命令结果未知，需使用原幂等键核对",
+            ) from None
+
+    async def _exchange(
+        self,
+        method,
+        url,
+        headers,
+        params,
+        content_bytes,
+        token,
+        path,
+        correlation,
+        deadline,
+        query,
+        identity,
+    ):
+        for attempt in range(2 if query else 1):
+            if identity:
+                if self.identity is None:
+                    raise unavailable("SERVICE_IDENTITY_UNAVAILABLE")
+                headers.update(self.identity.headers(token, content_bytes, deadline))
             start = time.monotonic()
             try:
                 async with self.http.stream(
                     method,
-                    self.base_url + "/api/v1" + route,
+                    url,
                     headers=headers,
                     params=params,
-                    content=None
-                    if body is None
-                    else json.dumps(
-                        body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-                    ).encode(),
+                    content=content_bytes,
+                    timeout=3,
                 ) as response:
-                    if response.status_code >= 500 and method == "GET" and attempt == 0:
+                    if response.status_code >= 500 and query and attempt == 0:
                         await asyncio.sleep(0.1)
                         continue
                     chunks, size = [], 0
                     async for chunk in response.aiter_bytes():
                         size += len(chunk)
                         if size > 1_048_576:
-                            if method == "POST":
+                            if not query:
                                 raise ServiceError(
                                     "COMMAND_OUTCOME_UNKNOWN",
                                     503,
@@ -91,8 +158,14 @@ class CoreApiClient:
                             )
                         chunks.append(chunk)
                     content = b"".join(chunks)
+                    if 300 <= response.status_code < 400:
+                        raise ServiceError(
+                            "UPSTREAM_INVALID_RESPONSE" if query else "COMMAND_OUTCOME_UNKNOWN",
+                            502 if query else 503,
+                            "依赖服务响应无效，命令结果请使用原幂等键核对",
+                        )
                     LOG.info(
-                        "core_completed correlation=%s method=%s status=%s latency_ms=%s",
+                        "business_completed correlation=%s method=%s status=%s latency_ms=%s",
                         correlation,
                         method,
                         response.status_code,
@@ -100,7 +173,31 @@ class CoreApiClient:
                     )
                     if response.status_code >= 400:
                         status = response.status_code
-                        if method == "POST" and status >= 500:
+                        try:
+                            failure = json.loads(content)
+                            operation_id = failure.get("details", {}).get("operationId")
+                            operation_code = failure.get("code")
+                            if (
+                                path.startswith("/api/v1/workorders")
+                                and (status, operation_code)
+                                in {
+                                    (409, "WORKORDER_OPERATION_ABORTED"),
+                                    (503, "WORKORDER_OPERATION_PENDING"),
+                                }
+                                and isinstance(operation_id, str)
+                                and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", operation_id)
+                            ):
+                                raise ServiceError(
+                                    operation_code,
+                                    status,
+                                    "工单操作已终止"
+                                    if status == 409
+                                    else "工单操作正在核对，请勿重复建单",
+                                    {"operationId": operation_id},
+                                )
+                        except (ValueError, AttributeError, TypeError):
+                            pass
+                        if not query and status >= 500:
                             raise ServiceError(
                                 "COMMAND_OUTCOME_UNKNOWN", 503, "命令结果未知，需使用原幂等键核对"
                             )
@@ -120,7 +217,7 @@ class CoreApiClient:
                             raise ValueError("Invalid envelope")
                         return payload["data"]
                     except (ValueError, AttributeError):
-                        if method == "POST":
+                        if not query:
                             raise ServiceError(
                                 "COMMAND_OUTCOME_UNKNOWN", 503, "命令结果未知，需使用原幂等键核对"
                             ) from None
@@ -128,10 +225,10 @@ class CoreApiClient:
                             "UPSTREAM_INVALID_RESPONSE", 502, "业务服务响应格式无效"
                         ) from None
             except httpx.HTTPError as error:
-                if method == "GET" and attempt == 0:
+                if query and attempt == 0:
                     await asyncio.sleep(0.1)
                     continue
-                if method == "POST":
+                if not query:
                     raise ServiceError(
                         "COMMAND_OUTCOME_UNKNOWN", 503, "命令结果未知，需使用原幂等键核对"
                     ) from None
@@ -143,7 +240,10 @@ class CoreApiClient:
         from pydantic import ValidationError
 
         try:
-            return CurrentUser.model_validate(await self._request("/auth/me", token, correlation))
+            data = await self._request(
+                "/internal/v1/identity/context", token, correlation, body={}, identity=True
+            )
+            return CurrentUser.model_validate(data)
         except ValidationError:
             raise unavailable("UPSTREAM_INVALID_RESPONSE") from None
 

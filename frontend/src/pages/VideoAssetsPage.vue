@@ -179,7 +179,13 @@ onMounted(() =>
               </td>
               <td><ValueBadge :value="d.assetStatus" /></td>
               <td><ValueBadge :value="d.connectivityStatus" /></td>
-              <td><ValueBadge :value="d.healthStatus" /></td>
+              <td>
+                <ValueBadge :value="d.healthStatus" /><small
+                  v-if="d.healthAvailability && d.healthAvailability !== 'AVAILABLE'"
+                  class="video-muted"
+                  >健康评估暂不可用</small
+                >
+              </td>
               <td><ValueBadge :value="d.dataFreshness" /></td>
               <td><button class="link" @click="run(() => open(d.deviceId))">详情</button></td>
             </tr>
@@ -221,6 +227,18 @@ onMounted(() =>
         <dd>{{ formatTime(selected.lastHeartbeatReceivedAt) }}</dd>
         <dt>最近业务数据</dt>
         <dd>{{ formatTime(selected.lastBusinessDataReceivedAt) }}</dd>
+        <dt>健康评估来源</dt>
+        <dd>
+          故障服务 ·
+          {{ selected.healthAvailability === 'AVAILABLE' ? '已获取' : '待核对或暂不可用' }}
+        </dd>
+        <dt>健康评估时间</dt>
+        <dd>
+          {{ selected.healthCheckedAt ? formatTime(selected.healthCheckedAt) : '暂无有效评估时间'
+          }}<span v-if="selected.healthSourceVersion != null">
+            · 来源版本 {{ selected.healthSourceVersion }}</span
+          >
+        </dd>
       </dl>
       <form
         v-if="canManage && selected.assetStatus !== 'RETIRED'"

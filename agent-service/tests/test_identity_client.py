@@ -6,8 +6,9 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.auth import UserAuthenticator
-from app.core_client import CoreApiClient, Principal
+from app.business_client import BusinessApiClient, Principal
 from app.errors import ServiceError
+from app.service_identity import ServiceIdentity
 
 
 @pytest.fixture
@@ -46,6 +47,7 @@ async def test_identity_rechecks_current_authorization_and_caches_only_keys(sett
                 "data": {
                     "userId": "user-one",
                     "status": "ACTIVE",
+                    "sessionId": "session-one",
                     "authorizationVersion": 1,
                     "permissionCodes": ["agent.use"],
                 },
@@ -53,7 +55,11 @@ async def test_identity_rechecks_current_authorization_and_caches_only_keys(sett
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
-        auth = UserAuthenticator(http, settings, CoreApiClient(http, settings.core_base_url))
+        auth = UserAuthenticator(
+            http,
+            settings,
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+        )
         token = jwt.encode(claims, key, algorithm="RS256", headers={"kid": "key-one"})
         assert (await auth.authenticate(token, "correlation")).user_id == "user-one"
         active = False
@@ -61,7 +67,7 @@ async def test_identity_rechecks_current_authorization_and_caches_only_keys(sett
             await auth.authenticate(token, "correlation")
         assert error.value.status == 401
         assert calls.count("/jwks") == 1
-        assert calls.count("/api/v1/auth/me") == 2
+        assert calls.count("/internal/v1/identity/context") == 2
         assert token not in repr(error.value)
 
 
@@ -82,7 +88,11 @@ async def test_invalid_claims_are_rejected(settings, identity, change):
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"keys": [public]}))
     ) as http:
-        auth = UserAuthenticator(http, settings, CoreApiClient(http, settings.core_base_url))
+        auth = UserAuthenticator(
+            http,
+            settings,
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+        )
         token = jwt.encode(claims, key, algorithm="RS256", headers={"kid": "key-one"})
         with pytest.raises(ServiceError) as error:
             await auth.authenticate(token, "test")
@@ -100,7 +110,11 @@ async def test_rotation_overlap_and_failed_refresh_do_not_extend_key_lifetime(se
         return httpx.Response(200, json={"keys": keys}) if online else httpx.Response(503)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
-        auth = UserAuthenticator(http, settings, CoreApiClient(http, settings.core_base_url))
+        auth = UserAuthenticator(
+            http,
+            settings,
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+        )
         await auth.key("key-one")
         keys = [public, second]
         auth.last_refresh = float("-inf")
@@ -128,7 +142,9 @@ async def test_core_normalizes_errors_without_raw_payload(status, settings):
     user = Principal("u", "s", 1, frozenset({"agent.use", "device.read"}), "user-secret-token")
     async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
         with pytest.raises(ServiceError) as error:
-            await CoreApiClient(http, settings.core_base_url).read("query_devices", user, "trace")
+            await BusinessApiClient(
+                http, settings, ServiceIdentity(settings.service_key_file)
+            ).read("query_devices", user, "trace")
     assert error.value.status == status
     assert len(calls) == (2 if status >= 500 else 1)
     assert "private" not in str(error.value)
@@ -149,13 +165,13 @@ async def test_transport_get_retries_but_post_preserves_unknown_outcome(settings
         "secret-token",
     )
     async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
-        core = CoreApiClient(http, settings.core_base_url)
+        business = BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file))
         with pytest.raises(ServiceError) as error:
-            await core.read("query_devices", user, "trace")
+            await business.read("query_devices", user, "trace")
         assert error.value.code == "UPSTREAM_TIMEOUT" and len(calls) == 2
         calls.clear()
         with pytest.raises(ServiceError) as error:
-            await core.create_work_order(user, "trace", {"title": "repair"}, "stable-key")
+            await business.create_work_order(user, "trace", {"title": "repair"}, "stable-key")
         assert error.value.code == "COMMAND_OUTCOME_UNKNOWN" and len(calls) == 1
         assert calls[0].headers["Idempotency-Key"] == "stable-key"
 
@@ -165,14 +181,14 @@ async def test_route_and_scope_parameters_cannot_be_injected(settings):
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: pytest.fail("No HTTP request is allowed"))
     ) as http:
-        core = CoreApiClient(http, settings.core_base_url)
+        business = BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file))
         for operation, filters in [
             ("http://attacker/", {}),
             ("query_devices", {"parkId": "other"}),
             ("query_devices", {"size": 51}),
         ]:
             with pytest.raises(ServiceError):
-                await core.read(operation, user, "trace", filters=filters)
+                await business.read(operation, user, "trace", filters=filters)
 
 
 @pytest.mark.parametrize("changes", [{"alg": "RS512"}, {"alg": "HS256"}, {"use": "enc"}])
@@ -182,7 +198,11 @@ async def test_conflicting_jwk_metadata_is_rejected(settings, identity, changes)
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"keys": [public]}))
     ) as http:
-        auth = UserAuthenticator(http, settings, CoreApiClient(http, settings.core_base_url))
+        auth = UserAuthenticator(
+            http,
+            settings,
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+        )
         with pytest.raises(ServiceError):
             await auth.key("key-one")
 
@@ -202,8 +222,150 @@ async def test_write_server_error_or_invalid_reply_preserves_unknown_outcome(
     )
     async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
         with pytest.raises(ServiceError) as error:
-            await CoreApiClient(http, settings.core_base_url).create_work_order(
-                user, "trace", {"title": "repair"}, "same-key"
-            )
+            await BusinessApiClient(
+                http, settings, ServiceIdentity(settings.service_key_file)
+            ).create_work_order(user, "trace", {"title": "repair"}, "same-key")
         assert error.value.code == "COMMAND_OUTCOME_UNKNOWN"
         assert len(calls) == 1 and calls[0].headers["Idempotency-Key"] == "same-key"
+
+
+@pytest.mark.parametrize(
+    "operation,identity,owner",
+    [
+        ("query_devices", None, "device-fixture"),
+        ("get_device_detail", "device-1", "device-fixture"),
+        ("get_device_status_history", "device-1", "device-fixture"),
+        ("get_topology_context", None, "device-fixture"),
+        ("query_anomalies", None, "fault-fixture"),
+        ("query_incidents", None, "fault-fixture"),
+        ("get_incident_detail", "incident-1", "fault-fixture"),
+        ("query_work_orders", None, "workflow-fixture"),
+        ("get_maintenance_history", "device-1", "workflow-fixture"),
+    ],
+)
+async def test_nine_reads_use_fixed_business_owners(settings, operation, identity, owner):
+    requests = []
+
+    def transport(request):
+        requests.append(request)
+        return httpx.Response(200, json={"code": "OK", "data": {}})
+
+    principal = Principal(
+        "user",
+        "session",
+        1,
+        frozenset(
+            {
+                "agent.use",
+                "device.read",
+                "topology.read",
+                "anomaly.read",
+                "incident.read",
+                "workorder.read",
+            }
+        ),
+        "opaque-user-token",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
+        await BusinessApiClient(http, settings).read(
+            operation, principal, "trace", identity=identity
+        )
+    assert len(requests) == 1 and requests[0].url.host == owner
+    assert "X-Service-Authorization" not in requests[0].headers
+
+
+async def test_identity_service_jwt_binds_exact_body_actor_and_deadline(settings):
+    import hashlib
+
+    signer = ServiceIdentity(settings.service_key_file)
+    requests = []
+
+    def transport(request):
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "code": "OK",
+                "data": {
+                    "userId": "user",
+                    "sessionId": "session",
+                    "authorizationVersion": 1,
+                    "permissionCodes": ["agent.use"],
+                },
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
+        await BusinessApiClient(http, settings, signer).current_user("actor.jwt.token", "trace")
+    request = requests[0]
+    claims = jwt.decode(
+        request.headers["X-Service-Authorization"][7:],
+        jwt.PyJWK.from_dict(signer.jwks()["keys"][0]).key,
+        algorithms=["RS256"],
+        issuer="capyiot-service/agent-service",
+        audience="capyiot-service/platform-service",
+    )
+    assert request.url.host == "platform-fixture" and request.method == "POST"
+    assert request.url.path == claims["path"] == "/internal/v1/identity/context"
+    assert claims["operation"] == "IDENTITY_CONTEXT" and claims["scope"] == "identity.read"
+    assert claims["bodyDigest"] == hashlib.sha256(request.content).hexdigest()
+    assert claims["actorDigest"] == hashlib.sha256(b"actor.jwt.token").hexdigest()
+    assert claims["deadline"] == int(request.headers["X-CapyIoT-Deadline"])
+    assert claims["deadline"] <= (claims["iat"] + 10) * 1000
+    assert not {"d", "p", "q", "dp", "dq", "qi"} & signer.jwks()["keys"][0].keys()
+
+
+async def test_platform_context_must_match_the_current_session(settings, identity):
+    key, public, claims = identity
+
+    def transport(request):
+        if request.url.host == "gateway-fixture":
+            return httpx.Response(200, json={"keys": [public]})
+        return httpx.Response(
+            200,
+            json={
+                "code": "OK",
+                "data": {
+                    "userId": "user-one",
+                    "sessionId": "different-session",
+                    "authorizationVersion": 1,
+                    "permissionCodes": ["agent.use"],
+                },
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
+        auth = UserAuthenticator(
+            http,
+            settings,
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+        )
+        token = jwt.encode(claims, key, algorithm="RS256", headers={"kid": "key-one"})
+        with pytest.raises(ServiceError) as error:
+            await auth.authenticate(token, "trace")
+        assert error.value.status == 401
+
+
+@pytest.mark.parametrize(
+    "status,code", [(409, "WORKORDER_OPERATION_ABORTED"), (503, "WORKORDER_OPERATION_PENDING")]
+)
+async def test_workflow_operation_state_is_safe_and_not_flattened(settings, status, code):
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                status,
+                json={
+                    "code": code,
+                    "message": "private-diagnostic",
+                    "details": {"operationId": "operation-1", "sql": "secret"},
+                },
+            )
+        )
+    ) as http:
+        with pytest.raises(ServiceError) as error:
+            await BusinessApiClient(http, settings).command_receipt(
+                {"idempotencyKey": "key-1", "commandId": "command-1"}, "delegate"
+            )
+        assert error.value.code == code
+        assert error.value.details == {"operationId": "operation-1"}
+        assert "private" not in error.value.message

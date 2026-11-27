@@ -8,7 +8,8 @@ const summary = ref<{
   online: number
   offline: number
   unknown: number
-  abnormal: number
+  abnormal: number | null
+  healthAvailability?: string
   stale: number
 } | null>(null)
 const incidents = ref<Incident[]>([]),
@@ -68,6 +69,13 @@ onMounted(load)
     <PageHeader><button :disabled="busy" @click="load">刷新概览</button></PageHeader>
     <p v-if="error" class="video-error" role="alert">{{ error }}</p>
     <p class="video-muted">{{ me?.displayName }}，这里展示你当前有权查看的设备、故障与维修任务。</p>
+    <p class="video-muted">数据在进入页面或点击刷新时获取。</p>
+    <p
+      v-if="summary?.healthAvailability && summary.healthAvailability !== 'AVAILABLE'"
+      class="video-notice"
+    >
+      健康评估暂不可用，异常设备数量待核对。
+    </p>
     <div v-if="summary" class="video-metrics">
       <section class="video-metric">
         <span>纳管设备</span><strong>{{ summary.total }}</strong
@@ -78,7 +86,7 @@ onMounted(load)
         ><span class="video-muted">离线 {{ summary.offline }} · 未知 {{ summary.unknown }}</span>
       </section>
       <section class="video-metric">
-        <span>健康异常设备</span><strong>{{ summary.abnormal }}</strong
+        <span>健康异常设备</span><strong>{{ summary.abnormal ?? '—' }}</strong
         ><span class="video-muted">在线不代表业务健康</span>
       </section>
       <section class="video-metric">

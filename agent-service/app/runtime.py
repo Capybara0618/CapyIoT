@@ -15,9 +15,9 @@ LOG = logging.getLogger("capyiot.agent.runtime")
 
 
 class QueryRuntime:
-    def __init__(self, settings, repository, tools, core, auth, agent):
+    def __init__(self, settings, repository, tools, business, auth, agent):
         self.settings, self.repository, self.tools = settings, repository, tools
-        self.core, self.auth, self.agent = core, auth, agent
+        self.business, self.auth, self.agent = business, auth, agent
         self.tasks = {}
 
     async def visible_run(self, principal, run_id, correlation):
@@ -27,7 +27,7 @@ class QueryRuntime:
             try:
                 async with asyncio.timeout(min(self.settings.run_timeout_seconds, 20)):
                     visible = await self.tools.revalidate(
-                        evidence, principal, self.core, correlation
+                        evidence, principal, self.business, correlation
                     )
             except TimeoutError:
                 visible = False
@@ -145,10 +145,10 @@ class QueryRuntime:
                         current, conversation_id, run_id, request.state.correlation_id
                     )
                     deps = AgentDeps(
-                        current, self.core, run_id, request.state.correlation_id, emit=emit
+                        current, self.business, run_id, request.state.correlation_id, emit=emit
                     )
                     answer = await self.agent.run(content, deps, history=history)
-                    # Recheck the session before returning content; every tool has its own Core authorization too.
+                    # Recheck the session before returning content; every tool has its own service authorization too.
                     await self.auth.authenticate(principal.token, request.state.correlation_id)
                     serialized = answer.model_dump(mode="json")
                     status = "PARTIAL_SUCCEEDED" if deps.incomplete else "SUCCEEDED"

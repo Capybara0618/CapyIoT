@@ -18,6 +18,7 @@ from app.database import Database
 from app.errors import ServiceError
 from app.models import AgentRun, Base, Draft, DraftRevision, Message
 from app.repository import Repository, now
+from app.service_identity import ServiceIdentity
 
 
 @pytest.fixture(scope="module")
@@ -198,7 +199,7 @@ def test_query_run_stream_persists_answer_and_rechecks_historical_evidence(datab
     from pydantic_ai.models.function import FunctionModel
 
     from app.agent import OpsAgent
-    from app.core_client import CoreApiClient, Principal
+    from app.business_client import BusinessApiClient, Principal
     from app.main import create_app
     from app.runtime import QueryRuntime
     from app.tools import ToolRunner
@@ -271,14 +272,14 @@ def test_query_run_stream_persists_answer_and_rechecks_historical_evidence(datab
     with TestClient(app) as client:
         repo = Repository(database.sessions)
         http = httpx.AsyncClient(transport=httpx.MockTransport(transport))
-        core = CoreApiClient(http, "http://fixture")
+        business = BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file))
         runner = ToolRunner(settings, repo)
         app.state.repository, app.state.auth = repo, Auth()
         app.state.runtime = QueryRuntime(
             settings,
             repo,
             runner,
-            core,
+            business,
             app.state.auth,
             OpsAgent(settings, model=FunctionModel(model), tools=runner.tools()),
         )
@@ -368,7 +369,7 @@ async def test_stream_disconnect_cancels_model_and_keeps_completed_tool_evidence
     import httpx
 
     from app.agent import AgentDeps
-    from app.core_client import CoreApiClient, Principal
+    from app.business_client import BusinessApiClient, Principal
     from app.runtime import QueryRuntime
     from app.tools import ToolRunner
 
@@ -389,7 +390,7 @@ async def test_stream_disconnect_cancels_model_and_keeps_completed_tool_evidence
             )
         )
     ) as http:
-        core = CoreApiClient(http, "http://fixture")
+        business = BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file))
         runner = ToolRunner(settings, repo)
 
         class SlowAgent:
@@ -406,7 +407,7 @@ async def test_stream_disconnect_cancels_model_and_keeps_completed_tool_evidence
             async def is_disconnected(self):
                 return False
 
-        runtime = QueryRuntime(settings, repo, runner, core, Auth(), SlowAgent())
+        runtime = QueryRuntime(settings, repo, runner, business, Auth(), SlowAgent())
         stream = runtime.stream(Request(), principal, run_id, identity, "核查")
         for _ in range(6):
             event = await anext(stream)
@@ -430,7 +431,7 @@ def test_expired_read_only_run_has_a_terminal_state(database):
 async def test_disconnect_immediately_after_started_does_not_leave_created_run(database, settings):
     from types import SimpleNamespace
 
-    from app.core_client import Principal
+    from app.business_client import Principal
     from app.runtime import QueryRuntime
 
     repo, owner = Repository(database.sessions), uuid.uuid4().hex

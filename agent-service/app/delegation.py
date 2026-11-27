@@ -76,7 +76,7 @@ class DelegationSigner:
             {
                 "iss": "capyiot-agent-service",
                 "sub": "capyiot-agent-service",
-                "aud": "capyiot-core",
+                "aud": "capyiot-workflow",
                 "iat": stamp,
                 "nbf": stamp,
                 "exp": stamp + 60,

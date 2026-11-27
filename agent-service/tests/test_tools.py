@@ -8,8 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from app.agent import AgentDeps
-from app.core_client import CoreApiClient, Principal
+from app.business_client import BusinessApiClient, Principal
 from app.errors import ServiceError
+from app.service_identity import ServiceIdentity
 from app.tool_schemas import MaintenanceQuery, QueryDevices, StatusHistory, TopologyQuery
 from app.tools import CONTRACTS, ToolRunner
 
@@ -68,6 +69,7 @@ CASES = {
                 "anomalyId": "anomaly-one",
                 "anomalyType": "DEVICE_CONNECTION_LOST",
                 "status": "ACTIVE",
+                "sessionId": "session-one",
                 "severity": "FAULT",
                 "version": 1,
             }
@@ -148,13 +150,43 @@ async def test_each_tool_projects_and_records_current_authorized_evidence(settin
     repo = ToolRepository()
     async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
         runner = ToolRunner(settings, repo)
-        deps = AgentDeps(principal(), CoreApiClient(http, settings.core_base_url), "run", "trace")
+        deps = AgentDeps(
+            principal(),
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+            "run",
+            "trace",
+        )
         result = await runner.execute(name, args, deps)
     assert result["status"] == "SUCCEEDED" and result["evidenceReferences"]
     assert len(deps.evidence_ids) == 1 and repo.finished
     assert "DO-NOT-EXPOSE" not in json.dumps(result)
     assert requests[0].method == "GET"
     assert all("private-token" not in json.dumps(record) for record in repo.started)
+
+
+async def test_unavailable_health_is_incomplete_evidence_with_source_metadata(settings):
+    data = {
+        **CASES["get_device_detail"][1],
+        "healthStatus": "UNKNOWN",
+        "healthAvailability": "UNAVAILABLE",
+        "healthCheckedAt": None,
+        "healthSourceVersion": None,
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"code": "OK", "data": data})
+        )
+    ) as http:
+        projected, completeness, _, _, _ = await ToolRunner(settings, ToolRepository()).fetch(
+            "get_device_detail",
+            CASES["get_device_detail"][0],
+            principal(),
+            BusinessApiClient(http, settings),
+            "trace",
+        )
+    assert completeness == "INCOMPLETE"
+    assert projected["healthAvailability"] == "UNAVAILABLE"
+    assert projected["healthCheckedAt"] is None
 
 
 @pytest.mark.parametrize("name", list(CASES))
@@ -166,7 +198,10 @@ async def test_each_tool_rejects_permission_or_missing_resource_without_leaking(
         )
     ) as http:
         deps = AgentDeps(
-            principal({"agent.use"}), CoreApiClient(http, settings.core_base_url), "run", "trace"
+            principal({"agent.use"}),
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+            "run",
+            "trace",
         )
         result = await ToolRunner(settings, repo).execute(name, CASES[name][0], deps)
         assert result["status"] == "REJECTED" and result["data"] is None
@@ -178,7 +213,12 @@ async def test_each_tool_normalizes_upstream_outage_without_claiming_empty(setti
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _: httpx.Response(503))
     ) as http:
-        deps = AgentDeps(principal(), CoreApiClient(http, settings.core_base_url), "run", "trace")
+        deps = AgentDeps(
+            principal(),
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+            "run",
+            "trace",
+        )
         result = await ToolRunner(settings, ToolRepository()).execute(name, CASES[name][0], deps)
         assert result["status"] == "FAILED" and result["data"] is None
 
@@ -205,7 +245,12 @@ async def test_empty_is_limited_to_current_scope_with_evidence(settings, name):
         result = await ToolRunner(settings, ToolRepository()).execute(
             name,
             CASES[name][0],
-            AgentDeps(principal(), CoreApiClient(http, settings.core_base_url), "run", "trace"),
+            AgentDeps(
+                principal(),
+                BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+                "run",
+                "trace",
+            ),
         )
         assert result["status"] == "EMPTY" and result["authorization"] == "CURRENT_USER_SCOPE"
         assert result["evidenceReferences"]
@@ -249,7 +294,12 @@ async def test_topology_truncation_and_stale_data_are_explicit(settings):
         result = await runner.execute(
             "get_topology_context",
             {"deviceId": "ipc"},
-            AgentDeps(principal(), CoreApiClient(http, settings.core_base_url), "run", "trace"),
+            AgentDeps(
+                principal(),
+                BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+                "run",
+                "trace",
+            ),
         )
         assert result["truncated"] and result["completeness"] == "INCOMPLETE"
         assert len(result["data"]["nodes"]) <= 100 and result["freshnessStatus"] == "INSUFFICIENT"
@@ -262,9 +312,12 @@ async def test_history_evidence_rechecks_current_scope_and_authorization_version
             lambda _: httpx.Response(200, json={"code": "OK", "data": data})
         )
     ) as http:
-        repo, core = ToolRepository(), CoreApiClient(http, settings.core_base_url)
+        repo, business = (
+            ToolRepository(),
+            BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+        )
         runner = ToolRunner(settings, repo)
-        await runner.execute("query_devices", {}, AgentDeps(principal(), core, "run", "trace"))
+        await runner.execute("query_devices", {}, AgentDeps(principal(), business, "run", "trace"))
         provenance, digest = repo.finished[-1][4:6]
         evidence = [
             {
@@ -274,12 +327,12 @@ async def test_history_evidence_rechecks_current_scope_and_authorization_version
                 "resultHash": digest,
             }
         ]
-        assert await runner.revalidate(evidence, principal(), core, "trace")
+        assert await runner.revalidate(evidence, principal(), business, "trace")
         data["items"] = []
         data["total"] = 0
-        assert not await runner.revalidate(evidence, principal(), core, "trace")
+        assert not await runner.revalidate(evidence, principal(), business, "trace")
         evidence[0]["authorizationVersion"] = 0
-        assert not await runner.revalidate(evidence, principal(), core, "trace")
+        assert not await runner.revalidate(evidence, principal(), business, "trace")
 
 
 async def test_tool_deadline_preserves_failed_record(settings):
@@ -292,7 +345,12 @@ async def test_tool_deadline_preserves_failed_record(settings):
         result = await runner.execute(
             "query_devices",
             {},
-            AgentDeps(principal(), CoreApiClient(http, settings.core_base_url), "run", "trace"),
+            AgentDeps(
+                principal(),
+                BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)),
+                "run",
+                "trace",
+            ),
         )
         assert result["status"] == "TIMED_OUT" and repo.finished
 

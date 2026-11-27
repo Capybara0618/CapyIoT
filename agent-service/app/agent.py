@@ -31,8 +31,8 @@ from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
 from pydantic_ai.providers.deepseek import DeepSeekProvider
 from pydantic_ai.usage import RunUsage
 
+from app.business_client import BusinessApiClient, Principal
 from app.config import Settings
-from app.core_client import CoreApiClient, Principal
 from app.errors import ServiceError
 
 ALLOWLIST = frozenset(
@@ -72,7 +72,7 @@ async def no_event(_event, _data):
 @dataclass
 class AgentDeps:
     principal: Principal
-    core: CoreApiClient
+    business: BusinessApiClient
     run_id: str
     correlation_id: str
     evidence_ids: set[str] = field(default_factory=set)
@@ -154,7 +154,7 @@ class OpsAgent:
             raise ValueError("Only explicitly registered CapyIoT business tools are allowed")
         self.provider = None
         if model is None:
-            # Dedicated provider client; never share the Core user's token or its HTTP pool.
+            # Dedicated provider client; never share the business user's token or its HTTP pool.
             self.provider = provider or DeepSeekProvider(
                 openai_client=AsyncOpenAI(
                     api_key=settings.deepseek_api_key.get_secret_value(),

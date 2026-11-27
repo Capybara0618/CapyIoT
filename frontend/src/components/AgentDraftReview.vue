@@ -33,6 +33,13 @@ const deviceName = (id: string) => props.draft.devices.find((d) => d.deviceId ==
     <p v-if="pending" class="video-notice">
       这是一份待确认的草稿。确认后才会创建正式维修工单，负责人和验收人由后续分配流程指定。
     </p>
+    <p
+      v-if="draft.execution?.status === 'RECONCILIATION_REQUIRED'"
+      class="video-notice"
+      role="status"
+    >
+      正式工单的执行结果待核对，请刷新本草稿查看回执。请勿另建草稿重复确认同一维修任务。
+    </p>
     <dl class="draft-details">
       <div>
         <dt>工单来源</dt>

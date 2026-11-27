@@ -17,6 +17,21 @@ def test_missing_configuration_is_rejected(monkeypatch):
         Settings(_env_file=None)
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://platform-service:8087",
+        "https://user:password@platform-service",
+        "https://platform-service/other",
+    ],
+)
+def test_business_origins_are_fixed_tls_roots(settings, url):
+    values = settings.model_dump(by_alias=True)
+    values["platform_base_url"] = url
+    with pytest.raises(ValidationError):
+        Settings(**values)
+
+
 def test_live_is_independent_and_readiness_reports_dependency_failure(settings):
     with TestClient(create_app(settings)) as client:
 
@@ -29,8 +44,11 @@ def test_live_is_independent_and_readiness_reports_dependency_failure(settings):
             return httpx.Response(503)
 
         client.app.state.http._transport = httpx.MockTransport(unavailable)
+        client.app.state.internal_http._transport = httpx.MockTransport(unavailable)
         assert client.get("/health/live").status_code == 200
         response = client.get("/health/ready")
         assert response.status_code == 503
-        assert response.json()["components"] == {"mysql": "DOWN", "core": "DOWN", "model": "DOWN"}
+        assert response.json()["components"] == {
+            name: "DOWN" for name in ("mysql", "platform", "device", "fault", "workflow", "model")
+        }
         assert "offline-fixture-only" not in response.text

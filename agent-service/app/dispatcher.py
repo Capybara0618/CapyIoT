@@ -139,9 +139,9 @@ class DispatchStore:
 
 
 class Dispatcher:
-    def __init__(self, settings, repository, core, signer):
+    def __init__(self, settings, repository, business, signer):
         self.settings, self.store = settings, DispatchStore(repository, settings)
-        self.core, self.signer, self.task = core, signer, None
+        self.business, self.signer, self.task = business, signer, None
 
     async def once(self):
         command = await run_in_threadpool(self.store.claim)
@@ -151,7 +151,7 @@ class Dispatcher:
             token = self.signer.issue(command)
             if command["reconcile"]:
                 try:
-                    receipt = await self.core.command_receipt(command, token)
+                    receipt = await self.business.command_receipt(command, token)
                 except ServiceError as error:
                     if error.status != 404:
                         raise
@@ -160,13 +160,13 @@ class Dispatcher:
                         self.store.complete, command, CreatedOrder.model_validate(receipt)
                     )
                     return True
-            response = await self.core.dispatch_work_order(command, token)
+            response = await self.business.dispatch_work_order(command, token)
             await run_in_threadpool(
                 self.store.complete, command, CreatedOrder.model_validate(response)
             )
         except ServiceError as error:
             # After an unknown earlier outcome, losing authorization cannot prove no order exists.
-            unknown = (
+            unknown = error.code != "WORKORDER_OPERATION_ABORTED" and (
                 command["reconcile"]
                 or error.code == "COMMAND_OUTCOME_UNKNOWN"
                 or error.status >= 500

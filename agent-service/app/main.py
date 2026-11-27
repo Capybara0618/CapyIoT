@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import ssl
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -13,14 +14,15 @@ from fastapi.responses import JSONResponse
 from app.agent import OpsAgent
 from app.api import router
 from app.auth import UserAuthenticator
+from app.business_client import BusinessApiClient
 from app.config import Settings, load_settings
-from app.core_client import CoreApiClient
 from app.database import Database
 from app.delegation import DelegationSigner
 from app.dispatcher import Dispatcher
 from app.drafts import DraftRepository, DraftService
 from app.errors import ServiceError
 from app.runtime import QueryRuntime
+from app.service_identity import ServiceIdentity
 from app.tools import ToolRunner
 
 LOG = logging.getLogger("capyiot.agent")
@@ -42,13 +44,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             follow_redirects=False,
             limits=httpx.Limits(max_connections=20),
         )
+        service_tls = (
+            ssl.create_default_context(cafile=config.service_ca_file)
+            if not config.internal_http_test_only
+            else True
+        )
+        app.state.internal_http = httpx.AsyncClient(
+            verify=service_tls,
+            timeout=3,
+            trust_env=False,
+            follow_redirects=False,
+            limits=httpx.Limits(max_connections=20),
+        )
+        app.state.service_identity = ServiceIdentity(config.service_key_file)
         app.state.model_health = None
-        app.state.core = CoreApiClient(app.state.http, config.core_base_url)
-        app.state.auth = UserAuthenticator(app.state.http, config, app.state.core)
+        app.state.business = BusinessApiClient(
+            app.state.internal_http, config, app.state.service_identity
+        )
+        app.state.auth = UserAuthenticator(app.state.internal_http, config, app.state.business)
         app.state.repository = DraftRepository(app.state.database.sessions)
         app.state.tools = ToolRunner(config, app.state.repository)
         app.state.drafts = DraftService(
-            config, app.state.repository, app.state.tools, app.state.core
+            config, app.state.repository, app.state.tools, app.state.business
         )
         app.state.ops_agent = OpsAgent(
             config, tools=(*app.state.tools.tools(), app.state.drafts.tool())
@@ -57,7 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             config,
             app.state.repository,
             app.state.tools,
-            app.state.core,
+            app.state.business,
             app.state.auth,
             app.state.ops_agent,
         )
@@ -67,7 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 config.delegation_key_file, config.delegation_keys_generate
             )
             app.state.dispatcher = Dispatcher(
-                config, app.state.repository, app.state.core, app.state.signer
+                config, app.state.repository, app.state.business, app.state.signer
             )
             app.state.dispatcher.start()
         logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -80,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.runtime.close()
             await app.state.ops_agent.close()
             await app.state.http.aclose()
+            await app.state.internal_http.aclose()
             await asyncio.to_thread(app.state.database.close)
 
     app = FastAPI(
@@ -151,6 +169,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.get("/.well-known/service-jwks.json")
+    async def service_jwks(request: Request):
+        return request.app.state.service_identity.jwks()
+
     @app.get("/.well-known/agent-jwks.json")
     async def agent_jwks(request: Request):
         if request.app.state.signer is None:
@@ -169,13 +191,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             components["mysql"] = "UP"
         except Exception:
             components["mysql"] = "DOWN"
-        try:
-            response = await state.http.get(
-                state.settings.core_base_url.rstrip("/") + "/actuator/health/readiness"
-            )
-            components["core"] = "UP" if response.status_code == 200 else "DOWN"
-        except httpx.HTTPError:
-            components["core"] = "DOWN"
+
+        async def check(name, origin):
+            try:
+                response = await state.internal_http.get(origin + "/actuator/health/readiness")
+                components[name] = (
+                    "UP"
+                    if response.status_code == 200 and response.json().get("status") == "UP"
+                    else "DOWN"
+                )
+            except (httpx.HTTPError, ValueError, AttributeError):
+                components[name] = "DOWN"
+
+        await asyncio.gather(
+            *(check(name, origin) for name, origin in state.settings.business_origins.items())
+        )
         # Metadata check only: health probes never generate billable completions.
         cached = state.model_health
         if not cached or time.monotonic() - cached[0] > 15:

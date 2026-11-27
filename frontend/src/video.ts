@@ -27,6 +27,9 @@ export interface Device {
   operatingMode: string
   dataFreshness: string
   healthStatus: string
+  healthAvailability?: 'AVAILABLE' | 'INCOMPLETE' | 'UNAVAILABLE' | 'NOT_QUERIED'
+  healthCheckedAt?: string | null
+  healthSourceVersion?: number | null
   version: number
   lastHeartbeatReceivedAt: string | null
   lastBusinessDataReceivedAt: string | null
@@ -184,13 +187,69 @@ export function core<T>(path: string, init: RequestInit = {}) {
   return request<T>(path, { ...init, headers })
 }
 const pending = new Map<string, string>()
+let sessionGeneration = 0
+// Keep the exact unresolved command in memory for this login, including its original key.
+export const uncertainWorkOrder = ref<{
+  path: string
+  content: string
+  method: string
+  operationId?: string
+} | null>(null)
+export interface WorkOperation {
+  operationId: string
+  state: string
+  workOrderId: string | null
+  checkedAt: string
+}
+export async function checkWorkOperation() {
+  const command = uncertainWorkOrder.value
+  const generation = sessionGeneration
+  if (!command?.operationId) return null
+  const result = await core<WorkOperation>(
+    '/workorder-operations/' + encodeURIComponent(command.operationId),
+  )
+  if (generation !== sessionGeneration) throw new ApiError('会话已变化，请重新加载', 401)
+  if (result.operationId !== command.operationId)
+    throw new ApiError('操作状态响应不匹配，请保留原请求继续核对', 502)
+  if (['COMMITTED', 'ABORTED'].includes(result.state)) {
+    pending.delete(command.method + command.path + command.content)
+    uncertainWorkOrder.value = null
+  }
+  return result
+}
+export async function retryWorkOrderCommand() {
+  const unresolved = uncertainWorkOrder.value
+  if (!unresolved) return null
+  return command<{ workOrderId?: string }>(
+    unresolved.path,
+    JSON.parse(unresolved.content),
+    unresolved.method,
+  )
+}
+window.addEventListener('capyiot:unauthorized', () => {
+  sessionGeneration++
+  uncertainWorkOrder.value = null
+})
 window.addEventListener('capyiot:session-changed', () => {
+  sessionGeneration++
   me.value = null
   pending.clear()
+  uncertainWorkOrder.value = null
 })
 export async function command<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
+  const generation = sessionGeneration
+  const unresolved = uncertainWorkOrder.value
   const content = JSON.stringify(body),
     signature = method + path + content
+  if (
+    path.startsWith('/workorders') &&
+    uncertainWorkOrder.value &&
+    signature !==
+      uncertainWorkOrder.value.method +
+        uncertainWorkOrder.value.path +
+        uncertainWorkOrder.value.content
+  )
+    throw new ApiError('请先核对上一笔工单操作的结果', 409, 'PREVIOUS_COMMAND_UNRESOLVED')
   const key = pending.get(signature) ?? crypto.randomUUID()
   pending.set(signature, key)
   try {
@@ -199,12 +258,34 @@ export async function command<T>(path: string, body: unknown, method = 'POST'): 
       body: content,
       headers: { 'Idempotency-Key': key },
     })
+    if (generation !== sessionGeneration) return result
     pending.delete(signature)
+    if (path.startsWith('/workorders')) uncertainWorkOrder.value = null
     return result
   } catch (error) {
+    if (generation !== sessionGeneration) throw error
     // Unknown network outcomes reuse their original key on a retry of the same command.
-    if (error instanceof ApiError && error.status > 0 && error.status < 500)
+    if (
+      error instanceof ApiError &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      (!path.startsWith('/workorders') ||
+        !unresolved ||
+        error.code === 'WORKORDER_OPERATION_ABORTED')
+    ) {
       pending.delete(signature)
+      if (path.startsWith('/workorders')) uncertainWorkOrder.value = null
+    } else if (path.startsWith('/workorders')) {
+      const id =
+        (error instanceof ApiError ? error.details.operationId : undefined) ??
+        unresolved?.operationId
+      uncertainWorkOrder.value = {
+        path,
+        content,
+        method,
+        ...(typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id) ? { operationId: id } : {}),
+      }
+    }
     throw error
   }
 }
@@ -215,6 +296,11 @@ export function query(values: Record<string, string | number | undefined>) {
   return params.toString()
 }
 export const labels: Record<string, string> = {
+  PREPARED: '已受理，待核对',
+  RESERVED: '已预约，待完成',
+  COMMITTED: '操作已完成',
+  ABORTED: '操作已终止',
+  RECONCILIATION_REQUIRED: '结果待核对',
   IPC: '网络摄像机',
   NVR: '录像存储主机',
   SWITCH: '交换机',

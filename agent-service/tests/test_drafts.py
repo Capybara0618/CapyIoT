@@ -183,7 +183,7 @@ def test_rejection_expiry_revision_and_key_reuse(database):
 
 
 async def test_changed_business_state_invalidates_before_confirmation(database, settings):
-    from app.core_client import Principal
+    from app.business_client import Principal
     from app.draft_schemas import DraftDecision
     from app.drafts import DraftService
 
@@ -233,7 +233,7 @@ async def test_full_length_draft_uses_bounded_audit_and_permission_denials_are_r
     import json
 
     from app.agent import AgentDeps
-    from app.core_client import Principal
+    from app.business_client import Principal
     from app.drafts import DraftService
     from app.models import ToolCall
 
@@ -253,7 +253,7 @@ async def test_full_length_draft_uses_bounded_audit_and_permission_denials_are_r
     service = DraftService(settings, repo, None, Core())
     result = await service.prepare(
         payload(description="检" * 2000),
-        AgentDeps(principal, service.core, run, "trace"),
+        AgentDeps(principal, service.business, run, "trace"),
         "full-length",
     )
     assert result["status"] == "SUCCEEDED"
@@ -263,6 +263,6 @@ async def test_full_length_draft_uses_bounded_audit_and_permission_denials_are_r
         assert len(call.input_summary) < 1000 and json.loads(call.input_summary)["argumentsHash"]
     unauthorized = Principal(owner, "session", 1, frozenset({"agent.use"}), "not-persisted")
     denied = await service.prepare(
-        payload(), AgentDeps(unauthorized, service.core, run, "trace"), "denied"
+        payload(), AgentDeps(unauthorized, service.business, run, "trace"), "denied"
     )
     assert denied["authorization"] == "DENIED"

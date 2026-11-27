@@ -6,13 +6,13 @@ import httpx
 import jwt
 from fastapi import Request
 
-from app.core_client import CoreApiClient, Principal
+from app.business_client import BusinessApiClient, Principal
 from app.errors import ServiceError, unavailable
 
 
 class UserAuthenticator:
-    def __init__(self, http, settings, core: CoreApiClient):
-        self.http, self.settings, self.core = http, settings, core
+    def __init__(self, http, settings, business: BusinessApiClient):
+        self.http, self.settings, self.business = http, settings, business
         self.keys, self.expires, self.last_refresh = {}, 0, float("-inf")
         self.lock = asyncio.Lock()
 
@@ -101,10 +101,11 @@ class UserAuthenticator:
                 raise ValueError("Invalid token time")
         except (jwt.PyJWTError, ValueError, KeyError, TypeError):
             raise ServiceError("UNAUTHENTICATED", 401, "登录凭证无效") from None
-        # Never cache user grants/session state. Core revalidates every request, including histories.
-        user = await self.core.current_user(token, correlation)
+        # Never cache user grants/session state. Platform revalidates every request, including histories.
+        user = await self.business.current_user(token, correlation)
         if (
             user.userId != claims["sub"]
+            or user.sessionId != claims["sid"]
             or user.status != "ACTIVE"
             or user.authorizationVersion != claims["authz_ver"]
         ):

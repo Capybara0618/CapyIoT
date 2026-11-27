@@ -13,8 +13,8 @@ test('observability reads bounded live queries and shows the selected deployment
   page,
 }) => {
   await page.goto('/observability')
-  await page.getByLabel('账号', { exact: true }).fill('operator')
-  await page.getByLabel('密码', { exact: true }).fill(env.DEMO_OPERATOR_PASSWORD)
+  await page.getByLabel('账号', { exact: true }).fill('admin')
+  await page.getByLabel('密码', { exact: true }).fill(env.DEMO_ADMIN_PASSWORD)
   const initial = page.waitForResponse((response) =>
     response.url().includes('/observability/metrics?'),
   )

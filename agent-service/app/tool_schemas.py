@@ -1,4 +1,4 @@
-"""Fixed input contracts and allowlisted projections; never pass raw Core payloads to a model."""
+"""Fixed input contracts and allowlisted projections; never pass raw service payloads to a model."""
 
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Generic, Literal, TypeVar
@@ -157,6 +157,11 @@ class Device(Projection):
     operatingMode: str = "UNKNOWN"
     dataFreshness: str = "NO_DATA"
     healthStatus: str = "UNKNOWN"
+    healthAvailability: Literal["AVAILABLE", "INCOMPLETE", "UNAVAILABLE", "NOT_QUERIED"] | None = (
+        None
+    )
+    healthCheckedAt: datetime | None = None
+    healthSourceVersion: int | None = None
     version: int = 0
     stateVersion: int = 0
     lastHeartbeatReceivedAt: datetime | None = None

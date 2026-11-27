@@ -34,7 +34,11 @@ def test_signing_keys_are_independent_short_lived_bound_and_rotatable(tmp_path):
     first = signer.issue(command)
     public = jwt.PyJWK.from_dict(signer.jwks()["keys"][0]).key
     claims = jwt.decode(
-        first, public, algorithms=["RS256"], audience="capyiot-core", issuer="capyiot-agent-service"
+        first,
+        public,
+        algorithms=["RS256"],
+        audience="capyiot-workflow",
+        issuer="capyiot-agent-service",
     )
     assert claims["exp"] - claims["iat"] == 60
     assert all(claims[k] == value for k, value in command.items())
@@ -86,27 +90,27 @@ async def test_lost_response_reconciles_after_restart_without_creating_twice(
     database, settings, tmp_path
 ):
     repo, owner, draft = queued(database)
-    core, signer = Core(), DelegationSigner(tmp_path / "key.json", generate=True)
-    dispatcher = Dispatcher(settings, repo, core, signer)
+    business, signer = Core(), DelegationSigner(tmp_path / "key.json", generate=True)
+    dispatcher = Dispatcher(settings, repo, business, signer)
     assert await dispatcher.once()
     assert repo.draft(owner, draft["draftId"])["execution"]["status"] == "RECONCILIATION_REQUIRED"
     ready_retry(database, draft)
-    assert await Dispatcher(settings, repo, core, signer).once()
+    assert await Dispatcher(settings, repo, business, signer).once()
     final = repo.draft(owner, draft["draftId"])
     assert final["status"] == "EXECUTED" and final["execution"]["workOrderNo"] == "WO-101"
-    assert len(core.created) == 1 and len(core.keys) == 1
+    assert len(business.created) == 1 and len(business.keys) == 1
 
 
 async def test_revocation_before_dispatch_fails_without_business_creation(
     database, settings, tmp_path
 ):
     repo, owner, draft = queued(database)
-    core = Core()
-    core.deny = True
+    business = Core()
+    business.deny = True
     await Dispatcher(
-        settings, repo, core, DelegationSigner(tmp_path / "key.json", generate=True)
+        settings, repo, business, DelegationSigner(tmp_path / "key.json", generate=True)
     ).once()
-    assert not core.created
+    assert not business.created
     assert repo.draft(owner, draft["draftId"])["execution"]["status"] == "FAILED"
 
 
@@ -114,18 +118,18 @@ async def test_unknown_outcome_remains_unknown_after_revocation_and_is_bounded(
     database, settings, tmp_path
 ):
     repo, owner, draft = queued(database)
-    core = Core()
+    business = Core()
     dispatcher = Dispatcher(
-        settings, repo, core, DelegationSigner(tmp_path / "key.json", generate=True)
+        settings, repo, business, DelegationSigner(tmp_path / "key.json", generate=True)
     )
     await dispatcher.once()
-    core.deny = True
+    business.deny = True
     for _ in range(settings.dispatch_max_attempts - 1):
         ready_retry(database, draft)
         await dispatcher.once()
     assert not await dispatcher.once()
     assert repo.draft(owner, draft["draftId"])["execution"]["status"] == "RECONCILIATION_REQUIRED"
-    assert len(core.created) == 1
+    assert len(business.created) == 1
 
 
 def test_expired_lease_is_reconciled_and_stale_worker_cannot_override(database, settings):
@@ -139,3 +143,25 @@ def test_expired_lease_is_reconciled_and_stale_worker_cannot_override(database, 
     assert second["reconcile"] and second["idempotencyKey"] == first["idempotencyKey"]
     store.complete(first, error_code="STALE", unknown=False)
     assert repo.draft(owner, draft["draftId"])["execution"]["status"] == "EXECUTING"
+
+
+async def test_authoritative_abort_ends_reconciliation_without_redispatch(
+    database, settings, tmp_path
+):
+    repo, owner, draft = queued(database)
+    business = Core()
+    dispatcher = Dispatcher(
+        settings, repo, business, DelegationSigner(tmp_path / "key.json", generate=True)
+    )
+    await dispatcher.once()
+    ready_retry(database, draft)
+
+    async def aborted(command, token):
+        raise ServiceError(
+            "WORKORDER_OPERATION_ABORTED", 409, "操作已终止", {"operationId": "operation-1"}
+        )
+
+    business.command_receipt = aborted
+    await dispatcher.once()
+    assert repo.draft(owner, draft["draftId"])["execution"]["status"] == "FAILED"
+    assert len(business.keys) == 1

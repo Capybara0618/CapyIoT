@@ -30,7 +30,13 @@ class DatabaseSettings(BaseSettings):
 
 
 class Settings(DatabaseSettings):
-    core_base_url: str
+    platform_base_url: str = "https://platform-service:8087"
+    device_base_url: str = "https://device-service:8082"
+    fault_base_url: str = "https://alarm-service:8083"
+    workflow_base_url: str = "https://workflow-service:8084"
+    service_key_file: str = "/run/secrets/agent-service-keys.json"
+    service_ca_file: str = "/run/secrets/internal-ca.pem"
+    internal_http_test_only: bool = False
     jwks_url: str
     deepseek_api_key: SecretStr = Field(validation_alias="DEEPSEEK_API_KEY")
     deepseek_model: str = Field(min_length=1, max_length=100, validation_alias="DEEPSEEK_MODEL")
@@ -62,11 +68,20 @@ class Settings(DatabaseSettings):
     max_context_messages: int = Field(default=8, ge=0, le=20)
     max_context_chars: int = Field(default=12000, ge=100, le=32000)
 
+    @property
+    def business_origins(self):
+        return {
+            "platform": self.platform_base_url.rstrip("/"),
+            "device": self.device_base_url.rstrip("/"),
+            "fault": self.fault_base_url.rstrip("/"),
+            "workflow": self.workflow_base_url.rstrip("/"),
+        }
+
     @model_validator(mode="after")
     def validate_configuration(self):
         if not self.db_password.get_secret_value() or not self.deepseek_api_key.get_secret_value():
             raise ValueError("Database and model credentials must be configured")
-        for value in (self.core_base_url, self.jwks_url, self.deepseek_base_url):
+        for value in (*self.business_origins.values(), self.jwks_url, self.deepseek_base_url):
             parsed = urlsplit(value)
             if (
                 parsed.scheme not in {"http", "https"}
@@ -79,6 +94,14 @@ class Settings(DatabaseSettings):
                 raise ValueError(
                     "Configured upstream URLs must have a host and no credentials/query"
                 )
+        for value in (*self.business_origins.values(), self.jwks_url):
+            parsed = urlsplit(value)
+            if parsed.scheme != "https" and not (
+                self.internal_http_test_only and parsed.hostname in {"localhost", "127.0.0.1"}
+            ):
+                raise ValueError("Internal services require HTTPS; HTTP is loopback test-only")
+        if any(urlsplit(value).path not in {"", "/"} for value in self.business_origins.values()):
+            raise ValueError("Business service URLs must be fixed root origins")
         if (
             not self.allow_insecure_model_endpoint
             and urlsplit(self.deepseek_base_url).scheme != "https"

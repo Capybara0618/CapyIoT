@@ -6,6 +6,9 @@ import ValueBadge from '../components/ValueBadge.vue'
 import {
   allowed,
   command,
+  uncertainWorkOrder,
+  checkWorkOperation,
+  retryWorkOrderCommand,
   core,
   label,
   loadMe,
@@ -50,6 +53,24 @@ const checks = reactive([
   { name: '逐台核查维修设备状态及业务数据', passed: false },
   { name: '确认处置结果符合工单预期', passed: false },
 ])
+const operation = ref<Awaited<ReturnType<typeof checkWorkOperation>>>(null)
+async function checkOperation() {
+  await run(async () => {
+    operation.value = await checkWorkOperation()
+    if (operation.value?.state === 'COMMITTED') {
+      await reload()
+      if (operation.value.workOrderId) await open(operation.value.workOrderId)
+    }
+  })
+}
+async function retryOriginal() {
+  await run(async () => {
+    const result = await retryWorkOrderCommand()
+    await reload()
+    if (result?.workOrderId) await open(result.workOrderId)
+    else if (selected.value) await open(selected.value.workOrderId)
+  })
+}
 const isRepairer = computed(
   () => !!selected.value && selected.value.assignedRepairerId === me.value?.userId,
 )
@@ -173,6 +194,21 @@ onMounted(() =>
       ><button :disabled="busy" @click="run(reload)">刷新</button></PageHeader
     >
     <p v-if="error" class="video-error" role="alert">{{ error }}</p>
+    <section v-if="uncertainWorkOrder" class="video-panel" aria-label="待核对的工单操作">
+      <p class="video-notice">
+        上一笔工单操作结果尚未确认。请先核对结果，避免重复提交；重试会使用原请求和原幂等键。
+      </p>
+      <p v-if="uncertainWorkOrder.operationId" class="video-muted">
+        操作编号：{{ uncertainWorkOrder.operationId }}
+      </p>
+      <button v-if="uncertainWorkOrder.operationId" :disabled="busy" @click="checkOperation">
+        查询操作状态
+      </button>
+      <button :disabled="busy" @click="retryOriginal">核对并重试原操作</button>
+    </section>
+    <p v-if="operation" class="video-muted" role="status">
+      操作状态：{{ label(operation.state) }} · 核对时间 {{ formatTime(operation.checkedAt) }}
+    </p>
     <section class="video-panel">
       <div class="video-toolbar">
         <select
@@ -335,7 +371,7 @@ onMounted(() =>
         </div>
         <label v-if="selected.status !== 'OPEN'"
           >改派原因<textarea v-model="assign.reason" required maxlength="1000"></textarea></label
-        ><button class="primary" :disabled="busy">
+        ><button class="primary" :disabled="busy || !!uncertainWorkOrder">
           {{ selected.status === 'OPEN' ? '指派任务' : '保存改派' }}
         </button>
       </form>
@@ -344,20 +380,20 @@ onMounted(() =>
           ><button
             v-if="selected.status === 'ASSIGNED'"
             class="primary"
-            :disabled="busy"
+            :disabled="busy || !!uncertainWorkOrder"
             @click="act('accept')"
           >
             接单</button
           ><button
             v-if="selected.status === 'ASSIGNED'"
-            :disabled="busy"
+            :disabled="busy || !!uncertainWorkOrder"
             @click="reasonAction('decline')"
           >
             拒接并说明原因</button
           ><button
             v-if="['ACCEPTED', 'RETURNED'].includes(selected.status)"
             class="primary"
-            :disabled="busy"
+            :disabled="busy || !!uncertainWorkOrder"
             @click="act('start')"
           >
             开始维修
@@ -368,13 +404,13 @@ onMounted(() =>
             ['OPEN', 'ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'RETURNED'].includes(selected.status)
           "
           class="danger"
-          :disabled="busy"
+          :disabled="busy || !!uncertainWorkOrder"
           @click="reasonAction('cancel')"
         >
           取消工单</button
         ><button
           v-if="canReopen && selected.status === 'CLOSED' && selected.sourceType === 'INCIDENT'"
-          :disabled="busy"
+          :disabled="busy || !!uncertainWorkOrder"
           @click="reasonAction('reopen')"
         >
           申请重开
@@ -392,7 +428,7 @@ onMounted(() =>
             </option></select
           ><label
             >记录内容<textarea v-model="repair.content" required maxlength="4000"></textarea></label
-          ><button :disabled="busy">保存记录</button>
+          ><button :disabled="busy || !!uncertainWorkOrder">保存记录</button>
         </form>
         <form class="video-form video-panel" @submit.prevent="submit">
           <h2>提交独立验收</h2>
@@ -403,7 +439,7 @@ onMounted(() =>
               required
               maxlength="2000"
             ></textarea></label
-          ><button class="primary" :disabled="busy">提交验收</button>
+          ><button class="primary" :disabled="busy || !!uncertainWorkOrder">提交验收</button>
         </form>
       </div>
       <form
@@ -430,7 +466,11 @@ onMounted(() =>
           ></textarea></label
         ><button
           class="primary"
-          :disabled="busy || (acceptance.result === 'PASS' && checks.some((c) => !c.passed))"
+          :disabled="
+            busy ||
+            !!uncertainWorkOrder ||
+            (acceptance.result === 'PASS' && checks.some((c) => !c.passed))
+          "
         >
           提交验收结果
         </button>
@@ -508,7 +548,7 @@ onMounted(() =>
             </select></label
           >
         </div>
-        <button class="primary" :disabled="busy">确认创建正式工单</button>
+        <button class="primary" :disabled="busy || !!uncertainWorkOrder">确认创建正式工单</button>
       </form>
     </details>
   </div>

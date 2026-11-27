@@ -161,7 +161,7 @@ class ToolRunner:
     def __init__(self, settings, repository):
         self.settings, self.repository = settings, repository
 
-    async def fetch(self, name, raw_arguments, principal, core, correlation):
+    async def fetch(self, name, raw_arguments, principal, business, correlation):
         if name not in CONTRACTS:
             raise ServiceError("TOOL_NOT_ALLOWED", 403, "工具未开放")
         arguments = CONTRACTS[name][0].model_validate(raw_arguments)
@@ -178,7 +178,7 @@ class ToolRunner:
         if name == "get_maintenance_history":
             device, order = values.pop("deviceId", None), values.pop("workOrderId", None)
             if order:
-                row = await core.read("_get_work_order", principal, correlation, identity=order)
+                row = await business.read("_get_work_order", principal, correlation, identity=order)
                 matches = not device or any(
                     item.get("deviceId") == device for item in row.get("deviceItems", [])
                 )
@@ -202,9 +202,13 @@ class ToolRunner:
                     "size": values["size"],
                 }
             else:
-                raw = await core.read(name, principal, correlation, identity=device, filters=values)
+                raw = await business.read(
+                    name, principal, correlation, identity=device, filters=values
+                )
         else:
-            raw = await core.read(name, principal, correlation, identity=identity, filters=values)
+            raw = await business.read(
+                name, principal, correlation, identity=identity, filters=values
+            )
         # Validate the typed projection before it enters model context. Raw payload fields are dropped.
         clipped, truncated = bounded_projection(raw)
         projected = CONTRACTS[name][1].model_validate(clipped).model_dump(mode="json")
@@ -232,6 +236,8 @@ class ToolRunner:
         if cut or completeness not in {"COMPLETE", "INCOMPLETE"}:
             completeness = "INCOMPLETE" if cut else "UNKNOWN"
         nodes = projected.get("items", projected.get("nodes", [projected]))
+        if any(row.get("healthAvailability") not in {None, "AVAILABLE"} for row in nodes):
+            completeness = "INCOMPLETE"
         freshness = "UNKNOWN"
         if any(row.get("dataFreshness") in {"STALE", "NO_DATA"} for row in nodes):
             freshness = "INSUFFICIENT"
@@ -263,7 +269,7 @@ class ToolRunner:
         try:
             async with asyncio.timeout(self.settings.tool_timeout_seconds):
                 data, completeness, freshness, cut, effective = await self.fetch(
-                    name, raw_arguments, deps.principal, deps.core, deps.correlation_id
+                    name, raw_arguments, deps.principal, deps.business, deps.correlation_id
                 )
             empty = "items" in data and not data["items"] and not cut
             evidence_id = str(uuid.uuid4())
@@ -383,7 +389,7 @@ class ToolRunner:
 
         return tuple(create(name, contract) for name, contract in CONTRACTS.items())
 
-    async def revalidate(self, evidence, principal, core, correlation):
+    async def revalidate(self, evidence, principal, business, correlation):
         if not evidence or len(evidence) > self.settings.max_tool_calls:
             return False
 
@@ -396,7 +402,7 @@ class ToolRunner:
             try:
                 async with asyncio.timeout(self.settings.tool_timeout_seconds):
                     data, *_ = await self.fetch(
-                        item["toolName"], item["arguments"], principal, core, correlation
+                        item["toolName"], item["arguments"], principal, business, correlation
                     )
                 return visibility_hash(data) == item["resultHash"]
             except (ServiceError, ValidationError, ValueError, TimeoutError):

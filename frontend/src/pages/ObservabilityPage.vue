@@ -16,12 +16,13 @@ import PageHeader from '../components/PageHeader.vue'
 import MetricTrend from '../components/MetricTrend.vue'
 
 const services = [
-  { id: 'core-service', name: '业务核心', icon: Server },
+  { id: 'platform-service', name: '身份与平台', icon: Server },
+  { id: 'agent-service', name: '运维助手', icon: Activity },
   { id: 'gateway', name: 'API 网关', icon: Server },
   { id: 'device-ingestion', name: '设备接入', icon: Radio },
-  { id: 'device-service', name: '历史设备查询', icon: HardDrive },
-  { id: 'alarm-service', name: '历史告警查询', icon: BellRing },
-  { id: 'workflow-service', name: '历史工单查询', icon: ClipboardList },
+  { id: 'device-service', name: '设备与接入状态', icon: HardDrive },
+  { id: 'alarm-service', name: '异常与故障', icon: BellRing },
+  { id: 'workflow-service', name: '维修工单', icon: ClipboardList },
 ] as const
 const healthLabels = { UP: '就绪', DOWN: '未就绪', UNREACHABLE: '探测失败' } as const
 interface Health {
@@ -100,7 +101,7 @@ const health = ref<Health>()
 const metrics = ref<Metrics>()
 const deployment = ref<Deployment>()
 const minutes = ref(15)
-const service = ref('core-service')
+const service = ref('device-service')
 const loading = ref(false)
 const healthError = ref('')
 const metricsError = ref('')
@@ -111,6 +112,7 @@ const status = computed(
 const ready = computed(() => health.value?.services.filter((item) => item.status === 'UP').length)
 const metricEnd = computed(() => (metrics.value ? Date.parse(metrics.value.checkedAt) / 1000 : 0))
 const series = computed(() => new Map(metrics.value?.series.map((item) => [item.id, item.points])))
+const supportedDefinitions = computed(() => definitions.filter((item) => series.value.has(item.id)))
 const podCounts = computed(() => {
   if (!deployment.value?.reachable) return '—'
   const totals = deployment.value.workloads.reduce(
@@ -308,7 +310,10 @@ onBeforeUnmount(() => clearInterval(timer))
       </div>
     </div>
     <div v-else-if="metrics?.prometheusAvailable" class="monitor-grid" aria-label="Prometheus 指标">
-      <section v-for="metric in definitions" :key="metric.id" class="network-panel">
+      <p v-if="!supportedDefinitions.length" class="monitor-no-data">
+        所选服务尚未提供可用指标；请查看服务就绪状态。
+      </p>
+      <section v-for="metric in supportedDefinitions" :key="metric.id" class="network-panel">
         <div class="network-toolbar">
           <h2>{{ metric.label }}</h2>
         </div>
