@@ -24,8 +24,12 @@ MySQL、Kafka、EMQX 保持集群外独立运行，使用新项目、新卷和�
 
 `infrastructure-state.json` 区分 CREATING、CLUSTER_BOUND、INFRA_STARTING、INFRA_READY；失败保留状态、卷和容器，先核对再恢复，不自动删除或重建，不激活任何应用消费、扫描或 Dispatcher。这里的 INFRA_READY 只表示基础设施启动，不表示业务或云原生验收完成。
 
+Docker 重启会重建 Kind 节点的网络命名空间。再次运行前执行 `reconcile-network --execute`（带齐相同目标参数），核对 daemon、节点、bridge 和集群 UID 后恢复唯一的 Pod 网段到外部 bridge 的节点内 SNAT 规则；已有规则不重复添加，不改宿主路由。`start-infra` 也执行这项检查。不得以重建 bundle、轮换身份或删除数据卷修复网络。
+
 私有 bundle、SQL、证书、真实 Secret、kubeconfig、机器地址及原始报告均保存在忽略的 `var/`，不得加入 Git。所有变更测试留到本轮编码完成后的统一验证阶段。
 
 基础设施就绪后用 `verify_cloud_native.py --groups ...` 统一执行所选检查，显式提供同一目标、私有报告目录和已构建的 `cn-<commit>` 镜像标签。支持 unit/build/manifests/deploy/protocol/workflow/agent/browser/resilience/metrics/recovery，真实模型单列 real-model，另给本地 Key 文件、模型ID；不默认调用真实模型。metrics 必须提供首次运行前冻结的本地 policy 文件；resilience 必须提供另一个实际构建的镜像标签作为滚动升级版本。
 
 `cloud_native_release.py` 的动作依次为 prepare、migrate、passive、activate；迁移独立运行且失败不自动重试。中断后 reconcile 只依据匹配的 Job/Deployment 证明推进状态；不能将未知操作强行改为成功。rollback 只恢复已经记录且 Schema 兼容的应用版本，不倒退数据库内容或 Kafka 位点。[已有环境接管边界](ADOPTION.md) 与全新隔离部署分别处理。
+
+前端默认使用完整 Dockerfile 构建。若统一检查已经完成本机 `npm run build`，可用 `cloud_native_frontend_artifact.attest()` 将源码、dist 和构建日志摘要记录到本地证明，再给构建入口传 `--frontend-artifact <证明文件>`。它仅复制已核验的跨平台静态输出及 Nginx 配置，以 `Dockerfile.runtime` 打包，不复制宿主 node_modules。产物或记录变化会拒绝复用；原始构建失败与后续替代构建分别保留。

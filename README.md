@@ -111,4 +111,4 @@ python scripts/verify_microservices.py --project capyiot-ms-verify-local --compo
 
 监控按需启用 `monitoring` profile；基础配置默认关闭追踪导出。候选 Prometheus 使用内部 CA 采集六个 Java 应用，Gateway 通过专用容器内管理端口采集；Agent 不伪装 JVM 指标。可在本地配置 `MS_PROMETHEUS_URL=http://prometheus:9090`、`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger:4318/v1/traces` 后显式启动对应 profile 并重建需更新配置的容器。监控使用候选项目自己的卷，保留原监控数据；应用与可选组件均有资源上限，这些是配置预算，不是实测容量。
 
-保留的 Helm Chart 明确标为历史非支持路径，模板拒绝当前部署，Kubernetes 辅助发布脚本已停用。本轮不新增 Kubernetes 集群。
+保留的 Helm Chart 和旧 Kubernetes 辅助发布脚本属于历史非支持路径。当前七应用及前端的 Kubernetes 部署使用独立的 [Kustomize 清单与发布工具](infra/k8s/README.md)，基础设施保持集群外运行；现有微服务 Compose 部署继续保留。代码交付、隔离运行验收与已有体验环境接管分别记录，所选测试组通过不代表完整云原生验收通过。

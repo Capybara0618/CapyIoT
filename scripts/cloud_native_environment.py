@@ -219,6 +219,20 @@ def create_cluster(target):
     cn.save_state(target, state)
 
 
+def reconcile_network(target):
+    """Restore the one owned node-local rule lost when Docker recreates its network namespace."""
+    state = target.state()
+    if state.get("phase") not in {"CLUSTER_BOUND", "INFRA_STARTING", "INFRA_READY"}:
+        raise ValueError("A bound cluster is required before network reconciliation")
+    target.assert_daemon(state)
+    target.assert_cluster(state)
+    prefix = ["docker", "exec", state["nodeId"], "iptables", "-t", "nat"]
+    rules = cn.execute([*prefix, "-S", "POSTROUTING"]).decode().splitlines()
+    rule = ["-s", cn.POD_SUBNET, "-d", cn.SUBNET, "-j", "SNAT", "--to-source", cn.NODE_IP]
+    if "-A POSTROUTING " + " ".join(rule) not in rules:
+        cn.execute([*prefix, "-I", "POSTROUTING", "1", *rule])
+
+
 def start_infra(target):
     if target.manifest["mode"] != "fresh":
         raise ValueError("Imported identities require controlled adoption, never fresh volume initialization")
@@ -227,6 +241,7 @@ def start_infra(target):
         raise ValueError("A newly bound cluster is required before infrastructure initialization")
     target.assert_daemon(state)
     target.assert_cluster(state)
+    reconcile_network(target)
     profile = target.manifest.get("resourceProfile", "standard")
     memory_budget(json.loads(cn.execute(["docker", "info", "--format", "{{json .}}"])), 5.3 if profile == "compact" else 8, profile)
     network = json.loads(cn.execute(["docker", "network", "inspect", cn.BRIDGE]))[0]
@@ -265,7 +280,7 @@ def verified_endpoints(target):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["plan", "prepare", "preflight", "create-cluster", "start-infra"])
+    parser.add_argument("action", choices=["plan", "prepare", "preflight", "create-cluster", "reconcile-network", "start-infra"])
     parser.add_argument("--bundle", type=Path, required=True)
     for key in ("cluster", "context", "namespace", "infra-project"):
         parser.add_argument("--" + key, required=True)
@@ -295,6 +310,8 @@ def main():
                     preflight(target)
                 elif args.action == "create-cluster":
                     create_cluster(target)
+                elif args.action == "reconcile-network":
+                    reconcile_network(target)
                 else:
                     start_infra(target)
             print("CN infrastructure action completed; no application writers were activated")

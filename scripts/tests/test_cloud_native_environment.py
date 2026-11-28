@@ -123,6 +123,23 @@ class CloudNativeEnvironmentBoundaries(unittest.TestCase):
             with self.assertRaises(ValueError):
                 target.assert_daemon({"dockerId": "bound-daemon"})
 
+    def test_network_reconciliation_restores_only_bound_node_rule(self):
+        from unittest.mock import Mock
+        target = SimpleNamespace(state=Mock(return_value={"phase": "CLUSTER_BOUND", "nodeId": "owned-node"}),
+                                 assert_daemon=Mock(), assert_cluster=Mock())
+        with patch.object(cn, "execute", return_value=b"") as execute:
+            environment.reconcile_network(target)
+            self.assertEqual(execute.call_count, 2)
+            self.assertEqual(execute.call_args.args[0][:3], ["docker", "exec", "owned-node"])
+        existing = f"-A POSTROUTING -s {cn.POD_SUBNET} -d {cn.SUBNET} -j SNAT --to-source {cn.NODE_IP}\n"
+        with patch.object(cn, "execute", return_value=existing.encode()) as execute:
+            environment.reconcile_network(target)
+            self.assertEqual(execute.call_count, 1)
+        target.assert_cluster.side_effect = ValueError("wrong cluster")
+        with patch.object(cn, "execute") as execute:
+            with self.assertRaises(ValueError): environment.reconcile_network(target)
+            execute.assert_not_called()
+
     def test_parallel_operations_cannot_share_one_target(self):
         bundle = self.fixture()
         with cn.operation_lock(bundle):
