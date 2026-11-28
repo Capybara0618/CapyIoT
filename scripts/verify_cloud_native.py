@@ -14,7 +14,7 @@ from pathlib import Path
 import cloud_native_common as cn
 import cloud_native_release as release
 from cloud_native_environment import verified_endpoints
-from cloud_native_scenarios import dependency_and_grants, kafka_recovery, pipeline_handover, resilience, snapshot
+from cloud_native_scenarios import dependency_and_grants, health_faults, migration_failure, kafka_recovery, pipeline_handover, resilience, snapshot
 from microservices_common import APPS, ROOT, private_path, write_json
 
 GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent", "real-model", "browser", "resilience", "metrics", "recovery")
@@ -160,6 +160,8 @@ def verify(args):
             if "browser" in args.groups: step("browser",[npm,"run","test:e2e"],ROOT / "frontend")
             if "resilience" in args.groups:
                 dependency_and_grants(target,folder)
+                health_faults(target,folder)
+                migration_failure(target,folder)
                 pipeline_handover(target,folder)
                 resilience(target,folder,args.rollout_tag)
                 kafka_recovery(target,folder)

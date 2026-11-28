@@ -248,6 +248,75 @@ def dependency_and_grants(target, folder):
     write_json(folder/"dependency-and-grants.json",{"grants":grants,"platformOutage":"FAIL_CLOSED","deviceLocalReadiness":"UP"})
 
 
+def health_faults(target, folder):
+    """Exercise local dependency failure separately from model/downstream health."""
+    verified_endpoints(target)
+    def pods():
+        rows=json.loads(cn.execute(target.kubectl("get","pods","-l","app.kubernetes.io/part-of=capyiot","-o","json")))["items"]
+        return {p["metadata"]["uid"]:sum(c.get("restartCount",0) for c in p.get("status",{}).get("containerStatuses",[])) for p in rows if p.get("status",{}).get("phase") == "Running"}
+    def status(service, path):
+        if service == "agent-service":
+            code=("import ssl,urllib.request,urllib.error;"
+                  "c=ssl.create_default_context(cafile='/run/secrets/internal-ca.pem');\n"
+                  "try:\n r=urllib.request.urlopen('https://127.0.0.1:8086"+path+"',context=c,timeout=25);print(r.status)\n"
+                  "except urllib.error.HTTPError as e:print(e.code)")
+            return int(cn.execute(target.kubectl("exec","deployment/agent-service","--","python","-c",code)).strip())
+        return int(cn.execute(target.kubectl("exec","deployment/"+service,"--","curl","--silent","--show-error","--max-time","35",
+                    "--cacert","/run/secrets/internal-ca.pem","--output","/dev/null","--write-out","%{http_code}","https://127.0.0.1:8082"+path)).strip())
+    before=pods();mysql=target.state()["containers"]["mysql"]["containerId"]
+    cn.execute(["docker","pause",mysql])
+    try:
+        live=status("device-service","/actuator/health/liveness")
+        ready=status("device-service","/actuator/health/readiness")
+        agent_ready=status("agent-service","/health/ready")
+        if (live,ready,agent_ready) != (200,503,503): raise AssertionError("Database health did not preserve local liveness/fail readiness")
+    finally: cn.execute(["docker","unpause",mysql])
+    for service in APPS:
+        cn.execute(target.kubectl("rollout","status","deployment/"+service,"--timeout=180s"))
+    if pods()!=before: raise AssertionError("Database outage restarted an application")
+    cn.execute(target.kubectl("scale","deployment/model-fixture","--replicas=0"))
+    try:
+        cn.execute(target.kubectl("wait","--for=delete","pod","-l","app=model-fixture","--timeout=60s"))
+        if status("agent-service","/health/live")!=200 or status("agent-service","/health/ready")!=200:
+            raise AssertionError("Model outage incorrectly affected Agent local health")
+        # Metadata diagnostics is intentionally allowed to fail while local probes remain healthy.
+        time.sleep(16)
+        diagnostic=status("agent-service","/health/diagnostics")
+        if diagnostic!=503: raise AssertionError("Model outage was hidden by diagnostics")
+    finally:
+        cn.execute(target.kubectl("scale","deployment/model-fixture","--replicas=1"))
+        cn.execute(target.kubectl("rollout","status","deployment/model-fixture","--timeout=90s"))
+    if pods()!=before: raise AssertionError("Model outage restarted an application")
+    write_json(folder/"health-faults.json",{"deviceDatabaseFault":{"liveness":live,"readiness":ready},
+        "agentDatabaseReadiness":agent_ready,"modelOutage":{"liveness":200,"readiness":200,"diagnostics":diagnostic},"restarts":0})
+
+
+def migration_failure(target, folder):
+    """A failed Job cannot advance a release or mutate application deployments."""
+    import base64
+    import cloud_native_release as release
+    active=json.loads((target.bundle/"active-release.json").read_text())
+    candidate=release.read_release(target,active["releaseId"])
+    before=json.loads(cn.execute(target.kubectl("get","deployments","-o","json")))
+    proof_id="failure-proof-"+uuid.uuid4().hex[:8]
+    secret,job=release.migration_job(target,{**candidate,"releaseId":proof_id},"device-service")
+    secret["data"]["db-password"]=base64.b64encode(uuid.uuid4().hex.encode()).decode()
+    release.apply(target,release.resources([secret,job]))
+    try:
+        cn.execute(target.kubectl("wait","--for=condition=failed","job/"+job["metadata"]["name"],"--timeout=90s"))
+        actual=json.loads(cn.execute(target.kubectl("get","job",job["metadata"]["name"],"-o","json")))
+        try: release.deploy(target,{**candidate,"phase":"MIGRATING"}); raise AssertionError("A failed migration advanced deployment")
+        except ValueError: pass
+        after=json.loads(cn.execute(target.kubectl("get","deployments","-o","json")))
+        generations=lambda obj:{r["metadata"]["name"]:r["metadata"]["generation"] for r in obj["items"]}
+        if generations(before)!=generations(after): raise AssertionError("Failed migration changed applications")
+        write_json(folder/"migration-failure.json",{"jobUid":actual["metadata"]["uid"],"failed":actual["status"].get("failed"),
+            "automaticRetry":False,"deploymentBlocked":True,"deploymentGenerations":generations(after)})
+    finally:
+        cn.execute(target.kubectl("delete","job",job["metadata"]["name"],"--wait=true"))
+        cn.execute(target.kubectl("delete","secret",secret["metadata"]["name"]))
+
+
 def snapshot(target, folder):
     verified_endpoints(target)
     state = target.state()
