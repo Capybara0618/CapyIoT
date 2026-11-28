@@ -180,7 +180,7 @@ def verify(args):
                         if not args.real_key_file: raise ValueError("Explicit private real-model key file required")
                         with real_provider(target,args.real_key_file,args.real_model,args.real_base_url):
                             real_query(target,folder)
-                            step("real-model-workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common,"--agent","--real-model"])
+                            step("real-model-workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common,"--agent","--real-model","--evidence-dir",folder])
                 finally: cn.execute(["docker","stop",sim])
             if "browser" in args.groups:
                 env["CAPYIOT_SCREENSHOT_DIR"] = str(folder/"screenshots")

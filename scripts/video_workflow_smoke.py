@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--base-url", default="https://localhost:8443")
     parser.add_argument("--ca-file", type=Path, default=ROOT / "var/tls/ca.pem")
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
+    parser.add_argument("--evidence-dir", type=Path)
     parser.add_argument(
         "--agent",
         action="store_true",
@@ -198,6 +199,11 @@ def main():
                     {"content": prompt},
                     stream=True,
                 )
+                if args.evidence_dir:
+                    from microservices_common import private_path
+                    destination = private_path(args.evidence_dir)
+                    destination.mkdir(parents=True, exist_ok=True)
+                    (destination / ("workflow-run-" + conversation["conversationId"] + ".sse")).write_text(wire, encoding="utf-8")
                 ready = next(
                     json.loads(line[6:])
                     for part in wire.split("\n\n")
