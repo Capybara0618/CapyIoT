@@ -51,9 +51,7 @@ test('observability reads bounded live queries without inferring deployment type
     await expect(page.getByText('Prometheus 暂不可用', { exact: true })).toBeVisible()
     await expect(page.getByLabel('Prometheus 指标')).toHaveCount(0)
   }
-  await expect(
-    page.getByText('未启用集群状态读取，副本数量与自动扩缩容状态不可用。'),
-  ).toBeVisible()
+  await expect(page.getByText('未启用集群状态读取，副本数量与自动扩缩容状态不可用。')).toBeVisible()
   const changed = page.waitForResponse((result) =>
     result.url().includes('/observability/metrics?minutes=60&service=alarm-service'),
   )
