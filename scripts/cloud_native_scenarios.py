@@ -127,19 +127,29 @@ def replica_checks(target,folder):
             if len(pods) != 2: raise AssertionError("Two replicas not observed")
             seen = set()
             header = "X-Gateway-Instance" if service == "gateway" else "X-Service-Instance"
-            # A synchronized read burst opens real upstream connections. Serial
-            # bcrypt logins can leave a warmed pool pinned to the first backend.
-            barrier=threading.Barrier(24)
             def probe_replica(_):
                 client=Api.__new__(Api)
                 client.base,client.tls,client.token,client.last_headers=api.base,api.tls,api.token,{}
-                barrier.wait(timeout=15)
                 client.call("/auth/me")
                 return next((v for k,v in client.last_headers.items() if k.lower() == header.lower()),"unknown")
-            with ThreadPoolExecutor(max_workers=24) as pool:
-                seen.update(pool.map(probe_replica,range(24)))
+            if service == "gateway":
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    seen.update(pool.map(probe_replica,range(24)))
+                route="published HTTPS entry";concurrency=4
+            else:
+                # Service balancing is per connection. A warm gateway pool need
+                # not redistribute a light workload, so test fresh TLS connections
+                # through the actual ClusterIP, with the same live user token.
+                filename="/tmp/cn-replica-"+uuid.uuid4().hex
+                shell='umask 077; f="'+filename+'"; trap \'rm -f "$f"\' EXIT; cat > "$f"; i=0; while [ "$i" -lt 24 ]; do curl --silent --show-error --max-time 10 --dump-header - --output /dev/null --config "$f" || exit 1; i=$((i+1)); done'
+                config='url = "https://platform-service:8087/api/v1/auth/me"\ncacert = "/run/secrets/internal-ca.pem"\nheader = '+json.dumps("Authorization: Bearer "+api.token)+'\n'
+                output=cn.execute(target.kubectl("exec","-i","deployment/device-service","--","/bin/sh","-c",shell),data=config.encode()).decode()
+                statuses=[line.split()[1] for line in output.splitlines() if line.startswith("HTTP/")]
+                if statuses!=["200"]*24: raise AssertionError("Authenticated platform Service probes failed")
+                seen.update(line.split(":",1)[1].strip() for line in output.splitlines() if line.lower().startswith("x-service-instance:"))
+                route="in-cluster HTTPS Service, fresh connection per request";concurrency=1
             observations.append({"service":service,"instances":sorted(seen),"podNames":[p["metadata"]["name"] for p in pods],
-                                 "probeRequests":24,"probeConcurrency":24,"path":"/auth/me"})
+                                 "probeRequests":24,"probeConcurrency":concurrency,"path":"/auth/me","route":route})
             write_json(folder/"replica-observations.json",{"observations":observations})
             if len(seen - {"unknown"}) != 2: raise AssertionError("Both replicas must serve authenticated traffic")
         finally:
