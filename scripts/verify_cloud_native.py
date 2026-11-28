@@ -164,24 +164,26 @@ def verify(args):
             for selected_group,fault_seconds in (("workflow",60),("agent",300),("real-model",90)):
                 if selected_group not in args.groups: continue
                 reset_scenario_anomalies(target,folder)
-                name="capyiot-cn-sim-" + uuid.uuid4().hex[:10]
-                sim=cn.execute(["docker","run","-d","--name",name,"--network",cn.BRIDGE,"--add-host","frontend:" + cn.NODE_IP,
-                    "--label","io.capyiot.cn.owner=" + target.manifest["ownerId"],"--label","io.capyiot.cn.role=simulator",
-                    "--memory","256m","-v",str(target.bundle / "video-devices.json") + ":/devices.json:ro",
-                    "-v",str(target.bundle / "pki/edge/ca.pem") + ":/ca.pem:ro","capyiot/simulator:" + args.image_tag,
-                    "--api-url","https://frontend:30443","--mqtt-url","ssl://emqx:8883","--ca-file","/ca.pem","--devices","/devices.json",
-                    "--scenario","switch-outage","--fault-seconds",str(fault_seconds),"--interval-ms","1000"]).decode().strip()
-                try:
-                    if selected_group == "workflow": step("workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common])
-                    if selected_group == "agent":
-                        for script in ("agent_foundation_smoke","agent_query_smoke","agent_draft_smoke"):
-                            step(script,[sys.executable,ROOT / ("scripts/" + script + ".py")])
-                    if selected_group == "real-model":
-                        if not args.real_key_file: raise ValueError("Explicit private real-model key file required")
-                        with real_provider(target,args.real_key_file,args.real_model,args.real_base_url):
-                            real_query(target,folder)
+                if selected_group == "real-model" and not args.real_key_file:
+                    raise ValueError("Explicit private real-model key file required")
+                model_context = real_provider(target,args.real_key_file,args.real_model,args.real_base_url) if selected_group == "real-model" else contextlib.nullcontext()
+                with model_context:
+                    if selected_group == "real-model": real_query(target,folder)
+                    name="capyiot-cn-sim-" + uuid.uuid4().hex[:10]
+                    sim=cn.execute(["docker","run","-d","--name",name,"--network",cn.BRIDGE,"--add-host","frontend:" + cn.NODE_IP,
+                        "--label","io.capyiot.cn.owner=" + target.manifest["ownerId"],"--label","io.capyiot.cn.role=simulator",
+                        "--memory","256m","-v",str(target.bundle / "video-devices.json") + ":/devices.json:ro",
+                        "-v",str(target.bundle / "pki/edge/ca.pem") + ":/ca.pem:ro","capyiot/simulator:" + args.image_tag,
+                        "--api-url","https://frontend:30443","--mqtt-url","ssl://emqx:8883","--ca-file","/ca.pem","--devices","/devices.json",
+                        "--scenario","switch-outage","--fault-seconds",str(fault_seconds),"--interval-ms","1000"]).decode().strip()
+                    try:
+                        if selected_group == "workflow": step("workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common])
+                        if selected_group == "agent":
+                            for script in ("agent_foundation_smoke","agent_query_smoke","agent_draft_smoke"):
+                                step(script,[sys.executable,ROOT / ("scripts/" + script + ".py")])
+                        if selected_group == "real-model":
                             step("real-model-workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common,"--agent","--real-model","--evidence-dir",folder])
-                finally: cn.execute(["docker","stop",sim])
+                    finally: cn.execute(["docker","stop",sim])
             if "browser" in args.groups:
                 env["CAPYIOT_SCREENSHOT_DIR"] = str(folder/"screenshots")
                 step("browser",[npm,"run","test:e2e","--","--output",folder/"playwright"],ROOT / "frontend")
