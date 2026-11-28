@@ -3,6 +3,7 @@
 import json
 import os
 import ssl
+import subprocess
 from pathlib import Path
 
 from microservices_common import ROOT, Target
@@ -66,3 +67,11 @@ def compose_command(*args):
     raise ValueError(
         "Explicit isolated CAPYIOT_MS_TARGET is required; no default deployment is selected"
     )
+
+
+def wait_agent_restart():
+    if os.environ.get("CAPYIOT_CN_TARGET"):
+        from cloud_native_common import Target as CloudTarget
+        target = CloudTarget(**json.loads(os.environ["CAPYIOT_CN_TARGET"]))
+        subprocess.run(target.kubectl("rollout", "status", "deployment/agent-service", "--timeout=180s"),
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from smoke_context import api_base, compose_command, credentials, tls_context
+from smoke_context import api_base, compose_command, credentials, tls_context, wait_agent_restart
 
 
 def main():
@@ -79,6 +79,7 @@ def main():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        wait_agent_restart()
         deadline = time.monotonic() + 45
         while True:
             try:
