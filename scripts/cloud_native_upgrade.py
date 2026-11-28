@@ -41,13 +41,13 @@ def upgrade_copy(target, backup, folder):
         before=inventory(mysql)
         columns=db(mysql,"SELECT COLUMN_NAME FROM information_schema.columns WHERE TABLE_SCHEMA='device_db' AND TABLE_NAME='broker_disconnect_outbox' ORDER BY ORDINAL_POSITION").splitlines()
         if not columns or any(not re.fullmatch(r"[a-z_]+",c) for c in columns): raise ValueError("Unexpected historical columns")
-        statement="SELECT "+",".join("`"+c+"`" for c in columns)+" FROM device_db.broker_disconnect_outbox ORDER BY id"
+        statement="SELECT "+",".join("`"+c+"`" for c in columns)+" FROM device_db.broker_disconnect_outbox ORDER BY disconnect_id"
         old_rows=hashlib.sha256(db(mysql,statement).encode()).hexdigest()
         active=json.loads((target.bundle/"active-release.json").read_text())
         candidate=json.loads((target.bundle/("release-"+active["releaseId"]+".json")).read_text())
         for app in (*DATABASES,"agent-service"):
             domain="agent" if app=="agent-service" else DATABASES[app][0]
-            command=["docker","run","--rm","--network",project+"_default","--memory","256m","--read-only",
+            command=["docker","run","--rm","--network",project+"_internal","--memory","256m","--read-only",
                 "--tmpfs","/tmp:rw,nosuid,size=32m","--security-opt","no-new-privileges","--cap-drop","ALL",
                 "--mount","type=bind,source="+(bundle/"secrets"/(domain+"-db-password")).as_posix()+",target=/run/secrets/db-password,readonly",
                 "-e","CAPYIOT_MIGRATION_ONLY=true","-e","CAPYIOT_MIGRATION_ACTION=migrate","-e","CAPYIOT_SCHEMA="+domain,
