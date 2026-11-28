@@ -31,6 +31,9 @@ load_secret EMQX_API_SECRET emqx-api-secret
 load_secret DEMO_ADMIN_PASSWORD_HASH demo-admin-password-hash
 load_secret DEMO_OPERATOR_PASSWORD_HASH demo-operator-password-hash
 
+if [ "${CAPYIOT_MIGRATION_ONLY:-false}" = true ]; then
+    exec java -Dloader.main=io.capyiot.service.runtime.SchemaMigrationMain -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher
+fi
 set -- -jar /app/app.jar
 if [ -n "${CAPYIOT_JFR_OPTIONS:-}" ]; then
     set -- "-XX:StartFlightRecording=$CAPYIOT_JFR_OPTIONS" "$@"

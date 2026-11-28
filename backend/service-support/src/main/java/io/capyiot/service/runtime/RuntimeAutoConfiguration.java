@@ -21,7 +21,15 @@ public class RuntimeAutoConfiguration {
     HealthIndicator localDatabaseHealthIndicator(DataSource dataSource) {
         return () -> {
             try (var connection = dataSource.getConnection()) {
-                return connection.isValid(2) ? Health.up().build() : Health.down().build();
+                if (!connection.isValid(2)) return Health.down().build();
+                String expected = System.getenv("CAPYIOT_SCHEMA_VERSION");
+                if (expected != null) {
+                    try (var statement = connection.prepareStatement("SELECT version FROM flyway_schema_history WHERE success=TRUE ORDER BY installed_rank DESC LIMIT 1");
+                         var rows = statement.executeQuery()) {
+                        if (!rows.next() || !expected.equals(rows.getString(1))) return Health.down().build();
+                    }
+                }
+                return Health.up().build();
             } catch (Exception unavailable) { return Health.down().build(); }
         };
     }
