@@ -254,6 +254,12 @@ def pipeline_handover(target, folder):
                 connection.sendall(packet(0x32,encoded(topic)+struct.pack("!H",sequence)+json.dumps(event).encode()))
                 kind,body=receive(connection)
                 if kind != 0x40: raise AssertionError("Publisher PUBACK missing")
+            # Duplicate the last immutable event, then send a distinct stale sequence.
+            connection.sendall(packet(0x32,encoded(topic)+struct.pack("!H",21)+json.dumps(event).encode()))
+            if receive(connection)[0]!=0x40: raise AssertionError("Duplicate PUBACK missing")
+            stale={**event,"eventId":str(uuid.uuid4()),"sequence":1}
+            connection.sendall(packet(0x32,encoded(topic)+struct.pack("!H",22)+json.dumps(stale).encode()))
+            if receive(connection)[0]!=0x40: raise AssertionError("Stale PUBACK missing")
         finally:
             connection.close()
             cn.execute(target.kubectl("scale","deployment/"+service,"--replicas=1"))
@@ -262,7 +268,12 @@ def pipeline_handover(target, folder):
         def applied():
             return db(mysql,"SELECT COUNT(*) FROM device_db.device_event_receipt WHERE event_id IN ("+quoted+") AND processing_status='APPLIED';").strip() == "20"
         wait(applied,120)
-        results.append({"fault":fault,"eventIds":ids,"uniqueApplied":20,"seconds":time.monotonic()-started})
+        stale_id=stale["eventId"]
+        wait(lambda:db(mysql,"SELECT COUNT(*) FROM device_db.device_event_receipt WHERE event_id='"+stale_id+"' AND processing_status='IGNORED_STALE'").strip()=="1",120)
+        counts=db(mysql,"SELECT COUNT(*),COUNT(DISTINCT event_id) FROM device_db.device_event_receipt WHERE event_id IN ("+quoted+")").strip()
+        if counts!="20\t20": raise AssertionError("Transport duplicate created another business receipt")
+        results.append({"fault":fault,"eventIds":ids,"uniqueApplied":20,"duplicateReceipts":0,
+                        "staleEventId":stale_id,"staleStatus":"IGNORED_STALE","seconds":time.monotonic()-started})
         write_json(folder/"pipeline-handover.json",{"results":results,"brokerStayedOnline":True})
 
 
