@@ -15,6 +15,7 @@ class WorkRecovery {
 
   @Scheduled(fixedDelay = 5000)
   void tick() {
+    if (io.capyiot.contract.RuntimeGate.draining()) return;
     try {
       RequestCalls.background(operations::recover);
     } catch (RuntimeException unavailable) {

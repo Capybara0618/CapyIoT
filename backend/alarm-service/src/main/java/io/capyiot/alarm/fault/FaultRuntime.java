@@ -136,6 +136,7 @@ class FaultRuntime {
   }
 
   private void background(Runnable action) {
+    if (io.capyiot.contract.RuntimeGate.draining()) return;
     try {
       RequestCalls.background(action);
     } catch (RuntimeException failure) {

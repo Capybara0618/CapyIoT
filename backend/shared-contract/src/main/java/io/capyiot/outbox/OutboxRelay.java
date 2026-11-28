@@ -65,6 +65,7 @@ public final class OutboxRelay {
 
     public void dispatch() {
         for (int i = 0; i < 20; i++) {
+            if (io.capyiot.contract.RuntimeGate.draining()) return;
             String lease = UUID.randomUUID().toString();
             Delivery delivery = claim.execute(status -> {
                 var ready = jdbc.query("""
