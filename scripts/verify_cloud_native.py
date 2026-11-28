@@ -21,12 +21,15 @@ GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent
 
 
 @contextlib.contextmanager
-def real_provider(target, key_file, model, base_url, *, requests_maximum=3):
+def real_provider(target, key_file, model, base_url, *, requests_maximum=3, tools_maximum=5):
     from urllib.parse import urlsplit
     from cloud_native_manifests import configuration
     import base64
     parsed=urlsplit(base_url)
-    if requests_maximum not in {3,4}: raise ValueError("Bounded real-model request budget required")
+    if type(requests_maximum) is not int or not 3 <= requests_maximum <= 6:
+        raise ValueError("Bounded real-model request budget required")
+    if type(tools_maximum) is not int or not 1 <= tools_maximum <= 6:
+        raise ValueError("Bounded real-model tool budget required")
     if parsed.scheme != "https" or parsed.username or parsed.password or parsed.query or parsed.fragment or not model:
         raise ValueError("Explicit HTTPS model origin and model ID required")
     key=cn.safe_file(private_path(key_file).parent,private_path(key_file).name).read_bytes()
@@ -41,6 +44,7 @@ def real_provider(target, key_file, model, base_url, *, requests_maximum=3):
     data={**old["data"],"deepseek-api-key":base64.b64encode(key).decode()}
     provider_config=configuration("agent-service",active=True,model={"id":model,"baseUrl":base_url})
     provider_config["AGENT_MAX_MODEL_REQUESTS"]=str(requests_maximum)
+    provider_config["AGENT_MAX_TOOL_CALLS"]=str(tools_maximum)
     release.apply(target,release.resources([
         {"apiVersion":"v1","kind":"Secret","immutable":True,"type":"Opaque","metadata":{"name":new_secret,"namespace":cn.NAMESPACE},"data":data},
         {"apiVersion":"v1","kind":"ConfigMap","immutable":True,"metadata":{"name":new_config,"namespace":cn.NAMESPACE},"data":provider_config}]))
