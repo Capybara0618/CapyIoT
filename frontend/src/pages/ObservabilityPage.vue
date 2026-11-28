@@ -262,7 +262,7 @@ onBeforeUnmount(() => clearInterval(timer))
         <p v-if="deploymentError" class="network-note">{{ deploymentError }}</p>
         <p v-else-if="!deployment" class="network-note">正在读取部署状态…</p>
         <p v-else-if="!deployment.k8sEnabled" class="network-note">
-          当前为 Compose 模式，Kubernetes 副本与 KEDA 状态不可用。
+          未启用集群状态读取，副本数量与自动扩缩容状态不可用。
         </p>
         <p v-else-if="!deployment.reachable" class="network-note">
           暂时无法读取 Kubernetes 部署状态。

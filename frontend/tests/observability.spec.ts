@@ -9,7 +9,7 @@ const env = Object.fromEntries(
     .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]),
 )
 
-test('observability reads bounded live queries and shows the selected deployment mode', async ({
+test('observability reads bounded live queries without inferring deployment type from disabled observation', async ({
   page,
 }) => {
   await page.goto('/observability')
@@ -52,7 +52,7 @@ test('observability reads bounded live queries and shows the selected deployment
     await expect(page.getByLabel('Prometheus 指标')).toHaveCount(0)
   }
   await expect(
-    page.getByText('当前为 Compose 模式，Kubernetes 副本与 KEDA 状态不可用。'),
+    page.getByText('未启用集群状态读取，副本数量与自动扩缩容状态不可用。'),
   ).toBeVisible()
   const changed = page.waitForResponse((result) =>
     result.url().includes('/observability/metrics?minutes=60&service=alarm-service'),
