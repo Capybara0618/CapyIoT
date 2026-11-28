@@ -100,13 +100,15 @@ def delegation_ring(path):
     )
 
 
-def provision_tls(bundle, password, legacy_tls=None):
+def provision_tls(bundle, password, legacy_tls=None, *, namespace=None):
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.primitives.serialization import pkcs12
     from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
+    if namespace and not re.fullmatch(r"[a-z][a-z0-9-]{0,61}[a-z0-9]", namespace):
+        raise ValueError("Invalid TLS namespace")
     now = datetime.now(timezone.utc)
     ca_key_file, ca_file = bundle / "pki/ca.key", bundle / "pki/ca.pem"
     if ca_key_file.exists() != ca_file.exists():
@@ -174,6 +176,12 @@ def provision_tls(bundle, password, legacy_tls=None):
                 if service != "edge"
                 else ["frontend", "emqx", "localhost"]
             )
+            if namespace:
+                for host in list(dns):
+                    if host != "localhost":
+                        dns.extend(
+                            [f"{host}.{namespace}.svc", f"{host}.{namespace}.svc.cluster.local"]
+                        )
             cert = (
                 x509.CertificateBuilder()
                 .subject_name(
@@ -402,6 +410,7 @@ def initialize(args):
         bundle,
         (bundle / "secrets/tls-password").read_text(encoding="utf-8"),
         args.legacy_tls if args.mode == "upgrade" else None,
+        namespace=getattr(args, "tls_namespace", None),
     )
     save(
         bundle / "secrets/emqx-api-keys",

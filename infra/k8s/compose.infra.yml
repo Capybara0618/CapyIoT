@@ -1,0 +1,126 @@
+# Independent infrastructure for the CN verification target; no application writers.
+# Invoke only through cloud_native_environment.py with an initialized private bundle.
+name: ${CN_INFRA_PROJECT:?}
+services:
+  mysql:
+    image: mysql:8.4.11@sha256:85b9bf2e29cf836ecb8c2a15a935d4ba0c606631dff1dd79531a11983c638f2a
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql-root-password
+      TZ: UTC
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infra/mysql/01-microservices.sh:/docker-entrypoint-initdb.d/01-microservices.sh:ro
+    secrets:
+      - source: mysql-root
+        target: mysql-root-password
+      - source: device-db
+        target: device-db-password
+      - source: alarm-db
+        target: alarm-db-password
+      - source: workflow-db
+        target: workflow-db-password
+      - source: platform-db
+        target: platform-db-password
+      - source: agent-db
+        target: agent-db-password
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$(cat /run/secrets/mysql-root-password)" mysql -uroot -N -e "SELECT 1" | grep -qx 1']
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+    networks:
+      bridge: {ipv4_address: 10.250.80.10}
+    mem_limit: 768m
+    cpus: 1.0
+  kafka:
+    image: apache/kafka:4.1.1@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,KUBERNETES://:39092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,KUBERNETES://kafka.capyiot-cn-verify.svc.cluster.local:39092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,KUBERNETES:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_NUM_PARTITIONS: 8
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: ${CN_KAFKA_CLUSTER_ID:?}
+    volumes: [kafka-data:/var/lib/kafka/data]
+    # The image declares these paths as volumes. Explicit transient mounts avoid anonymous volumes.
+    tmpfs:
+      - /etc/kafka/secrets:rw,size=16m,mode=1777
+      - /mnt/shared/config:rw,size=16m,mode=1777
+    healthcheck:
+      test: [CMD-SHELL, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list >/dev/null 2>&1']
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks:
+      bridge: {ipv4_address: 10.250.80.11}
+    mem_limit: 768m
+    cpus: 1.0
+  emqx:
+    image: emqx/emqx:5.8.9@sha256:35b46f7aa7a0d51f3959e4344221ac5ec7f948b03e43099286b6c40a07bb393b
+    environment:
+      EMQX_NODE__NAME: emqx@127.0.0.1
+    entrypoint: [/bin/sh, /opt/emqx/etc/start-microservices.sh]
+    volumes:
+      - emqx-data:/opt/emqx/data
+      - ./infra/k8s/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+      - ./infra/emqx/start-microservices.sh:/opt/emqx/etc/start-microservices.sh:ro
+    tmpfs:
+      - /opt/emqx/log:rw,size=64m,mode=1777
+    extra_hosts: [device-service:10.250.80.2]
+    secrets:
+      - source: edge-ca
+        target: /opt/emqx/etc/local-tls/ca.pem
+      - source: edge-cert
+        target: /opt/emqx/etc/local-tls/server.pem
+      - source: edge-key
+        target: /opt/emqx/etc/local-tls/server.key
+      - source: internal-ca
+        target: /opt/emqx/etc/internal-tls/ca.pem
+      - source: broker-api-file
+        target: /opt/emqx/etc/local-api-keys
+      - source: broker-cookie
+        target: emqx-node-cookie
+    ports: [127.0.0.1:28883:8883]
+    healthcheck:
+      test: [CMD, /opt/emqx/bin/emqx, ctl, status]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks:
+      bridge: {ipv4_address: 10.250.80.12}
+    mem_limit: 512m
+    cpus: 1.0
+networks:
+  bridge:
+    external: true
+    name: capyiot-cn-verify-bridge
+volumes:
+  mysql-data: {name: '${CN_INFRA_PROJECT:?}_mysql-data'}
+  kafka-data: {name: '${CN_INFRA_PROJECT:?}_kafka-data'}
+  emqx-data: {name: '${CN_INFRA_PROJECT:?}_emqx-data'}
+secrets:
+  mysql-root: {file: '${CN_BUNDLE:?}/secrets/mysql-root-password'}
+  device-db: {file: '${CN_BUNDLE:?}/secrets/device-db-password'}
+  alarm-db: {file: '${CN_BUNDLE:?}/secrets/alarm-db-password'}
+  workflow-db: {file: '${CN_BUNDLE:?}/secrets/workflow-db-password'}
+  platform-db: {file: '${CN_BUNDLE:?}/secrets/platform-db-password'}
+  agent-db: {file: '${CN_BUNDLE:?}/secrets/agent-db-password'}
+  edge-ca: {file: '${CN_BUNDLE:?}/pki/edge/ca.pem'}
+  edge-cert: {file: '${CN_BUNDLE:?}/pki/edge/server.pem'}
+  edge-key: {file: '${CN_BUNDLE:?}/pki/edge/server.key'}
+  internal-ca: {file: '${CN_BUNDLE:?}/pki/ca.pem'}
+  broker-api-file: {file: '${CN_BUNDLE:?}/secrets/emqx-api-keys'}
+  broker-cookie: {file: '${CN_BUNDLE:?}/secrets/emqx-node-cookie'}
