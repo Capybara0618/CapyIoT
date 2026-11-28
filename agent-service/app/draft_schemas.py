@@ -23,7 +23,11 @@ class PrepareWorkOrder(BaseModel):
     priority: Literal["P1", "P2", "P3", "P4"] | None = None
     priorityReason: str | None = Field(default=None, max_length=1000)
     expectedResult: str = Field(min_length=1, max_length=1000)
-    evidenceReferenceIds: list[ID] = Field(default_factory=list, max_length=20)
+    evidenceReferenceIds: list[ID] = Field(
+        default_factory=list,
+        max_length=20,
+        description="只可填写本次运行工具结果顶层 evidenceReferences 中的 evidenceId。故障详情内 businessEvidenceReferences 的 businessEvidenceId 是业务源证据，不能作为这里的查询引用。",
+    )
 
     @model_validator(mode="after")
     def business_shape(self):

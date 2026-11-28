@@ -164,6 +164,25 @@ async def test_each_tool_projects_and_records_current_authorized_evidence(settin
     assert all("private-token" not in json.dumps(record) for record in repo.started)
 
 
+async def test_incident_business_evidence_is_distinct_from_run_query_citations(settings):
+    raw = {
+        **INCIDENT,
+        "evidenceReferences": [{"evidenceId": "business-event-reference", "sourceContext": "device",
+                                "sourceType": "DEVICE_EVENT", "sourceId": "device-event-one"}],
+    }
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, json={"code": "OK", "data": raw})
+    )) as http:
+        deps = AgentDeps(principal(), BusinessApiClient(http, settings, ServiceIdentity(settings.service_key_file)), "run", "trace")
+        result = await ToolRunner(settings, ToolRepository()).execute("get_incident_detail", {"incidentId": "incident-one"}, deps)
+    assert "evidenceReferences" not in result["data"]
+    business = result["data"]["businessEvidenceReferences"][0]
+    assert business["businessEvidenceId"] == "business-event-reference"
+    assert "evidenceId" not in business
+    assert result["evidenceReferences"][0]["evidenceId"] != business["businessEvidenceId"]
+    assert deps.evidence_ids == {result["evidenceReferences"][0]["evidenceId"]}
+
+
 async def test_unavailable_health_is_incomplete_evidence_with_source_metadata(settings):
     data = {
         **CASES["get_device_detail"][1],

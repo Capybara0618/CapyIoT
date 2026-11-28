@@ -253,7 +253,7 @@ class AnomalyLink(Projection):
 
 
 class EvidenceSource(Projection):
-    evidenceId: ID
+    businessEvidenceId: ID = Field(validation_alias="evidenceId")
     sourceContext: str
     sourceType: str
     sourceId: str
@@ -263,7 +263,9 @@ class EvidenceSource(Projection):
 
 class IncidentDetail(Incident):
     anomalyLinks: list[AnomalyLink] = Field(default_factory=list)
-    evidenceReferences: list[EvidenceSource] = Field(default_factory=list)
+    businessEvidenceReferences: list[EvidenceSource] = Field(
+        default_factory=list, validation_alias="evidenceReferences"
+    )
 
 
 class Order(Projection):
