@@ -99,6 +99,8 @@ python scripts/verify_microservices.py --project capyiot-ms-verify-local --compo
 
 ## 设备接入、接口与观测
 
+当前业务不使用 Redis，默认 Compose 不启动它，设备服务也不依赖 Redis 就绪。只有恢复历史环境需要时，才显式指定 `--profile legacy-redis` 启动兼容实例；历史数据卷独立保留或备份，不随普通容器清理删除。
+
 登记资产与点位、网络/PoE/录像关系后，设备通过 HTTPS Session API 获取短期 RS256 JWT，以 deviceId 作为 MQTT username/clientId，JWT 只放 CONNECT password。Topic 为 `capyiot/v1/devices/{deviceId}/sessions/{sessionId}/events`，QoS 1、非 retained、专属发布 ACL；消息通过校验且 Kafka 确认后才完成接入端 ACK。重试保留事件 ID 与原内容，平台按独立流序号和服务端 epoch 去重、处理乱序。
 
 停用、退役或轮换凭据撤销活动 Session，并通过持久化断连任务踢除旧连接。旧 JWT 在到期前仍可能通过离线验签，但旧会话不能更新平台状态。无实体设备时使用模拟器的 steady、switch-outage 场景；模拟器内存中的待发消息随进程退出丢失，不承诺离线持久化。

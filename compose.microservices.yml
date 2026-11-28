@@ -38,6 +38,8 @@ services:
       target: agent-db-password
   redis:
     image: redis:7.4.8-alpine
+    profiles:
+    - legacy-redis
     command:
     - redis-server
     - --appendonly
@@ -260,7 +262,6 @@ services:
       DEVICE_RUNTIME_ENABLED: ${MS_WRITERS_ENABLED:-false}
       DEVICE_KEY_FILE: /run/secrets/device-keys.json
       EMQX_MANAGEMENT_URL: http://emqx:18083
-      REDIS_HOST: redis
     secrets:
     - *id001
     - source: device-service-tls
@@ -283,8 +284,6 @@ services:
       kafka:
         condition: service_healthy
       mysql:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     healthcheck:
       test:
