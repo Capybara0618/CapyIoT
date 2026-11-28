@@ -57,6 +57,25 @@ def distribution(values):
             "method": "nearest-rank; p50 median"}
 
 
+def reset_scenario_anomalies(target, folder):
+    """Explicit test-fixture teardown through audited public APIs, never SQL mutation."""
+    running=cn.execute(["docker","ps","-q","--filter","label=io.capyiot.cn.owner="+target.manifest["ownerId"],
+                        "--filter","label=io.capyiot.cn.role=simulator"]).decode().strip()
+    if running: raise ValueError("Stop owned scenario publishers before fixture cleanup")
+    assets=json.loads((target.bundle/"video-devices.json").read_text(encoding="utf-8"))
+    if len(assets)!=4 or any(not d["assetCode"].startswith("VIDEO-CNVERIFY-") for d in assets):
+        raise ValueError("Only the explicit four isolated simulator assets may be cleaned")
+    ids={d["deviceId"] for d in assets};api=Api(target);changes=[]
+    try:
+        for row in api.call("/anomalies?status=ACTIVE&size=100")["items"]:
+            if row["deviceId"] not in ids: continue
+            api.call("/anomalies/"+row["anomalyId"]+"/dismiss",{"reason":"隔离验收场景清理：前一模拟发布者已停止，清除失败场景残留；不作为维修或恢复证明",
+                                                               "expectedVersion":row["version"]})
+            changes.append({"anomalyId":row["anomalyId"],"deviceId":row["deviceId"],"previousStatus":"ACTIVE","status":"DISMISSED"})
+        write_json(folder/("fixture-cleanup-"+uuid.uuid4().hex[:8]+".json"),{"testSetupOnly":True,"businessRecoveryClaimed":False,"changes":changes})
+    finally: api.call("/auth/logout",{})
+
+
 def metrics(target, folder):
     api = Api(target)
     device = next(d for d in json.loads((target.bundle / "video-devices.json").read_text()) if d["deviceType"] == "IPC")

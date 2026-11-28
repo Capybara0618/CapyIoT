@@ -14,7 +14,7 @@ from pathlib import Path
 import cloud_native_common as cn
 import cloud_native_release as release
 from cloud_native_environment import verified_endpoints
-from cloud_native_scenarios import dependency_and_grants, health_faults, migration_failure, kafka_recovery, pipeline_handover, resilience, snapshot
+from cloud_native_scenarios import dependency_and_grants, health_faults, migration_failure, kafka_recovery, pipeline_handover, reset_scenario_anomalies, resilience, snapshot
 from microservices_common import APPS, ROOT, private_path, write_json
 
 GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent", "real-model", "browser", "resilience", "metrics", "recovery", "upgrade")
@@ -162,6 +162,7 @@ def verify(args):
                 step("protocol",[sys.executable,ROOT / "scripts/video_protocol_smoke.py",*common,"--port","28883","--devices",target.bundle / "video-devices.json"])
             for selected_group,fault_seconds in (("workflow",60),("agent",300),("real-model",90)):
                 if selected_group not in args.groups: continue
+                reset_scenario_anomalies(target,folder)
                 name="capyiot-cn-sim-" + uuid.uuid4().hex[:10]
                 sim=cn.execute(["docker","run","-d","--name",name,"--network",cn.BRIDGE,"--add-host","frontend:" + cn.NODE_IP,
                     "--label","io.capyiot.cn.owner=" + target.manifest["ownerId"],"--label","io.capyiot.cn.role=simulator",
