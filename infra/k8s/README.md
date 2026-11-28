@@ -12,6 +12,8 @@ agent-service/.venv/Scripts/python.exe scripts/cloud_native_environment.py plan 
 
 后续统一准备阶段需先获取并校验 Kind 0.33.0、专用 kubectl 1.37.0 和 `kind/verify.yaml` 固定的节点镜像。工具路径默认位于忽略的 `var/cloud-native/tools/`，可通过 `--kind-binary`、`--kubectl-binary` 指定；不覆盖系统工具。当前集群客户端版本、镜像及资源条件不满足时拒绝创建。
 
+Windows客户端下载不可用时，prepare 可显式选择 `--kubectl-mode node-image`，使用同一固定digest节点镜像内的kubectl1.37.0；版本检查无需挂载文件，实际控制只读挂载单个kubeconfig，绝不挂载整个bundle或CA私钥。临时客户端通过Docker Linux主机网络访问本机Kind API，限制128MiB，退出即删除；不创建第二业务服务或更改客户端版本要求。
+
 只有对应阶段明确安排运行后，才依次执行 `preflight --execute`、`create-cluster --execute`、`start-infra --execute`，带齐同一组目标参数。每次操作使用 bundle 内私有 kubeconfig，核对 Docker daemon、Kind 容器、集群 UID、bridge ID、基础容器 ID 与数据卷。默认预算要求 Linux Docker 总内存至少 12 GiB，创建前至少 10 GiB 余量；Windows 宿主还须有至少 2 GiB 空闲。不会自动停止其他环境来腾资源。
 
 本机受限资源验证可在 prepare 时显式选择 `--resource-profile compact`：七应用上限各384MiB、前端96MiB，MySQL512MiB/Kafka640MiB/EMQX384MiB；Docker至少7.3GiB，创建前至少6.2GiB余量。此配置降低组件配额和吞吐空间，不代表生产容量。两种配置均禁止在资源不足时自动抢占其他环境。

@@ -74,6 +74,21 @@ class CloudNativeEnvironmentBoundaries(unittest.TestCase):
             self.target(bundle)
         self.assertEqual((bundle / "credential").read_text(), "changed-secret")
 
+    def test_container_client_mounts_only_kubeconfig_not_private_material(self):
+        target=self.target(self.fixture())
+        target.manifest["kubectlMode"]="node-image"
+        command=target.kubectl("get","pods")
+        mount=command[command.index("--mount")+1]
+        self.assertIn("/kubeconfig,target=/run/cn-kubeconfig,readonly",mount)
+        self.assertNotIn("secrets",mount)
+        self.assertIn(cn.NODE_IMAGE,command)
+        self.assertEqual(command[-2:],["get","pods"])
+
+    def test_client_version_check_needs_no_cluster_or_key_mount(self):
+        target=self.target(self.fixture())
+        target.manifest["kubectlMode"]="node-image"
+        self.assertNotIn("--mount",target.client("version","--client"))
+
     def test_copied_bundle_cannot_point_to_a_different_path(self):
         bundle = self.fixture()
         value = json.loads((bundle / "cn-manifest.json").read_text())

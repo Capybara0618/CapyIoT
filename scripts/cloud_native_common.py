@@ -212,8 +212,22 @@ class Target:
         return [*command, *args]
 
     def kubectl(self, *args):
-        return [self.manifest["kubectlBinary"], "--kubeconfig", str(self.bundle / "kubeconfig"),
-                "--context", CONTEXT, "--namespace", NAMESPACE, *args]
+        return self.client(*args, configured=True)
+
+    def client(self, *args, configured=False):
+        if self.manifest.get("kubectlMode", "local") == "node-image":
+            # Only the selected kubeconfig is mounted; never the bundle, signing keys or CA private key.
+            command=["docker","run","--rm","-i","--network","host","--memory","128m"]
+            if configured:
+                command += ["--mount","type=bind,source="+(self.bundle/"kubeconfig").as_posix()+",target=/run/cn-kubeconfig,readonly"]
+            command += ["--entrypoint","/usr/bin/kubectl",NODE_IMAGE]
+            config_path="/run/cn-kubeconfig"
+        else:
+            command=[self.manifest["kubectlBinary"]]
+            config_path=str(self.bundle/"kubeconfig")
+        if configured:
+            command += ["--kubeconfig",config_path,"--context",CONTEXT,"--namespace",NAMESPACE]
+        return [*command,*args]
 
     def state(self):
         path = self.bundle / "infrastructure-state.json"
