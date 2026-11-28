@@ -235,7 +235,10 @@ test('chat stays readable on mobile and untrusted text is displayed as text', as
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.screenshot({
-    path: resolve(process.env.CAPYIOT_SCREENSHOT_DIR ?? '../var/verification', 'stage5-chat-390.png'),
+    path: resolve(
+      process.env.CAPYIOT_SCREENSHOT_DIR ?? '../var/verification',
+      'stage5-chat-390.png',
+    ),
     fullPage: true,
   })
 })

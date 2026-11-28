@@ -65,7 +65,10 @@ test('real UI query, follow-up draft, explicit confirmation and refresh recover 
   await expect(page.getByRole('link', { name: /查看正式工单 WO-/ })).toBeVisible()
   expect((await api(page, '/workorders')).data.total).toBe(before + 1)
   await page.screenshot({
-    path: resolve(process.env.CAPYIOT_SCREENSHOT_DIR ?? '../var/verification', 'stage5-chat-live-1440.png'),
+    path: resolve(
+      process.env.CAPYIOT_SCREENSHOT_DIR ?? '../var/verification',
+      'stage5-chat-live-1440.png',
+    ),
     fullPage: true,
   })
 })
