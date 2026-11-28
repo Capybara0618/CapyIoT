@@ -31,7 +31,7 @@ class VideoIngress implements SmartLifecycle, HealthIndicator {
   private final AtomicBoolean reconnect = new AtomicBoolean();
   private final Object ackLock = new Object();
   private final Counter acknowledgments;
-  private volatile boolean running, subscribed;
+  private volatile boolean running, subscribed, stopping;
   private volatile Instant renewAt = Instant.EPOCH;
 
   VideoIngress(
@@ -70,10 +70,10 @@ class VideoIngress implements SmartLifecycle, HealthIndicator {
 
           @Override
           public void messageArrived(String topic, MqttMessage message) throws Exception {
-            if (!running) throw new MqttException(MqttException.REASON_CODE_CLIENT_DISCONNECTING);
+            if (stopping) throw new MqttException(MqttException.REASON_CODE_CLIENT_DISCONNECTING);
             long receivedGeneration = generation.get();
             slots.acquire();
-            if (!running) { slots.release(); throw new MqttException(MqttException.REASON_CODE_CLIENT_DISCONNECTING); }
+            if (stopping) { slots.release(); throw new MqttException(MqttException.REASON_CODE_CLIENT_DISCONNECTING); }
             try {
               publish(topic, message)
                   .whenComplete(
@@ -242,6 +242,7 @@ class VideoIngress implements SmartLifecycle, HealthIndicator {
 
   @Override
   public void stop() {
+    stopping = true;
     running = false;
     connection.shutdownNow();
     // Keep the persistent subscription. Only Kafka-acknowledged callbacks may acknowledge MQTT.

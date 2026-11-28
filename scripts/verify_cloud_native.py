@@ -54,6 +54,7 @@ def real_provider(target, key_file, model, base_url):
 
 def offline_provider(target):
     if target.manifest["modelMode"] != "offline": return
+    cn.execute([target.manifest["kindBinary"],"load","docker-image","--name",cn.CLUSTER,"python:3.12.12-slim-bookworm"])
     script = (ROOT / "agent-service/tests/model_fixture.py").read_text()
     release.apply(target, release.resources([
         {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "model-fixture", "namespace": cn.NAMESPACE}, "data": {"model_fixture.py": script}},
@@ -103,7 +104,7 @@ def verify(args):
         if "build" in args.groups:
             if not args.image_tag: raise ValueError("Image tag required")
             for service in APPS[:-1]:
-                step("image-" + service,["docker","build","-f","infra/java/Dockerfile","--build-arg","SERVICE=" + service,"-t","capyiot/" + service + ":" + args.image_tag,"."])
+                step("image-" + service,["docker","build","-f","infra/java/Dockerfile","--build-arg","SERVICE=" + service,"--build-arg","CAPYIOT_BUILD_ID=" + args.image_tag,"-t","capyiot/" + service + ":" + args.image_tag,"."])
             for name, file, context in (("agent-service","agent-service/Dockerfile","agent-service"),("frontend","frontend/Dockerfile","frontend"),("simulator","simulator/Dockerfile",".")):
                 step("image-" + name,["docker","build","-f",file,"-t","capyiot/" + name + ":" + args.image_tag,context])
         if "manifests" in args.groups:

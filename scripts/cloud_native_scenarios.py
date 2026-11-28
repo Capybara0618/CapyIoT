@@ -98,10 +98,13 @@ def resilience(target, folder, rollout_tag):
             if len(pods) != 2: raise AssertionError("Two replicas not observed")
             seen = set()
             header = "X-Gateway-Instance" if service == "gateway" else "X-Service-Instance"
-            for _ in range(80):
-                api.call("/auth/me")
-                seen.add(next((v for k,v in api.last_headers.items() if k.lower() == header.lower()), "unknown"))
-                if len(seen - {"unknown"}) == 2: break
+            # Concurrent connections exercise Service balancing; a single pooled connection can stay pinned.
+            def probe_replica(_):
+                client=Api(target)
+                client.call("/auth/me")
+                return next((v for k,v in client.last_headers.items() if k.lower() == header.lower()),"unknown")
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                seen.update(pool.map(probe_replica,range(24)))
             if len(seen - {"unknown"}) != 2: raise AssertionError("Both replicas must serve authenticated traffic")
         finally:
             cn.execute(target.kubectl("scale", "deployment/" + service, "--replicas=1"))
