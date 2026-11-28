@@ -449,6 +449,14 @@ def kafka_recovery(target, folder):
     cn.execute(["docker", "pause", kafka])
     try: time.sleep(20)
     finally: cn.execute(["docker", "unpause", kafka])
-    time.sleep(3)
+    resumed=time.monotonic()
+    state=target.state()
+    def infrastructure_healthy():
+        objects=json.loads(cn.execute(["docker","inspect",*[v["containerId"] for v in state["containers"].values()]]))
+        cn.check_infra(objects,state["networkId"],previous=state["containers"],require_healthy=False)
+        return all(o["State"].get("Health",{}).get("Status")=="healthy" for o in objects)
+    wait(infrastructure_healthy,120)
+    verified_endpoints(target)
     write_json(folder / "kafka-recovery.json", {"pauseSeconds": time.monotonic() - start,
+        "infrastructureReadyAfterResumeSeconds":time.monotonic()-resumed,
         "before": before, "after": offsets(kafka), "scope": "Broker recovery only; event-count verification is separate"})
