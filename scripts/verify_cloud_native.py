@@ -135,7 +135,7 @@ def verify(args):
                 release.deploy(target,release.read_release(target,args.release_id),active=True)
             common=["--base-url","https://localhost:28443","--ca-file",target.bundle / "pki/edge/ca.pem","--env-file",credential_file]
             if set(args.groups) & {"protocol","workflow","agent","real-model","metrics"}:
-                step("assets",[sys.executable,ROOT / "scripts/video_devices.py",*common,"--prefix","CNVERIFY","--output",target.bundle / "video-devices.json"])
+                step("assets",[sys.executable,ROOT / "scripts/video_devices.py",*common,"--prefix","VIDEO-CNVERIFY","--output",target.bundle / "video-devices.json"])
             if "protocol" in args.groups:
                 step("protocol",[sys.executable,ROOT / "scripts/video_protocol_smoke.py",*common,"--port","28883","--devices",target.bundle / "video-devices.json"])
             for selected_group,fault_seconds in (("workflow",60),("agent",300),("real-model",90)):

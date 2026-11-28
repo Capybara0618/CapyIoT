@@ -3,10 +3,16 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from cloud_native_manifests import application_objects, files_for
+from cloud_native_manifests import application_objects, configuration, files_for
 
 
 class ManifestBoundaries(unittest.TestCase):
+    def test_offline_nine_tool_regression_and_real_model_have_separate_budgets(self):
+        offline = configuration("agent-service")
+        real = configuration("agent-service", model={"id": "real-model", "baseUrl": "https://provider.invalid"})
+        self.assertEqual((offline["AGENT_MAX_MODEL_REQUESTS"], offline["AGENT_MAX_TOOL_CALLS"]), ("10", "10"))
+        self.assertEqual((real["AGENT_MAX_MODEL_REQUESTS"], real["AGENT_MAX_TOOL_CALLS"]), ("3", "5"))
+
     def test_only_ingestion_identity_service_publishes_before_mqtt_ready(self):
         services = [x for x in application_objects(active=True) if x["kind"] == "Service"]
         published = [x["metadata"]["name"] for x in services if x["spec"].get("publishNotReadyAddresses")]

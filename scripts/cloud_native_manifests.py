@@ -87,7 +87,8 @@ def configuration(service, *, active=False, fresh=False, model=None):
                "AGENT_DELEGATION_KEY_FILE": "/run/secrets/agent-keys.json",
                "AGENT_DELEGATION_KEYS_GENERATE": "false", "AGENT_DISPATCH_ENABLED": enabled,
                "AGENT_MODEL_TIMEOUT_SECONDS": "30", "AGENT_RUN_TIMEOUT_SECONDS": "90",
-               "AGENT_MAX_MODEL_REQUESTS": "3", "AGENT_MAX_TOOL_CALLS": "5",
+               "AGENT_MAX_MODEL_REQUESTS": "10" if (model or {}).get("id", "offline-fixture") == "offline-fixture" else "3",
+               "AGENT_MAX_TOOL_CALLS": "10" if (model or {}).get("id", "offline-fixture") == "offline-fixture" else "5",
                "DEEPSEEK_MODEL": (model or {}).get("id", "offline-fixture"),
                "DEEPSEEK_BASE_URL": (model or {}).get("baseUrl", "http://model-fixture:8099")}
         for name, prop in (("platform", "platform"), ("device", "device"), ("fault", "alarm"), ("workflow", "workflow")):
