@@ -17,7 +17,7 @@ from cloud_native_environment import verified_endpoints
 from cloud_native_scenarios import dependency_and_grants, health_faults, migration_failure, kafka_recovery, pipeline_handover, reset_scenario_anomalies, resilience, snapshot
 from microservices_common import APPS, ROOT, private_path, write_json
 
-GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent", "real-model", "browser", "resilience", "metrics", "recovery", "upgrade")
+GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent", "real-model", "browser", "resilience", "metrics", "recovery", "upgrade", "release-rehearsal")
 
 
 @contextlib.contextmanager
@@ -185,6 +185,25 @@ def verify(args):
             if "browser" in args.groups:
                 env["CAPYIOT_SCREENSHOT_DIR"] = str(folder/"screenshots")
                 step("browser",[npm,"run","test:e2e","--","--output",folder/"playwright"],ROOT / "frontend")
+            if "release-rehearsal" in args.groups:
+                from cloud_native_scenarios import Api
+                api=Api(target)
+                before={r["workOrderId"] for r in api.call("/workorders?size=100")["items"]}
+                api.call("/auth/logout",{})
+                previous=json.loads((target.bundle/"active-release.json").read_text())["releaseId"]
+                release.prepare_release(target,args.release_id,args.image_tag)
+                release.migrate(target,release.read_release(target,args.release_id))
+                release.deploy(target,release.read_release(target,args.release_id))
+                release.deploy(target,release.read_release(target,args.release_id),active=True)
+                release.rollback(target,release.read_release(target,args.release_id))
+                current=json.loads((target.bundle/"active-release.json").read_text())["releaseId"]
+                api=Api(target)
+                try:
+                    after={r["workOrderId"] for r in api.call("/workorders?size=100")["items"]}
+                    if current!=previous or before!=after: raise AssertionError("Compatible rollback changed authority or work-order identity")
+                    write_json(folder/"compatible-rollback.json",{"previousRelease":previous,"candidateRelease":args.release_id,
+                        "activeAfterRollback":current,"workorderIdsPreserved":sorted(after),"databaseAndOffsetsRewound":False})
+                finally: api.call("/auth/logout",{})
             if "resilience" in args.groups:
                 for name,check in (("dependency-and-grants",dependency_and_grants),("health-faults",health_faults),
                                    ("migration-failure",migration_failure),("pipeline-handover",pipeline_handover),
