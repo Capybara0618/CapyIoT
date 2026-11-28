@@ -1,0 +1,8 @@
+# Package a previously checked, hash-recorded static build. Contains no node_modules.
+FROM nginxinc/nginx-unprivileged:1.28-alpine
+ARG CAPYIOT_ARTIFACT_SHA
+LABEL io.capyiot.frontend-artifact-sha=$CAPYIOT_ARTIFACT_SHA
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+COPY --chmod=755 session-secret.envsh /docker-entrypoint.d/19-session-secret.envsh
+COPY dist /usr/share/nginx/html
+EXPOSE 8080 8443

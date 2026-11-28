@@ -106,7 +106,12 @@ def verify(args):
             for service in APPS[:-1]:
                 step("image-" + service,["docker","build","-f","infra/java/Dockerfile","--build-arg","SERVICE=" + service,"--build-arg","CAPYIOT_BUILD_ID=" + args.image_tag,"-t","capyiot/" + service + ":" + args.image_tag,"."])
             for name, file, context in (("agent-service","agent-service/Dockerfile","agent-service"),("frontend","frontend/Dockerfile","frontend"),("simulator","simulator/Dockerfile",".")):
-                step("image-" + name,["docker","build","-f",file,"-t","capyiot/" + name + ":" + args.image_tag,context])
+                if name == "frontend" and args.frontend_artifact:
+                    from cloud_native_frontend_artifact import package
+                    directory,digest=package(args.frontend_artifact,folder/"frontend-image-context")
+                    step("image-frontend",["docker","build","--build-arg","CAPYIOT_ARTIFACT_SHA="+digest,"-t","capyiot/frontend:"+args.image_tag,directory])
+                else:
+                    step("image-" + name,["docker","build","-f",file,"-t","capyiot/" + name + ":" + args.image_tag,context])
         if "manifests" in args.groups:
             step("kustomize",["kubectl","kustomize","infra/k8s/overlays/verify"])
         runtime = set(args.groups) - {"unit","build","manifests"}
@@ -197,6 +202,7 @@ def main():
     parser.add_argument("--real-key-file",type=Path)
     parser.add_argument("--real-model")
     parser.add_argument("--real-base-url",default="https://api.deepseek.com")
+    parser.add_argument("--frontend-artifact",type=Path)
     for name in ("cluster","context","namespace","infra-project"): parser.add_argument("--" + name,required=True)
     args=parser.parse_args()
     cn.validate_selection(args.cluster,args.context,args.namespace,args.infra_project)
