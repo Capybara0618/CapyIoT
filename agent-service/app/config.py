@@ -30,6 +30,7 @@ class DatabaseSettings(BaseSettings):
 
 
 class Settings(DatabaseSettings):
+    drain_file: str = "/tmp/capyiot-draining"
     platform_base_url: str = "https://platform-service:8087"
     device_base_url: str = "https://device-service:8082"
     fault_base_url: str = "https://alarm-service:8083"

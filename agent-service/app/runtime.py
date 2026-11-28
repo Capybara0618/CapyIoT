@@ -293,3 +293,13 @@ class QueryRuntime:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def recover_expired(self):
+        while True:
+            try:
+                await run_in_threadpool(self.repository.expire_runs)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                LOG.warning("run_recovery_deferred category=%s", type(error).__name__)
+            await asyncio.sleep(5)

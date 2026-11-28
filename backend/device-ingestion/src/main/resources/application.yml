@@ -41,5 +41,6 @@ management:
       probes:
         enabled: true
 capyiot:
+  mqtt-enabled: ${MQTT_CONSUMPTION_ENABLED:true}
   mqtt-url: ${MQTT_URL:ssl://emqx:8883}
   mqtt-client-id: ${MQTT_CLIENT_ID:capyiot-ingestion-1}

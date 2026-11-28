@@ -17,6 +17,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component("mqttHealthIndicator")
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="capyiot.mqtt-enabled",havingValue="true",matchIfMissing=true)
 class VideoIngress implements SmartLifecycle, HealthIndicator {
   private static final System.Logger LOG = System.getLogger(VideoIngress.class.getName());
   private final KafkaTemplate<String, String> kafka;
@@ -241,6 +242,9 @@ class VideoIngress implements SmartLifecycle, HealthIndicator {
   public void stop() {
     running = false;
     connection.shutdownNow();
+    // Keep the persistent subscription. Only Kafka-acknowledged callbacks may acknowledge MQTT.
+    try { slots.tryAcquire(128, 30, TimeUnit.SECONDS); }
+    catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
     try {
       mqtt.disconnectForcibly(1000, 1000, false);
       mqtt.close();
@@ -252,6 +256,8 @@ class VideoIngress implements SmartLifecycle, HealthIndicator {
   public boolean isRunning() {
     return running;
   }
+
+  @Override public int getPhase() { return Integer.MAX_VALUE; }
 
   @Override
   public Health health() {

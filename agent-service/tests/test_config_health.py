@@ -46,9 +46,21 @@ def test_live_is_independent_and_readiness_reports_dependency_failure(settings):
         client.app.state.http._transport = httpx.MockTransport(unavailable)
         client.app.state.internal_http._transport = httpx.MockTransport(unavailable)
         assert client.get("/health/live").status_code == 200
-        response = client.get("/health/ready")
+        assert client.get("/health/ready").status_code == 503
+        response = client.get("/health/diagnostics")
         assert response.status_code == 503
         assert response.json()["components"] == {
             name: "DOWN" for name in ("mysql", "platform", "device", "fault", "workflow", "model")
         }
         assert "offline-fixture-only" not in response.text
+
+
+def test_readiness_never_calls_model_or_downstream(settings):
+    with TestClient(create_app(settings)) as client:
+        client.app.state.database.ready = lambda: None
+        async def forbidden(_):
+            raise AssertionError("Probe must not contact a dependency")
+        client.app.state.http._transport = httpx.MockTransport(forbidden)
+        client.app.state.internal_http._transport = httpx.MockTransport(forbidden)
+        assert client.get("/health/ready").status_code == 200
+        assert client.get("/.well-known/agent-jwks.json").status_code == 200

@@ -315,7 +315,14 @@ class Repository:
                 "version": run.version,
             }
 
-    def finish_run(self, owner, identity, status, answer=None, error_code=None):
+    def expire_runs(self):
+        with self.sessions() as session:
+            rows = session.execute(select(AgentRun.owner_user_id, AgentRun.run_id).where(
+                AgentRun.status.in_(ACTIVE_RUNS), AgentRun.lease_until < now()).limit(100)).all()
+        for owner, identity in rows:
+            self.finish_run(owner, identity, "TIMED_OUT", None, "RUN_LEASE_EXPIRED", expired_only=True)
+
+    def finish_run(self, owner, identity, status, answer=None, error_code=None, *, expired_only=False):
         with self.sessions.begin() as session:
             original = self.owned(session, AgentRun, owner, identity)
             conversation = self.owned(
@@ -323,6 +330,8 @@ class Repository:
             )
             run = self.owned(session, AgentRun, owner, identity, lock=True)
             if run.status not in ACTIVE_RUNS:
+                return run.answer_message_id
+            if expired_only and (not run.lease_until or run.lease_until >= now()):
                 return run.answer_message_id
             if status not in {"SUCCEEDED", "PARTIAL_SUCCEEDED", "FAILED", "CANCELLED", "TIMED_OUT"}:
                 raise ValueError("Invalid terminal status")

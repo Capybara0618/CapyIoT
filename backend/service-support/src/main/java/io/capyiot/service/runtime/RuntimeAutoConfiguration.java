@@ -1,0 +1,60 @@
+package io.capyiot.service.runtime;
+
+import io.capyiot.contract.RuntimeGate;
+import javax.sql.DataSource;
+import org.springframework.boot.actuate.health.Health;
+import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+
+@AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
+public class RuntimeAutoConfiguration {
+    @Bean HealthIndicator runtimeHealthIndicator() {
+        return () -> RuntimeGate.draining() ? Health.outOfService().build() : Health.up().build();
+    }
+    @Bean @ConditionalOnBean(DataSource.class)
+    HealthIndicator localDatabaseHealthIndicator(DataSource dataSource) {
+        return () -> {
+            try (var connection = dataSource.getConnection()) {
+                return connection.isValid(2) ? Health.up().build() : Health.down().build();
+            } catch (Exception unavailable) { return Health.down().build(); }
+        };
+    }
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    static class ServletRuntime {
+        @Bean @Order(Ordered.HIGHEST_PRECEDENCE)
+        jakarta.servlet.Filter drainFilter() {
+            return (request, response, chain) -> {
+                var req = (jakarta.servlet.http.HttpServletRequest) request;
+                var res = (jakarta.servlet.http.HttpServletResponse) response;
+                if (RuntimeGate.draining() && req.getRequestURI().startsWith("/api/")) {
+                    res.setStatus(503); res.setHeader("Retry-After", "5"); return;
+                }
+                res.setHeader("X-Service-Instance", System.getenv().getOrDefault("HOSTNAME", "local"));
+                chain.doFilter(request, response);
+            };
+        }
+    }
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
+    static class ReactiveRuntime {
+        @Bean @Order(Ordered.HIGHEST_PRECEDENCE)
+        org.springframework.web.server.WebFilter drainFilter() {
+            return (exchange, chain) -> {
+                if (RuntimeGate.draining() && exchange.getRequest().getPath().value().startsWith("/api/")) {
+                    exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE);
+                    exchange.getResponse().getHeaders().set("Retry-After", "5");
+                    return exchange.getResponse().setComplete();
+                }
+                exchange.getResponse().getHeaders().set("X-Service-Instance", System.getenv().getOrDefault("HOSTNAME", "local"));
+                return chain.filter(exchange);
+            };
+        }
+    }
+}

@@ -5,6 +5,7 @@ import ssl
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
@@ -78,11 +79,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.auth,
             app.state.ops_agent,
         )
-        app.state.signer, app.state.dispatcher = None, None
+        app.state.signer = DelegationSigner(config.delegation_key_file, config.delegation_keys_generate)
+        app.state.dispatcher = None
+        recovery = asyncio.create_task(app.state.runtime.recover_expired())
         if config.dispatch_enabled:
-            app.state.signer = DelegationSigner(
-                config.delegation_key_file, config.delegation_keys_generate
-            )
             app.state.dispatcher = Dispatcher(
                 config, app.state.repository, app.state.business, app.state.signer
             )
@@ -92,6 +92,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            recovery.cancel()
+            await asyncio.gather(recovery, return_exceptions=True)
             if app.state.dispatcher:
                 await app.state.dispatcher.close()
             await app.state.runtime.close()
@@ -117,6 +119,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             proposed if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", proposed) else str(uuid.uuid4())
         )
         start = time.monotonic()
+        if (Path(request.app.state.settings.drain_file).exists()
+                and request.method == "POST" and request.url.path.startswith("/api/")
+                and not request.url.path.endswith("/cancel")):
+            return JSONResponse(status_code=503, content={"code": "SERVICE_DRAINING"})
         try:
             response = await call_next(request)
         except Exception as error:
@@ -136,6 +142,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
             )
         response.headers["X-Correlation-Id"] = request.state.correlation_id
+        response.headers["X-Service-Instance"] = __import__("os").environ.get("HOSTNAME", "local")
         LOG.info(
             "request_completed correlation=%s method=%s status=%s latency_ms=%s",
             request.state.correlation_id,
@@ -185,6 +192,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health/ready")
     async def ready(request: Request):
+        state = request.app.state
+        try:
+            await asyncio.to_thread(state.database.ready)
+            healthy = not Path(state.settings.drain_file).exists()
+        except Exception:
+            healthy = False
+        return JSONResponse(status_code=200 if healthy else 503,
+                            content={"status": "UP" if healthy else "DOWN"})
+
+    @app.get("/health/diagnostics")
+    async def diagnostics(request: Request):
         state, components = request.app.state, {}
         try:
             await asyncio.to_thread(state.database.ready)
