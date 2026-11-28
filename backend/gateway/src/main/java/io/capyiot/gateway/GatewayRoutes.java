@@ -6,6 +6,7 @@ import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 
 @Configuration
 class GatewayRoutes {
@@ -30,6 +31,10 @@ class GatewayRoutes {
                         "/api/v1/users/**",
                         "/api/v1/grants/**",
                         "/api/v1/audit-records")
+                    .filters(f -> f.retry(config -> config.setRetries(1)
+                        .setMethods(HttpMethod.GET).setSeries()
+                        .setStatuses(HttpStatus.SERVICE_UNAVAILABLE, HttpStatus.BAD_GATEWAY, HttpStatus.GATEWAY_TIMEOUT)
+                        .setTimeout(java.time.Duration.ofSeconds(8))))
                     .uri(platformUrl))
         .route(
             "agent-stream",

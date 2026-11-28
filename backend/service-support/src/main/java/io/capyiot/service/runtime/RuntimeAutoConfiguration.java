@@ -41,8 +41,9 @@ public class RuntimeAutoConfiguration {
             return (request, response, chain) -> {
                 var req = (jakarta.servlet.http.HttpServletRequest) request;
                 var res = (jakarta.servlet.http.HttpServletResponse) response;
-                if (RuntimeGate.draining() && req.getRequestURI().startsWith("/api/")) {
-                    res.setStatus(503); res.setHeader("Retry-After", "5"); return;
+                if (RuntimeGate.draining() && (req.getRequestURI().startsWith("/api/") || req.getRequestURI().startsWith("/internal/"))) {
+                    res.setStatus(503); res.setHeader("Retry-After", "5");
+                    res.setHeader("Connection", "close"); return;
                 }
                 res.setHeader("X-Service-Instance", System.getenv().getOrDefault("HOSTNAME", "local"));
                 chain.doFilter(request, response);
@@ -55,9 +56,11 @@ public class RuntimeAutoConfiguration {
         @Bean @Order(Ordered.HIGHEST_PRECEDENCE)
         org.springframework.web.server.WebFilter drainFilter() {
             return (exchange, chain) -> {
-                if (RuntimeGate.draining() && exchange.getRequest().getPath().value().startsWith("/api/")) {
+                String path = exchange.getRequest().getPath().value();
+                if (RuntimeGate.draining() && (path.startsWith("/api/") || path.startsWith("/internal/"))) {
                     exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE);
                     exchange.getResponse().getHeaders().set("Retry-After", "5");
+                    exchange.getResponse().getHeaders().set("Connection", "close");
                     return exchange.getResponse().setComplete();
                 }
                 exchange.getResponse().getHeaders().set("X-Gateway-Instance", System.getenv().getOrDefault("HOSTNAME", "local"));

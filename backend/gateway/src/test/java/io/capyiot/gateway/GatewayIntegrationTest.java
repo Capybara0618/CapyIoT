@@ -22,6 +22,8 @@ import reactor.netty.http.server.HttpServer;
 class GatewayIntegrationTest {
   private static final AtomicBoolean REVOKED = new AtomicBoolean();
   private static final AtomicBoolean UNAVAILABLE = new AtomicBoolean();
+  private static final java.util.concurrent.atomic.AtomicInteger READ_ATTEMPTS = new java.util.concurrent.atomic.AtomicInteger();
+  private static final java.util.concurrent.atomic.AtomicInteger WRITE_ATTEMPTS = new java.util.concurrent.atomic.AtomicInteger();
   private static final com.nimbusds.jose.jwk.RSAKey SERVICE_KEY = serviceKey();
 
   private static com.nimbusds.jose.jwk.RSAKey serviceKey() {
@@ -102,6 +104,19 @@ class GatewayIntegrationTest {
           .route(
               routes ->
                   routes
+                      .get("/api/v1/auth/me", (req, res) -> {
+                        if (READ_ATTEMPTS.incrementAndGet() == 1)
+                          return res.status(503).header("Connection", "close").send();
+                        return res.header("Content-Type", "application/json").sendString(Mono.just(envelope("{\"userId\":\"USER-OPERATOR\"}")));
+                      })
+                      .post("/api/v1/auth/logout", (req, res) -> {
+                        WRITE_ATTEMPTS.incrementAndGet();
+                        if ("true".equals(req.requestHeaders().get("X-Test-Transport-Close"))) {
+                          res.withConnection(connection -> connection.dispose());
+                          return Mono.empty();
+                        }
+                        return res.status(503).header("Connection", "close").send();
+                      })
                       .get(
                           "/api/v1/health",
                           (req, res) ->
@@ -202,6 +217,22 @@ class GatewayIntegrationTest {
             .returnResult()
             .getResponseBody();
     return new ObjectMapper().readTree(body).path("data").path("accessToken").asText();
+  }
+
+  @Test
+  void drainingPlatformReadRetriesOnANewConnectionButCommandsDoNotReplay() throws Exception {
+    READ_ATTEMPTS.set(0); WRITE_ATTEMPTS.set(0);
+    String token = login();
+    client().get().uri("/api/v1/auth/me").headers(h -> h.setBearerAuth(token))
+        .exchange().expectStatus().isOk().expectBody().jsonPath("$.data.userId").isEqualTo("USER-OPERATOR");
+    Assertions.assertEquals(2, READ_ATTEMPTS.get());
+    client().post().uri("/api/v1/auth/logout").headers(h -> h.setBearerAuth(token))
+        .exchange().expectStatus().isEqualTo(503);
+    Assertions.assertEquals(1, WRITE_ATTEMPTS.get());
+    WRITE_ATTEMPTS.set(0);
+    client().post().uri("/api/v1/auth/logout").headers(h -> h.setBearerAuth(token))
+        .header("X-Test-Transport-Close", "true").exchange().expectStatus().isEqualTo(503);
+    Assertions.assertEquals(1, WRITE_ATTEMPTS.get());
   }
 
   @Test

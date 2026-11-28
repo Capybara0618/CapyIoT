@@ -227,7 +227,7 @@ def rolling_updates(target, folder, image_tag):
                 try:
                     api.call("/auth/me")
                     result={"at":at,"ok":True,"instances":{k:v for k,v in api.last_headers.items() if k.lower() in {"x-service-instance","x-gateway-instance"}}}
-                except Exception as error: result={"at":at,"ok":False,"category":type(error).__name__}
+                except Exception as error: result={"at":at,"ok":False,"category":type(error).__name__,"status":getattr(error,"code",None)}
                 samples.append(result)
                 stopped.wait(1) if not stopped.is_set() else time.sleep(1)
         thread=threading.Thread(target=probe,daemon=True);thread.start()
