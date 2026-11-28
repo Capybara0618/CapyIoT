@@ -28,6 +28,8 @@ MySQL、Kafka、EMQX 保持集群外独立运行，使用新项目、新卷和�
 
 `infrastructure-state.json` 区分 CREATING、CLUSTER_BOUND、INFRA_STARTING、INFRA_READY；失败保留状态、卷和容器，先核对再恢复，不自动删除或重建，不激活任何应用消费、扫描或 Dispatcher。这里的 INFRA_READY 只表示基础设施启动，不表示业务或云原生验收完成。
 
+清理隔离集群或基础设施后，原 bundle 绑定的容器、集群与网络 ID 已失效，历史发布记录仅作证据。重新部署时使用新的私有 bundle 重新准备环境；不要修改旧 manifest 的 ID 或把已删除目标标记为就绪。源码、凭据备份与验收记录可独立保留。
+
 Docker 重启会重建 Kind 节点的网络命名空间。再次运行前执行 `reconcile-network --execute`（带齐相同目标参数），核对 daemon、节点、bridge 和集群 UID 后恢复唯一的 Pod 网段到外部 bridge 的节点内 SNAT 规则；已有规则不重复添加，不改宿主路由。`start-infra` 也执行这项检查。不得以重建 bundle、轮换身份或删除数据卷修复网络。
 
 私有 bundle、SQL、证书、真实 Secret、kubeconfig、机器地址及原始报告均保存在忽略的 `var/`，不得加入 Git。所有变更测试留到本轮编码完成后的统一验证阶段。
