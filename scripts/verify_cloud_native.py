@@ -52,16 +52,17 @@ def real_provider(target, key_file, model, base_url):
     finally: select(original_config,original_secret)
 
 
-def offline_provider(target):
+def offline_provider(target, agent_image):
     if target.manifest["modelMode"] != "offline": return
-    cn.execute([target.manifest["kindBinary"],"load","docker-image","--name",cn.CLUSTER,"python:3.12.12-slim-bookworm"])
-    script = (ROOT / "agent-service/tests/model_fixture.py").read_text()
+    # Reuse the release-bound, already imported Python runtime. Base-image indexes
+    # may contain unpulled architectures and cannot be imported with --all-platforms.
+    script = (ROOT / "agent-service/tests/model_fixture.py").read_text(encoding="utf-8")
     release.apply(target, release.resources([
         {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "model-fixture", "namespace": cn.NAMESPACE}, "data": {"model_fixture.py": script}},
         {"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "model-fixture", "namespace": cn.NAMESPACE}, "spec": {
             "replicas": 1, "selector": {"matchLabels": {"app": "model-fixture"}}, "template": {"metadata": {"labels": {"app": "model-fixture"}}, "spec": {
                 "automountServiceAccountToken": False, "securityContext": {"runAsNonRoot": True, "runAsUser": 10001},
-                "containers": [{"name": "fixture", "image": "python:3.12.12-slim-bookworm", "command": ["python", "/fixture/model_fixture.py"],
+                    "containers": [{"name": "fixture", "image": agent_image, "imagePullPolicy": "IfNotPresent", "command": ["python", "/fixture/model_fixture.py"],
                     "resources": {"requests": {"memory": "32Mi", "cpu": "25m"}, "limits": {"memory": "128Mi", "cpu": "500m"}},
                     "volumeMounts": [{"name": "fixture", "mountPath": "/fixture", "readOnly": True}]}], "volumes": [{"name": "fixture", "configMap": {"name": "model-fixture"}}]}}}},
         {"apiVersion": "v1", "kind": "Service", "metadata": {"name": "model-fixture", "namespace": cn.NAMESPACE},
@@ -129,7 +130,7 @@ def verify(args):
                 release.prepare_release(target,args.release_id,args.image_tag)
                 candidate=release.read_release(target,args.release_id)
                 release.migrate(target,candidate)
-                offline_provider(target)
+                offline_provider(target,candidate["images"]["agent-service"])
                 release.deploy(target,release.read_release(target,args.release_id))
                 release.deploy(target,release.read_release(target,args.release_id),active=True)
             common=["--base-url","https://localhost:28443","--ca-file",target.bundle / "pki/edge/ca.pem","--env-file",credential_file]

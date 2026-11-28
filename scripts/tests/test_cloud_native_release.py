@@ -10,6 +10,19 @@ import cloud_native_release as release
 
 
 class ReleaseBoundaries(unittest.TestCase):
+    def test_offline_fixture_reuses_release_runtime_without_credentials(self):
+        from verify_cloud_native import offline_provider
+        target = SimpleNamespace(manifest={"modelMode": "offline"})
+        with patch.object(release, "apply") as apply, patch.object(cn, "execute") as execute:
+            offline_provider(target, "capyiot/agent-service:cn-1234567")
+            execute.assert_not_called()
+        objects = apply.call_args.args[1]["items"]
+        pod = next(o for o in objects if o["kind"] == "Deployment")["spec"]["template"]["spec"]
+        self.assertEqual(pod["containers"][0]["image"], "capyiot/agent-service:cn-1234567")
+        self.assertFalse(pod["automountServiceAccountToken"])
+        self.assertFalse(any("secret" in v for v in pod["volumes"]))
+        self.assertIn("model_fixture.py", objects[0]["data"])
+
     def test_jobs_only_mount_owned_database_credential(self):
         target = SimpleNamespace(bundle=Path("unread"))
         candidate = {"releaseId": "r123", "images": {"device-service": "capyiot/device-service:cn-1234567"}}
