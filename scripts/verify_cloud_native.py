@@ -69,6 +69,28 @@ def offline_provider(target, agent_image):
          "spec": {"selector": {"app": "model-fixture"}, "ports": [{"port": 8099, "targetPort": 8099}]}}]))
 
 
+def real_query(target, folder):
+    from cloud_native_scenarios import Api
+    from urllib.request import Request, urlopen
+    api=Api(target)
+    before=api.call("/workorders")["total"]
+    try:
+        conversation=api.call("/agent/conversations",{"title":"CN bounded real model read-only query"})["conversationId"]
+        request=Request(api.base+"/agent/conversations/"+conversation+"/messages",
+            data=json.dumps({"content":"请查询当前可见设备列表，根据真实查询结果概述设备连接状态，引用证据。只做查询，不准备草稿、不创建工单。"}).encode(),
+            headers={"Content-Type":"application/json","Accept":"text/event-stream","Authorization":"Bearer "+api.token,"Idempotency-Key":uuid.uuid4().hex})
+        with urlopen(request,context=api.tls,timeout=100) as response: wire=response.read().decode()
+        (folder/"real-model-query.sse").write_text(wire,encoding="utf-8")
+        events=[json.loads(line[6:]) for line in wire.splitlines() if line.startswith("data: ")]
+        if not events: raise AssertionError("No real-model Run events")
+        view=api.call("/agent/runs/"+events[0]["runId"])
+        if view["status"]!="SUCCEEDED" or not view.get("answer",{}).get("facts") or view.get("draftId") or api.call("/workorders")["total"]!=before:
+            raise AssertionError("Real-model read-only evidence query did not complete")
+        write_json(folder/"real-model-query.json",{"runId":view["runId"],"status":view["status"],
+            "toolCallCount":view["toolCallCount"],"newWorkorders":0,"modelRequestsMaximum":3,"toolCallsMaximum":5})
+    finally: api.call("/auth/logout",{})
+
+
 def verify(args):
     folder = private_path(args.report_dir)
     folder.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -155,6 +177,7 @@ def verify(args):
                     if selected_group == "real-model":
                         if not args.real_key_file: raise ValueError("Explicit private real-model key file required")
                         with real_provider(target,args.real_key_file,args.real_model,args.real_base_url):
+                            real_query(target,folder)
                             step("real-model-workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common,"--agent","--real-model"])
                 finally: cn.execute(["docker","stop",sim])
             if "browser" in args.groups:
