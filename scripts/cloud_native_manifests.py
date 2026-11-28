@@ -142,7 +142,10 @@ def application_objects(*, version="unreleased", active=False, fresh=False, imag
                      "startupProbe": {"exec": {"command": live}, "periodSeconds": 5, "timeoutSeconds": 5, "failureThreshold": 36},
                      "livenessProbe": {"exec": {"command": live}, "periodSeconds": 10, "timeoutSeconds": 5, "failureThreshold": 3},
                      "readinessProbe": {"exec": {"command": ready}, "periodSeconds": 5, "timeoutSeconds": 5, "failureThreshold": 2},
-                     "lifecycle": {"preStop": {"exec": {"command": ["/bin/sh", "-c", "sleep 3; touch /tmp/capyiot-draining; sleep 2"]}}}}
+                     # Endpoint removal starts when termination begins. Wait for its
+                     # propagation first, then signal drain immediately before SIGTERM;
+                     # a post-marker sleep would reject requests on pooled connections.
+                     "lifecycle": {"preStop": {"exec": {"command": ["/bin/sh", "-c", "sleep 5; touch /tmp/capyiot-draining"]}}}}
         volumes = [{"name": "credentials", "secret": {"secretName": secret_name, "defaultMode": 292}},
                    {"name": "tmp", "emptyDir": {"sizeLimit": "64Mi"}}]
         if profile == "compact":
