@@ -116,6 +116,16 @@ def migrate(target, release):
     save_release(target, release, "MIGRATED")
 
 
+def apply_applications(target, items):
+    # Bound the peak to one application's surge; applying all Deployments together
+    # would overlap gateway/platform surges and the single-instance replacements.
+    apply(target, resources([item for item in items if item["kind"] != "Deployment"]))
+    for item in items:
+        if item["kind"] == "Deployment":
+            apply(target, item)
+            cn.execute(target.kubectl("rollout", "status", "deployment/" + item["metadata"]["name"], "--timeout=240s"))
+
+
 def deploy(target, release, *, active=False):
     allowed = {"PASSIVE_READY"} if active else {"MIGRATED"}
     if release["phase"] not in allowed:
@@ -131,9 +141,7 @@ def deploy(target, release, *, active=False):
             fresh=target.manifest["mode"] == "fresh" and not release["previousReleaseId"],
             images=release["images"], model=target.manifest["model"], profile="compact")
     save_release(target, release, "ACTIVATING" if active else "DEPLOYING_PASSIVE")
-    apply(target, resources(items))
-    for service in (*APPS, "frontend"):
-        cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=240s"))
+    apply_applications(target, items)
     save_release(target, release, "ACTIVE" if active else "PASSIVE_READY")
     if active:
         write_json(target.bundle / "active-release.json", {"ownerId": target.manifest["ownerId"], "releaseId": release["releaseId"]})
@@ -161,9 +169,7 @@ def rollback(target, release):
                 if variable["name"] == "CAPYIOT_MIGRATION_ACTION": variable["value"] = "validate"
         apply(target, resources([secret, job]))
         cn.execute(target.kubectl("wait", "--for=condition=complete", "job/" + job["metadata"]["name"], "--timeout=180s"))
-    apply(target, resources(application_objects(version=previous_id + "-a", active=True, images=previous["images"], model=target.manifest["model"], profile=target.manifest.get("resourceProfile", "standard"))))
-    for service in (*APPS, "frontend"):
-        cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=240s"))
+    apply_applications(target, application_objects(version=previous_id + "-a", active=True, images=previous["images"], model=target.manifest["model"], profile=target.manifest.get("resourceProfile", "standard")))
     write_json(target.bundle / "active-release.json", {"ownerId": target.manifest["ownerId"], "releaseId": previous_id})
     save_release(target, release, "ROLLED_BACK_APPLICATION_ONLY")
 

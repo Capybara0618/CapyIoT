@@ -10,6 +10,15 @@ import cloud_native_release as release
 
 
 class ReleaseBoundaries(unittest.TestCase):
+    def test_release_waits_for_each_application_before_next_surge(self):
+        target = SimpleNamespace(kubectl=lambda *args: list(args))
+        events = []
+        items = [{"kind": "ConfigMap"}, *[{"kind": "Deployment", "metadata": {"name": n}} for n in ("gateway", "platform-service")]]
+        with patch.object(release, "apply", side_effect=lambda t, o: events.append(("apply", o.get("metadata", {}).get("name", "configs")))), patch.object(cn, "execute", side_effect=lambda cmd: events.append(("wait", cmd[2]))):
+            release.apply_applications(target, items)
+        self.assertEqual(events, [("apply", "configs"), ("apply", "gateway"), ("wait", "deployment/gateway"),
+                                  ("apply", "platform-service"), ("wait", "deployment/platform-service")])
+
     def test_offline_fixture_reuses_release_runtime_without_credentials(self):
         from verify_cloud_native import offline_provider
         target = SimpleNamespace(manifest={"modelMode": "offline"})
