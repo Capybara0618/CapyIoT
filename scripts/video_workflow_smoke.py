@@ -183,9 +183,10 @@ def main():
                     expected=(201,),
                 )["data"]
                 prompt = (
-                    "请查询故障 "
+                    "主管已决定为故障 "
                     + incident_id
-                    + " 的真实证据，为该故障关联设备生成维修工单草稿，"
+                    + " 安排维修，无需重新诊断根因。请读取该故障详情中的关联设备和证据，直接据此准备维修工单草稿，"
+                    "无需扩展异常或拓扑检索。"
                     "必须使用 INCIDENT 来源并关联这个故障，等待我在页面确认，不得自动创建正式工单。"
                     if args.real_model
                     else "draft-fixture INCIDENT "
@@ -205,12 +206,17 @@ def main():
                     destination.mkdir(parents=True, exist_ok=True)
                     (destination / ("workflow-run-" + conversation["conversationId"] + ".sse")).write_text(wire, encoding="utf-8")
                 ready = next(
-                    json.loads(line[6:])
+                    (json.loads(line[6:])
                     for part in wire.split("\n\n")
                     if "event: draft.ready" in part
                     for line in part.splitlines()
-                    if line.startswith("data: ")
+                    if line.startswith("data: ")),
+                    None,
                 )
+                if ready is None:
+                    failed = [json.loads(line[6:]) for part in wire.split("\n\n") if "event: run.failed" in part
+                              for line in part.splitlines() if line.startswith("data: ")]
+                    raise AssertionError("Agent did not prepare a draft: " + (failed[-1].get("errorCode", "UNKNOWN") if failed else "NO_DRAFT"))
                 draft = call("/agent/drafts/" + ready["draftId"])["data"]
             if call("/workorders")["data"]["total"] != before:
                 raise AssertionError(
