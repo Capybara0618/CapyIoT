@@ -1547,7 +1547,8 @@
             "port": 8081,
             "targetPort": 8081
           }
-        ]
+        ],
+        "publishNotReadyAddresses": true
       }
     },
     {

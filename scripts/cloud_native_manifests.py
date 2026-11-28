@@ -170,9 +170,13 @@ def application_objects(*, version="unreleased", active=False, fresh=False, imag
             ports.append({"name": "tls", "port": 8443, "targetPort": 8443, "nodePort": 30443})
         if service == "device-service":
             ports[0]["nodePort"] = 30482
-        result.append({"apiVersion": "v1", "kind": "Service", "metadata": meta,
-                       "spec": {"type": "NodePort" if frontend or service == "device-service" else "ClusterIP",
-                                "selector": {"app.kubernetes.io/name": service}, "ports": ports}})
+        service_spec = {"type": "NodePort" if frontend or service == "device-service" else "ClusterIP",
+                        "selector": {"app.kubernetes.io/name": service}, "ports": ports}
+        if service == "device-ingestion":
+            # This HTTP Service serves identity/health/metrics, never device traffic.
+            # Device authority must read its public JWKS before MQTT can become ready.
+            service_spec["publishNotReadyAddresses"] = True
+        result.append({"apiVersion": "v1", "kind": "Service", "metadata": meta, "spec": service_spec})
     return result
 
 

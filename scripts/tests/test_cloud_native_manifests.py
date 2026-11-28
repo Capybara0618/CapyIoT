@@ -7,6 +7,11 @@ from cloud_native_manifests import application_objects, files_for
 
 
 class ManifestBoundaries(unittest.TestCase):
+    def test_only_ingestion_identity_service_publishes_before_mqtt_ready(self):
+        services = [x for x in application_objects(active=True) if x["kind"] == "Service"]
+        published = [x["metadata"]["name"] for x in services if x["spec"].get("publishNotReadyAddresses")]
+        self.assertEqual(published, ["device-ingestion"])
+
     def test_singletons_reject_multiple_replicas(self):
         for service in ("device-service", "alarm-service", "workflow-service", "device-ingestion", "agent-service"):
             with self.assertRaises(ValueError):
