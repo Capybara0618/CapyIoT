@@ -28,7 +28,15 @@ Docker 重启会重建 Kind 节点的网络命名空间。再次运行前执行 
 
 私有 bundle、SQL、证书、真实 Secret、kubeconfig、机器地址及原始报告均保存在忽略的 `var/`，不得加入 Git。所有变更测试留到本轮编码完成后的统一验证阶段。
 
-基础设施就绪后用 `verify_cloud_native.py --groups ...` 统一执行所选检查，显式提供同一目标、私有报告目录和已构建的 `cn-<commit>` 镜像标签。支持 unit/build/manifests/deploy/protocol/workflow/agent/browser/resilience/metrics/recovery，真实模型单列 real-model，另给本地 Key 文件、模型ID；不默认调用真实模型。metrics 必须提供首次运行前冻结的本地 policy 文件；resilience 必须提供另一个实际构建的镜像标签作为滚动升级版本。
+基础设施就绪后用 `verify_cloud_native.py --groups ...` 统一执行所选检查，显式提供同一目标、私有报告目录和已构建的 `cn-<commit>` 镜像标签。支持 unit/build/manifests/deploy/protocol/workflow/agent/browser/resilience/metrics/recovery/upgrade/release-rehearsal，真实模型单列 real-model，另给本地 Key 文件、模型ID；不默认调用真实模型。metrics 必须提供首次运行前冻结的本地 policy 文件；resilience 必须提供另一个实际构建的镜像标签作为滚动升级版本。
+
+`resilience` 分别验证本库/平台/模型故障、失败迁移阻断、消费者与接入暂停的唯一事件对账、七应用替换、双副本、进程强制退出与真实镜像滚动。镜像发布窗口保留每次请求结果，扩缩容保存观察到的实例名；第一次失败与定向复验用不同目录，不能把首次失败报告改绿。资源通过已核验的目标 Kind 节点读取 CRI，筛选目标 namespace；发布身份没有 nodes/proxy 权限。
+
+`workflow`、`agent`、`real-model` 使用同一组四台显式模拟资产。每个场景开始前要求该 bundle 的发布者已停止，再通过公开 API 清理这些模拟设备的遗留活动异常，保留审计和 fixture-cleanup 记录。这仅是隔离测试准备，不是设备恢复或维修证据。关联快照保留历史事实；失败场景不可直接当作新的干净故障复用。真实模型最多三次 Run，每个 Run 的模型请求/工具调用预算分别为3/5；离线九工具回归另用10/10预算。
+
+`release-rehearsal` 要求新的 release-id 和完整镜像标签，实际执行迁移、被动启动、激活、兼容验证和应用回退，核对工单 ID 保留。它会短暂关闭单实例应用，不应在用户体验环境执行。失败保留原相位，不盲目回退。
+
+`recovery` 冻结本 bundle 的模拟器及八个应用，保存五库快照/逐表校验/未决操作和 Kafka 位点，在另一个全新 MySQL 项目恢复并核对；结束后应用副本仍为0。`upgrade --upgrade-backup <原微服务schema15备份目录>` 须在冻结后执行，在另一份恢复副本迁移到16，核对历史行、旧 migration checksum 和断连表旧列；不启动任何克隆应用。备份和旧副本均保留，不能对当前体验库执行恢复。
 
 `cloud_native_release.py` 的动作依次为 prepare、migrate、passive、activate；迁移独立运行且失败不自动重试。中断后 reconcile 只依据匹配的 Job/Deployment 证明推进状态；不能将未知操作强行改为成功。rollback 只恢复已经记录且 Schema 兼容的应用版本，不倒退数据库内容或 Kafka 位点。[已有环境接管边界](ADOPTION.md) 与全新隔离部署分别处理。
 
