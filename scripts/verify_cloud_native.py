@@ -17,7 +17,7 @@ from cloud_native_environment import verified_endpoints
 from cloud_native_scenarios import dependency_and_grants, health_faults, migration_failure, kafka_recovery, pipeline_handover, resilience, snapshot
 from microservices_common import APPS, ROOT, private_path, write_json
 
-GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent", "real-model", "browser", "resilience", "metrics", "recovery")
+GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent", "real-model", "browser", "resilience", "metrics", "recovery", "upgrade")
 
 
 @contextlib.contextmanager
@@ -184,6 +184,10 @@ def verify(args):
                     from microservices_common import Target as MsTarget, command_env
                     restore=MsTarget(restore_project,ROOT / "compose.microservices.yml",restore_bundle / "deployment.env",verification=True)
                     subprocess.run(restore.compose("stop"),env=command_env(restore.compose("stop")),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            if "upgrade" in args.groups:
+                if not args.upgrade_backup: raise ValueError("Explicit pre-CN backup required")
+                from cloud_native_upgrade import upgrade_copy
+                upgrade_copy(target,args.upgrade_backup,folder/"upgrade")
         report["status"]="PASSED_SELECTED_GROUPS"
     except Exception as error:
         report["status"]="FAILED"; report["errorCategory"]=type(error).__name__
@@ -206,6 +210,7 @@ def main():
     parser.add_argument("--real-model")
     parser.add_argument("--real-base-url",default="https://api.deepseek.com")
     parser.add_argument("--frontend-artifact",type=Path)
+    parser.add_argument("--upgrade-backup",type=Path)
     for name in ("cluster","context","namespace","infra-project"): parser.add_argument("--" + name,required=True)
     args=parser.parse_args()
     cn.validate_selection(args.cluster,args.context,args.namespace,args.infra_project)

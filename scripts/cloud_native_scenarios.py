@@ -85,7 +85,8 @@ def resilience(target, folder, rollout_tag):
         cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=180s"))
         replacement = json.loads(cn.execute(target.kubectl("get", "pods", "-l", "app.kubernetes.io/name=" + service, "-o", "json")))["items"]
         if not replacement or replacement[0]["metadata"]["uid"] == old_uid: raise AssertionError("No replacement Pod")
-        api.call("/devices")
+        api.call({"alarm-service":"/incidents","workflow-service":"/workorders","platform-service":"/auth/me",
+                  "agent-service":"/agent/conversations"}.get(service,"/devices"))
         elapsed = time.monotonic() - start
         results.append({"service": service, "oldUid": old_uid, "newUid": replacement[0]["metadata"]["uid"], "seconds": elapsed})
         write_json(folder / "pod-recovery.json", {"budgetSeconds": 180, "results": results})
@@ -111,6 +112,7 @@ def resilience(target, folder, rollout_tag):
             cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=180s"))
     write_json(folder / "replica-recovery.json", {"services": ["gateway", "platform-service"], "replicas": [1, 2, 1]})
     force_process_exit(target,folder)
+    agent_process_exit(target,folder)
     rolling_updates(target,folder,rollout_tag)
 
 
@@ -131,6 +133,53 @@ def force_process_exit(target, folder):
     if Api(target).call("/workorders")["total"] != orders_before: raise AssertionError("Process restart changed work-order count")
     write_json(folder / "sigkill-recovery.json",{"service":service,"podUid":pod["metadata"]["uid"],
         "signal":"SIGKILL","containerId":container["id"],"seconds":time.monotonic()-started})
+
+
+def agent_process_exit(target, folder):
+    """Kill an active Run, then prove background lease recovery without a history GET."""
+    api=Api(target);state=target.state();node=state["nodeId"]
+    mysql=state["containers"]["mysql"]["containerId"]
+    def container(label,name):
+        pod=json.loads(cn.execute(target.kubectl("get","pods","-l",label,"-o","json")))["items"][0]
+        rows=json.loads(cn.execute(["docker","exec",node,"crictl","ps","--label","io.kubernetes.pod.name="+pod["metadata"]["name"],"-o","json"]))["containers"]
+        return pod,next(x["id"] for x in rows if x["metadata"]["name"]==name)
+    fixture,fixture_id=container("app=model-fixture","fixture")
+    agent,agent_id=container("app.kubernetes.io/name=agent-service","agent-service")
+    orders=api.call("/workorders")["total"]
+    conversation=api.call("/agent/conversations",{"title":"CN active Run crash recovery"})["conversationId"]
+    stream=None;run_id=None;started=time.monotonic()
+    cn.execute(["docker","exec",node,"ctr","-n","k8s.io","tasks","pause",fixture_id])
+    try:
+        request=Request(api.base+"/agent/conversations/"+conversation+"/messages",data=json.dumps({"content":"查询设备当前状态"}).encode(),
+                        headers={"Content-Type":"application/json","Accept":"text/event-stream","Authorization":"Bearer "+api.token,"Idempotency-Key":uuid.uuid4().hex})
+        stream=urlopen(request,context=api.tls,timeout=20)
+        while run_id is None:
+            line=stream.readline().decode()
+            if not line: raise AssertionError("SSE ended before run.started")
+            if line.startswith("data:"): run_id=json.loads(line[5:])["runId"]
+        if not re_uuid(run_id): raise ValueError("Unexpected Run identifier")
+        statement="SELECT status FROM agent_db.agent_run WHERE run_id='"+run_id+"'"
+        wait(lambda:db(mysql,statement).strip()=="RUNNING",15)
+        cn.execute(["docker","exec",node,"ctr","-n","k8s.io","tasks","kill","--signal","SIGKILL",agent_id])
+    finally:
+        cn.execute(["docker","exec",node,"ctr","-n","k8s.io","tasks","resume",fixture_id])
+        if stream is not None: stream.close()
+    def recovered():
+        current=json.loads(cn.execute(target.kubectl("get","pod",agent["metadata"]["name"],"-o","json")))
+        return any(c.get("ready") and c.get("restartCount",0)>0 for c in current.get("status",{}).get("containerStatuses",[]))
+    wait(recovered)
+    wait(lambda:db(mysql,statement).strip()=="TIMED_OUT",150)
+    view=api.call("/agent/runs/"+run_id)
+    if view["errorCode"]!="RUN_LEASE_EXPIRED" or view["toolCallCount"]!=0 or api.call("/workorders")["total"]!=orders:
+        raise AssertionError("Crashed Run was replayed or changed business work")
+    write_json(folder/"agent-crash-recovery.json",{"runId":run_id,"podUid":agent["metadata"]["uid"],"signal":"SIGKILL",
+        "terminal":view["status"],"errorCode":view["errorCode"],"backgroundRecoveryBeforeHistoryRead":True,
+        "toolsReplayed":0,"newWorkorders":0,"seconds":time.monotonic()-started})
+
+
+def re_uuid(value):
+    try: return str(uuid.UUID(value))==value
+    except (ValueError,TypeError,AttributeError): return False
 
 
 def rolling_updates(target, folder, image_tag):
