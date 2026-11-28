@@ -217,9 +217,10 @@ def verify(args):
                 step("measurements",[sys.executable,ROOT / "scripts/measure_microservices.py",
                      "--devices",target.bundle / "video-devices.json","--policy",args.policy,
                      "--kafka-pause-seconds","20","--report-dir",folder / "measurements"])
-                summary=json.loads(cn.execute(target.kubectl("get","--raw","/api/v1/nodes/" + cn.CLUSTER + "-control-plane/proxy/stats/summary")))
-                summary["pods"]=[p for p in summary.get("pods",[]) if p.get("podRef",{}).get("namespace") == cn.NAMESPACE]
-                write_json(folder / "kubelet-resources.json",summary)
+                target.assert_cluster(target.state())
+                summary=json.loads(cn.execute(["docker","exec",target.state()["nodeId"],"crictl","stats","-o","json"]))
+                summary["stats"]=[p for p in summary.get("stats",[]) if p.get("attributes",{}).get("labels",{}).get("io.kubernetes.pod.namespace") == cn.NAMESPACE]
+                write_json(folder / "cri-resources.json",summary)
             if "recovery" in args.groups:
                 backup=snapshot(target,folder / "backup")
                 restore_project="capyiot-ms-verify-cn-restore-" + uuid.uuid4().hex[:8]

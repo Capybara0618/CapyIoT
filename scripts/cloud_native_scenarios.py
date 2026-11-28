@@ -110,6 +110,14 @@ def resilience(target, folder, rollout_tag):
         results.append({"service": service, "oldUid": old_uid, "newUid": replacement[0]["metadata"]["uid"], "seconds": elapsed})
         write_json(folder / "pod-recovery.json", {"budgetSeconds": 180, "results": results})
         if elapsed > 180: raise AssertionError("Pod recovery exceeded frozen budget")
+    replica_checks(target,folder)
+    force_process_exit(target,folder)
+    agent_process_exit(target,folder)
+    rolling_updates(target,folder,rollout_tag)
+
+
+def replica_checks(target,folder):
+    observations=[]
     for service in ("gateway", "platform-service"):
         cn.execute(target.kubectl("scale", "deployment/" + service, "--replicas=2"))
         try:
@@ -125,14 +133,13 @@ def resilience(target, folder, rollout_tag):
                 return next((v for k,v in client.last_headers.items() if k.lower() == header.lower()),"unknown")
             with ThreadPoolExecutor(max_workers=8) as pool:
                 seen.update(pool.map(probe_replica,range(24)))
+            observations.append({"service":service,"instances":sorted(seen),"podNames":[p["metadata"]["name"] for p in pods]})
+            write_json(folder/"replica-observations.json",{"observations":observations})
             if len(seen - {"unknown"}) != 2: raise AssertionError("Both replicas must serve authenticated traffic")
         finally:
             cn.execute(target.kubectl("scale", "deployment/" + service, "--replicas=1"))
             cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=180s"))
     write_json(folder / "replica-recovery.json", {"services": ["gateway", "platform-service"], "replicas": [1, 2, 1]})
-    force_process_exit(target,folder)
-    agent_process_exit(target,folder)
-    rolling_updates(target,folder,rollout_tag)
 
 
 def force_process_exit(target, folder):

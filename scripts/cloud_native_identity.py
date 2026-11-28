@@ -28,8 +28,7 @@ def install_deployer(target):
          "roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"Role","name":role},"subjects":[{"kind":"User","name":user,"apiGroup":"rbac.authorization.k8s.io"}]},
         {"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole","metadata":{"name":role},"rules":[
             {"apiGroups":[""],"resources":["namespaces"],"resourceNames":["kube-system",cn.NAMESPACE],"verbs":["get"]},
-            {"apiGroups":[""],"resources":["namespaces"],"resourceNames":[cn.NAMESPACE],"verbs":["patch","update"]},
-            {"apiGroups":[""],"resources":["nodes/proxy"],"resourceNames":[cn.CLUSTER+"-control-plane"],"verbs":["get"]}]},
+            {"apiGroups":[""],"resources":["namespaces"],"resourceNames":[cn.NAMESPACE],"verbs":["patch","update"]}]},
         {"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRoleBinding","metadata":{"name":role},
          "roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":role},"subjects":[{"kind":"User","name":user,"apiGroup":"rbac.authorization.k8s.io"}]}]
     cn.execute(target.kubectl("apply","-f","-"),data=json.dumps({"apiVersion":"v1","kind":"List","items":objects}).encode())
