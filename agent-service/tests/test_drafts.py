@@ -64,6 +64,116 @@ def propose(repo, owner, run, origin="call-1", **updates):
     return repo.propose(owner, run, run + origin, command, [], "park-1", 1800)
 
 
+async def test_incident_draft_needs_only_incident_query_and_still_revalidates_business(
+    database, settings
+):
+    import httpx
+    from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from app.agent import AgentDeps, OpsAgent
+    from app.business_client import BusinessApiClient, Principal
+    from app.drafts import DraftService
+    from app.service_identity import ServiceIdentity
+    from app.tools import ToolRunner
+
+    repo, owner, run = running(database)
+    config = settings.model_copy(update={"max_model_requests": 3, "max_tool_calls": 5})
+    principal = Principal(
+        owner,
+        "session",
+        1,
+        frozenset(
+            {"agent.use", "incident.read", "device.read", "agent.draft.prepare", "workorder.create"}
+        ),
+        "test-token",
+    )
+    requests = []
+    incident = {
+        "incidentId": "incident-one",
+        "incidentNo": "IN-001",
+        "title": "通信异常",
+        "status": "OPEN",
+        "priority": "P2",
+        "rootCauseStatus": "UNCONFIRMED",
+        "version": 1,
+        "candidateRootDeviceId": "ipc-1",
+        "anomalyLinks": [{"anomalyId": "anomaly-one", "deviceId": "ipc-1"}],
+    }
+
+    def transport(request):
+        requests.append((request.method, request.url.path))
+        if request.method == "GET" and request.url.path.endswith("/incidents/incident-one"):
+            data = incident
+        elif request.method == "POST" and request.url.path.endswith("/workorders/validate"):
+            data = {"parkId": "park-1", "priority": "P2"}
+        else:
+            raise AssertionError("Unexpected extra query or formal business command")
+        return httpx.Response(200, json={"code": "OK", "data": data})
+
+    def model(messages, info):
+        results = [
+            part.content
+            for message in messages
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        ]
+        if not results:
+            return ModelResponse(
+                parts=[ToolCallPart("get_incident_detail", {"incidentId": "incident-one"})]
+            )
+        evidence_id = results[0]["evidenceReferences"][0]["evidenceId"]
+        if len(results) == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        "prepare_work_order",
+                        {
+                            **payload(sourceType="INCIDENT", incidentId="incident-one"),
+                            "evidenceReferenceIds": [evidence_id],
+                        },
+                    )
+                ]
+            )
+        assert results[-1]["status"] == "SUCCEEDED"
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    info.output_tools[0].name,
+                    {
+                        "facts": [
+                            {
+                                "statement": "故障已核查，维修草稿等待人工确认",
+                                "evidenceIds": [evidence_id],
+                            }
+                        ],
+                        "inferences": [],
+                        "recommendations": [],
+                        "unknowns": ["现场原因待核查"],
+                    },
+                )
+            ]
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as http:
+        business = BusinessApiClient(http, config, ServiceIdentity(config.service_key_file))
+        runner = ToolRunner(config, repo)
+        drafts = DraftService(config, repo, runner, business)
+        agent = OpsAgent(config, model=FunctionModel(model), tools=(*runner.tools(), drafts.tool()))
+        answer = await agent.run(
+            "请为指定故障准备维修草稿", AgentDeps(principal, business, run, "trace")
+        )
+    assert answer.facts
+    view = repo.run_view(owner, run)
+    assert view["toolCallCount"] == 2 and view["draftId"]
+    assert view["executionStatus"] == "NOT_EXECUTED"
+    assert requests == [
+        ("GET", "/api/v1/incidents/incident-one"),
+        ("GET", "/api/v1/incidents/incident-one"),
+        ("POST", "/api/v1/workorders/validate"),
+    ]
+
+
 def test_draft_tool_idempotency_revision_and_owner(database):
     repo, owner, run = running(database)
     first = propose(repo, owner, run)

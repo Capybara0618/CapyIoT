@@ -19,7 +19,7 @@ CONTRACTS = {
         s.QueryDevices,
         s.Page[s.Device],
         "device",
-        "查询当前可见设备及各维状态；空结果只表示当前范围没有匹配记录。",
+        "按设备名称、资产编码及状态查询当前可见设备；keyword 不匹配 deviceId，已知 ID 时使用 get_device_detail。空结果只表示筛选条件没有匹配记录。",
     ),
     "get_device_detail": (
         s.DeviceIdentity,

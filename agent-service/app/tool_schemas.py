@@ -50,7 +50,12 @@ class TimeRange(Input):
 
 
 class QueryDevices(Pagination):
-    keyword: str | None = Field(default=None, min_length=1, max_length=100)
+    keyword: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="只按设备名称或资产编码模糊检索，不匹配 deviceId；已知设备 ID 时使用 get_device_detail。",
+    )
     deviceType: Literal["IPC", "NVR", "SWITCH"] | None = None
     areaId: ID | None = None
     monitoringPointId: ID | None = None
