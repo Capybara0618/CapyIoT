@@ -98,6 +98,7 @@ def verify(args):
               "commit": subprocess.check_output(["git", "rev-parse", "HEAD"],cwd=ROOT).decode().strip(),
               "startedAt": datetime.now(timezone.utc).isoformat()}
     write_json(folder/"report.json",report)
+    runtime_lock=contextlib.ExitStack()
     env = dict(os.environ)
     for key in list(env):
         if key.startswith(("CAPYIOT_MS_", "COMPOSE_")): env.pop(key)
@@ -141,6 +142,7 @@ def verify(args):
         runtime = set(args.groups) - {"unit","build","manifests"}
         if runtime:
             target = cn.Target(args.bundle,cluster=args.cluster,context=args.context,namespace=args.namespace,infra_project=args.infra_project)
+            runtime_lock.enter_context(cn.operation_lock(target.bundle))
             verified_endpoints(target)
             credential_file = folder / "scenario.env"
             credential_file.write_text("".join(k + "=" + (target.bundle / "secrets" / k.lower().replace("_","-")).read_text() + "\n" for k in ("DEMO_ADMIN_PASSWORD","DEMO_OPERATOR_PASSWORD")))
@@ -246,6 +248,7 @@ def verify(args):
         report["status"]="FAILED"; report["errorCategory"]=type(error).__name__
         raise
     finally:
+        runtime_lock.close()
         report["finishedAt"]=datetime.now(timezone.utc).isoformat()
         write_json(folder / "report.json",report)
 
