@@ -126,6 +126,10 @@ def deploy(target, release, *, active=False):
     items = application_objects(version=version, active=active,
         fresh=target.manifest["mode"] == "fresh" and not release["previousReleaseId"],
         images=release["images"], model=target.manifest["model"])
+    if target.manifest.get("resourceProfile") == "compact":
+        items = application_objects(version=version, active=active,
+            fresh=target.manifest["mode"] == "fresh" and not release["previousReleaseId"],
+            images=release["images"], model=target.manifest["model"], profile="compact")
     save_release(target, release, "ACTIVATING" if active else "DEPLOYING_PASSIVE")
     apply(target, resources(items))
     for service in (*APPS, "frontend"):
@@ -154,7 +158,7 @@ def rollback(target, release):
                 if variable["name"] == "CAPYIOT_MIGRATION_ACTION": variable["value"] = "validate"
         apply(target, resources([secret, job]))
         cn.execute(target.kubectl("wait", "--for=condition=complete", "job/" + job["metadata"]["name"], "--timeout=180s"))
-    apply(target, resources(application_objects(version=previous_id + "-a", active=True, images=previous["images"], model=target.manifest["model"])))
+    apply(target, resources(application_objects(version=previous_id + "-a", active=True, images=previous["images"], model=target.manifest["model"], profile=target.manifest.get("resourceProfile", "standard"))))
     for service in (*APPS, "frontend"):
         cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=240s"))
     write_json(target.bundle / "active-release.json", {"ownerId": target.manifest["ownerId"], "releaseId": previous_id})

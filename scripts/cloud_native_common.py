@@ -203,8 +203,11 @@ class Target:
                 raise ValueError("Infrastructure source changed after preparation; review a new bundle")
 
     def compose(self, *args):
-        return ["docker", "compose", "--project-directory", str(ROOT), "-p", INFRA_PROJECT,
-                "--env-file", str(self.bundle / "infra.env"), "-f", str(INFRA_FILE), *args]
+        command = ["docker", "compose", "--project-directory", str(ROOT), "-p", INFRA_PROJECT,
+                   "--env-file", str(self.bundle / "infra.env"), "-f", str(INFRA_FILE)]
+        if self.manifest.get("resourceProfile") == "compact":
+            command += ["-f", str(ROOT / "infra/k8s/compose.compact.yml")]
+        return [*command, *args]
 
     def kubectl(self, *args):
         return [self.manifest["kubectlBinary"], "--kubeconfig", str(self.bundle / "kubeconfig"),

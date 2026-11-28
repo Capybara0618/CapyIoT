@@ -101,7 +101,7 @@ def configuration(service, *, active=False, fresh=False, model=None):
     return env
 
 
-def application_objects(*, version="unreleased", active=False, fresh=False, images=None, model=None, replicas=None):
+def application_objects(*, version="unreleased", active=False, fresh=False, images=None, model=None, replicas=None, profile="standard"):
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", version):
         raise ValueError("Invalid immutable release version")
     replicas = replicas or {}
@@ -144,6 +144,8 @@ def application_objects(*, version="unreleased", active=False, fresh=False, imag
                      "lifecycle": {"preStop": {"exec": {"command": ["/bin/sh", "-c", "touch /tmp/capyiot-draining; sleep 5"]}}}}
         volumes = [{"name": "credentials", "secret": {"secretName": secret_name, "defaultMode": 292}},
                    {"name": "tmp", "emptyDir": {"sizeLimit": "64Mi"}}]
+        if profile == "compact":
+            container["resources"]["limits"]["memory"] = "96Mi" if frontend else "384Mi"
         if service == "agent-service":
             container["args"] = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8086", "--ssl-keyfile", "/run/secrets/server.key", "--ssl-certfile", "/run/secrets/server.pem", "--workers", "1", "--timeout-graceful-shutdown", "45", "--no-access-log"]
         if frontend:

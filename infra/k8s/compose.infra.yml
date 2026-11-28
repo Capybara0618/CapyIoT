@@ -37,6 +37,7 @@ services:
     image: apache/kafka:4.1.1@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40
     environment:
       KAFKA_NODE_ID: 1
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx384m
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: INTERNAL://:29092,KUBERNETES://:39092,CONTROLLER://:9093
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,KUBERNETES://kafka.capyiot-cn-verify.svc.cluster.local:39092

@@ -1,0 +1,11 @@
+# Explicit local-only budget. No production capacity claim.
+services:
+  mysql:
+    mem_limit: 512m
+    command: [--innodb-buffer-pool-size=134217728, --max-connections=60, --performance-schema=OFF]
+  kafka:
+    mem_limit: 640m
+    environment:
+      KAFKA_HEAP_OPTS: -Xms192m -Xmx320m
+  emqx:
+    mem_limit: 384m

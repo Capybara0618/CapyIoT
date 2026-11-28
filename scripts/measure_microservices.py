@@ -52,7 +52,11 @@ def main():
     parser.add_argument("--policy", required=True, type=Path)
     parser.add_argument("--report-dir", required=True, type=Path)
     args = parser.parse_args()
-    target = Target(**json.loads(os.environ["CAPYIOT_MS_TARGET"]), verification=True)
+    if os.environ.get("CAPYIOT_CN_TARGET"):
+        from cloud_native_measurement import MeasurementTarget
+        target = MeasurementTarget(**json.loads(os.environ["CAPYIOT_CN_TARGET"]))
+    else:
+        target = Target(**json.loads(os.environ["CAPYIOT_MS_TARGET"]), verification=True)
     target.preflight()
     if target.manifest["modelMode"] != "offline":
         raise ValueError(

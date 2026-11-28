@@ -50,6 +50,14 @@ def active_outage_incident(call):
 
 
 def compose_command(*args):
+    if os.environ.get("CAPYIOT_CN_TARGET"):
+        from cloud_native_common import Target as CloudTarget
+        target = CloudTarget(**json.loads(os.environ["CAPYIOT_CN_TARGET"]))
+        target.assert_daemon(target.state())
+        target.assert_cluster(target.state())
+        if args != ("restart", "agent-service"):
+            raise ValueError("Retained CN scenario only permits the explicit Agent restart")
+        return target.kubectl("rollout", "restart", "deployment/agent-service")
     selected = os.environ.get("CAPYIOT_MS_TARGET")
     if selected:
         target = Target(**json.loads(selected), verification=True)

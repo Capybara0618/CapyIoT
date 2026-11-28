@@ -106,11 +106,13 @@ def prepare(args):
             ROOT / "infra/emqx/start-microservices.sh", ROOT / "scripts/cloud_native_common.py",
             ROOT / "scripts/cloud_native_environment.py", ROOT / "scripts/init_microservices.py",
             ROOT / "scripts/microservices_common.py",
+            ROOT / "infra/k8s/compose.compact.yml",
         )},
         "kindBinary": str(Path(args.kind_binary).resolve()),
         "kubectlBinary": str(Path(args.kubectl_binary).resolve()),
         "versions": {"kind": cn.KIND_VERSION, "kubectl": cn.KUBECTL_VERSION, "nodeImage": cn.NODE_IMAGE},
         "writersEnabled": False,
+        "resourceProfile": getattr(args, "resource_profile", "standard"),
     })
 
 
@@ -123,8 +125,9 @@ def host_routes():
     return [r["dst"] for r in value if r.get("dst") not in {None, "default"}]
 
 
-def memory_budget(info, required_free_gib):
-    if info["OSType"] != "linux" or info["MemTotal"] < 12 * 2**30:
+def memory_budget(info, required_free_gib, profile="standard"):
+    minimum = 7.3 if profile == "compact" else 12
+    if info["OSType"] != "linux" or info["MemTotal"] < minimum * 2**30:
         raise ValueError("CN runtime requires the frozen Linux Docker resource budget")
     stats = cn.execute(["docker", "stats", "--no-stream", "--format", "{{json .}}"])
     used = 0
@@ -153,7 +156,8 @@ def memory_budget(info, required_free_gib):
 
 def preflight(target):
     info = json.loads(cn.execute(["docker", "info", "--format", "{{json .}}"] ))
-    memory_budget(info, 10)
+    profile = target.manifest.get("resourceProfile", "standard")
+    memory_budget(info, 6.2 if profile == "compact" else 10, profile)
     if cn.KIND_VERSION not in cn.execute([target.manifest["kindBinary"], "version"]).decode().split():
         raise ValueError("Kind binary does not match the frozen version")
     client = json.loads(cn.execute([target.manifest["kubectlBinary"], "version", "--client", "-o", "json"]))
@@ -216,7 +220,8 @@ def start_infra(target):
         raise ValueError("A newly bound cluster is required before infrastructure initialization")
     target.assert_daemon(state)
     target.assert_cluster(state)
-    memory_budget(json.loads(cn.execute(["docker", "info", "--format", "{{json .}}"])), 8)
+    profile = target.manifest.get("resourceProfile", "standard")
+    memory_budget(json.loads(cn.execute(["docker", "info", "--format", "{{json .}}"])), 5.3 if profile == "compact" else 8, profile)
     network = json.loads(cn.execute(["docker", "network", "inspect", cn.BRIDGE]))[0]
     cn.check_bridge(network, target.manifest["ownerId"], state["networkId"])
     volumes = cn.execute(["docker", "volume", "ls", "--format", "{{.Name}}"] ).decode().splitlines()
@@ -260,6 +265,7 @@ def main():
     parser.add_argument("--mode", choices=["fresh", "import"], default="fresh")
     parser.add_argument("--model-mode", choices=["offline", "real"], default="offline")
     parser.add_argument("--source-bundle", type=Path)
+    parser.add_argument("--resource-profile", choices=["standard", "compact"], default="standard")
     parser.add_argument("--kind-binary", type=Path, default=ROOT / "var/cloud-native/tools" / ("kind.exe" if os.name == "nt" else "kind"))
     parser.add_argument("--kubectl-binary", type=Path, default=ROOT / "var/cloud-native/tools" / ("kubectl.exe" if os.name == "nt" else "kubectl"))
     parser.add_argument("--execute", action="store_true")
