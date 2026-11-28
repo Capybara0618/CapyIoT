@@ -31,6 +31,7 @@ class ManifestBoundaries(unittest.TestCase):
         resources = application_objects(active=True)
         frontend = next(x for x in resources if x["kind"] == "ConfigMap" and x["metadata"]["name"].startswith("frontend-"))
         self.assertNotEqual(frontend["data"]["NGINX_RESOLVER"], "127.0.0.11")
+        self.assertTrue(frontend["data"]["NGINX_GATEWAY_HOST"].endswith(".svc.cluster.local"))
         for item in resources:
             if item["kind"] == "Deployment" and item["metadata"]["name"] != "frontend":
                 container = item["spec"]["template"]["spec"]["containers"][0]

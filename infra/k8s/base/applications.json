@@ -1829,7 +1829,8 @@
       },
       "immutable": true,
       "data": {
-        "NGINX_RESOLVER": "10.249.0.10"
+        "NGINX_RESOLVER": "10.249.0.10",
+        "NGINX_GATEWAY_HOST": "gateway.capyiot-cn-verify.svc.cluster.local"
       }
     },
     {

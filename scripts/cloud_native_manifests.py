@@ -97,7 +97,7 @@ def configuration(service, *, active=False, fresh=False, model=None):
             env["DEEPSEEK_BASE_URL"] = "http://model-fixture:8099"
             env["AGENT_ALLOW_INSECURE_MODEL_ENDPOINT"] = "true"
     if service == "frontend":
-        env = {"NGINX_RESOLVER": "10.249.0.10"}
+        env = {"NGINX_RESOLVER": "10.249.0.10", "NGINX_GATEWAY_HOST": f"gateway.{cn.NAMESPACE}.svc.cluster.local"}
     return env
 
 
