@@ -1,6 +1,7 @@
 """Unified selected CN checks. Failures and their later reruns use separate local reports."""
 
 import argparse
+import contextlib
 import json
 import os
 import shutil
@@ -13,10 +14,42 @@ from pathlib import Path
 import cloud_native_common as cn
 import cloud_native_release as release
 from cloud_native_environment import verified_endpoints
-from cloud_native_scenarios import kafka_recovery, metrics, resilience, snapshot
+from cloud_native_scenarios import dependency_and_grants, kafka_recovery, pipeline_handover, resilience, snapshot
 from microservices_common import APPS, ROOT, private_path, write_json
 
-GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent", "browser", "resilience", "metrics", "recovery")
+GROUPS = ("unit", "build", "manifests", "deploy", "protocol", "workflow", "agent", "real-model", "browser", "resilience", "metrics", "recovery")
+
+
+@contextlib.contextmanager
+def real_provider(target, key_file, model, base_url):
+    from urllib.parse import urlsplit
+    from cloud_native_manifests import configuration
+    import base64
+    parsed=urlsplit(base_url)
+    if parsed.scheme != "https" or parsed.username or parsed.password or parsed.query or parsed.fragment or not model:
+        raise ValueError("Explicit HTTPS model origin and model ID required")
+    key=cn.safe_file(private_path(key_file).parent,private_path(key_file).name).read_bytes()
+    if not key.strip(): raise ValueError("Real provider key is empty")
+    obj=json.loads(cn.execute(target.kubectl("get","deployment","agent-service","-o","json")))
+    pod=obj["spec"]["template"]["spec"];container=pod["containers"][0]
+    original_config=container["envFrom"][0]["configMapRef"]["name"]
+    index=next(i for i,v in enumerate(pod["volumes"]) if v["name"] == "credentials")
+    original_secret=pod["volumes"][index]["secret"]["secretName"]
+    old=json.loads(cn.execute(target.kubectl("get","secret",original_secret,"-o","json")))
+    suffix=uuid.uuid4().hex[:10];new_secret="agent-real-"+suffix;new_config="agent-real-config-"+suffix
+    data={**old["data"],"deepseek-api-key":base64.b64encode(key).decode()}
+    release.apply(target,release.resources([
+        {"apiVersion":"v1","kind":"Secret","immutable":True,"type":"Opaque","metadata":{"name":new_secret,"namespace":cn.NAMESPACE},"data":data},
+        {"apiVersion":"v1","kind":"ConfigMap","immutable":True,"metadata":{"name":new_config,"namespace":cn.NAMESPACE},"data":configuration("agent-service",active=True,model={"id":model,"baseUrl":base_url})}]))
+    def select(config,secret):
+        patch=json.dumps([{"op":"replace","path":"/spec/template/spec/containers/0/envFrom/0/configMapRef/name","value":config},
+                          {"op":"replace","path":f"/spec/template/spec/volumes/{index}/secret/secretName","value":secret}])
+        cn.execute(target.kubectl("patch","deployment","agent-service","--type=json","-p",patch))
+        cn.execute(target.kubectl("rollout","status","deployment/agent-service","--timeout=180s"))
+    try:
+        select(new_config,new_secret)
+        yield
+    finally: select(original_config,original_secret)
 
 
 def offline_provider(target):
@@ -94,31 +127,43 @@ def verify(args):
                 release.deploy(target,release.read_release(target,args.release_id))
                 release.deploy(target,release.read_release(target,args.release_id),active=True)
             common=["--base-url","https://localhost:28443","--ca-file",target.bundle / "pki/edge/ca.pem","--env-file",credential_file]
-            if set(args.groups) & {"protocol","workflow","agent","metrics"}:
+            if set(args.groups) & {"protocol","workflow","agent","real-model","metrics"}:
                 step("assets",[sys.executable,ROOT / "scripts/video_devices.py",*common,"--prefix","CNVERIFY","--output",target.bundle / "video-devices.json"])
             if "protocol" in args.groups:
                 step("protocol",[sys.executable,ROOT / "scripts/video_protocol_smoke.py",*common,"--port","28883","--devices",target.bundle / "video-devices.json"])
-            if set(args.groups) & {"workflow","agent"}:
+            for selected_group,fault_seconds in (("workflow",60),("agent",300),("real-model",90)):
+                if selected_group not in args.groups: continue
                 name="capyiot-cn-sim-" + uuid.uuid4().hex[:10]
                 sim=cn.execute(["docker","run","-d","--name",name,"--network",cn.BRIDGE,"--add-host","frontend:" + cn.NODE_IP,
                     "--label","io.capyiot.cn.owner=" + target.manifest["ownerId"],"--label","io.capyiot.cn.role=simulator",
                     "--memory","256m","-v",str(target.bundle / "video-devices.json") + ":/devices.json:ro",
                     "-v",str(target.bundle / "pki/edge/ca.pem") + ":/ca.pem:ro","capyiot/simulator:" + args.image_tag,
                     "--api-url","https://frontend:30443","--mqtt-url","ssl://emqx:8883","--ca-file","/ca.pem","--devices","/devices.json",
-                    "--scenario","switch-outage","--fault-seconds","300","--interval-ms","1000"]).decode().strip()
+                    "--scenario","switch-outage","--fault-seconds",str(fault_seconds),"--interval-ms","1000"]).decode().strip()
                 try:
-                    if "workflow" in args.groups: step("workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common])
-                    if "agent" in args.groups:
+                    if selected_group == "workflow": step("workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common])
+                    if selected_group == "agent":
                         for script in ("agent_foundation_smoke","agent_query_smoke","agent_draft_smoke"):
                             step(script,[sys.executable,ROOT / ("scripts/" + script + ".py")])
+                    if selected_group == "real-model":
+                        if not args.real_key_file: raise ValueError("Explicit private real-model key file required")
+                        with real_provider(target,args.real_key_file,args.real_model,args.real_base_url):
+                            step("real-model-workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common,"--agent","--real-model"])
                 finally: cn.execute(["docker","stop",sim])
             if "browser" in args.groups: step("browser",[npm,"run","test:e2e"],ROOT / "frontend")
-            if "resilience" in args.groups: resilience(target,folder); kafka_recovery(target,folder)
+            if "resilience" in args.groups:
+                dependency_and_grants(target,folder)
+                pipeline_handover(target,folder)
+                resilience(target,folder,args.rollout_tag)
+                kafka_recovery(target,folder)
             if "metrics" in args.groups:
                 if not args.policy: raise ValueError("Frozen local measurement policy is required")
                 step("measurements",[sys.executable,ROOT / "scripts/measure_microservices.py",
                      "--devices",target.bundle / "video-devices.json","--policy",args.policy,
-                     "--report-dir",folder / "measurements"])
+                     "--kafka-pause-seconds","20","--report-dir",folder / "measurements"])
+                summary=json.loads(cn.execute(target.kubectl("get","--raw","/api/v1/nodes/" + cn.CLUSTER + "-control-plane/proxy/stats/summary")))
+                summary["pods"]=[p for p in summary.get("pods",[]) if p.get("podRef",{}).get("namespace") == cn.NAMESPACE]
+                write_json(folder / "kubelet-resources.json",summary)
             if "recovery" in args.groups:
                 backup=snapshot(target,folder / "backup")
                 restore_project="capyiot-ms-verify-cn-restore-" + uuid.uuid4().hex[:8]
@@ -147,6 +192,10 @@ def main():
     parser.add_argument("--image-tag")
     parser.add_argument("--release-id",default="r-initial")
     parser.add_argument("--policy",type=Path)
+    parser.add_argument("--rollout-tag")
+    parser.add_argument("--real-key-file",type=Path)
+    parser.add_argument("--real-model")
+    parser.add_argument("--real-base-url",default="https://api.deepseek.com")
     for name in ("cluster","context","namespace","infra-project"): parser.add_argument("--" + name,required=True)
     args=parser.parse_args()
     cn.validate_selection(args.cluster,args.context,args.namespace,args.infra_project)

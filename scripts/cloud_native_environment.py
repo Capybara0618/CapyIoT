@@ -105,6 +105,7 @@ def prepare(args):
             cn.INFRA_FILE, cn.KIND_FILE, cn.BROKER_FILE, ROOT / "infra/mysql/01-microservices.sh",
             ROOT / "infra/emqx/start-microservices.sh", ROOT / "scripts/cloud_native_common.py",
             ROOT / "scripts/cloud_native_environment.py", ROOT / "scripts/init_microservices.py",
+            ROOT / "scripts/cloud_native_identity.py",
             ROOT / "scripts/microservices_common.py",
             ROOT / "infra/k8s/compose.compact.yml",
         )},
@@ -200,6 +201,9 @@ def create_cluster(target):
     if (node["Config"].get("Labels") or {}).get("io.x-k8s.kind.cluster") != cn.CLUSTER or node["Image"] != image["Id"]:
         raise ValueError("Created Kind node does not match the pinned target")
     cn.execute(["docker", "network", "connect", "--ip", cn.NODE_IP, cn.BRIDGE, node["Id"]])
+    # Explicit, node-local SNAT for Pods reaching the external bridge. No host/global routes change.
+    cn.execute(["docker", "exec", node["Id"], "iptables", "-t", "nat", "-I", "POSTROUTING", "1",
+                "-s", cn.POD_SUBNET, "-d", cn.SUBNET, "-j", "SNAT", "--to-source", cn.NODE_IP])
     network = json.loads(cn.execute(["docker", "network", "inspect", cn.BRIDGE]))[0]
     cn.check_bridge(network, target.manifest["ownerId"])
     config = json.loads(cn.execute(target.kubectl("config", "view", "--minify", "-o", "json")))
@@ -207,6 +211,8 @@ def create_cluster(target):
     if not api.startswith("https://127.0.0.1:"):
         raise ValueError("Kind API must use the explicitly private loopback endpoint")
     ns = json.loads(cn.execute(target.kubectl("get", "namespace", "kube-system", "-o", "json")))
+    from cloud_native_identity import install_deployer
+    install_deployer(target)
     state.update(phase="CLUSTER_BOUND", nodeId=node["Id"], networkId=network["Id"],
                  kubeconfigSha256=sha(target.bundle / "kubeconfig"), apiServer=api, clusterUid=ns["metadata"]["uid"])
     cn.save_state(target, state)

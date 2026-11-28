@@ -220,7 +220,7 @@
                       "command": [
                         "/bin/sh",
                         "-c",
-                        "touch /tmp/capyiot-draining; sleep 5"
+                        "sleep 3; touch /tmp/capyiot-draining; sleep 2"
                       ]
                     }
                   }
@@ -478,7 +478,7 @@
                       "command": [
                         "/bin/sh",
                         "-c",
-                        "touch /tmp/capyiot-draining; sleep 5"
+                        "sleep 3; touch /tmp/capyiot-draining; sleep 2"
                       ]
                     }
                   }
@@ -735,7 +735,7 @@
                       "command": [
                         "/bin/sh",
                         "-c",
-                        "touch /tmp/capyiot-draining; sleep 5"
+                        "sleep 3; touch /tmp/capyiot-draining; sleep 2"
                       ]
                     }
                   }
@@ -991,7 +991,7 @@
                       "command": [
                         "/bin/sh",
                         "-c",
-                        "touch /tmp/capyiot-draining; sleep 5"
+                        "sleep 3; touch /tmp/capyiot-draining; sleep 2"
                       ]
                     }
                   }
@@ -1240,7 +1240,7 @@
                       "command": [
                         "/bin/sh",
                         "-c",
-                        "touch /tmp/capyiot-draining; sleep 5"
+                        "sleep 3; touch /tmp/capyiot-draining; sleep 2"
                       ]
                     }
                   }
@@ -1498,7 +1498,7 @@
                       "command": [
                         "/bin/sh",
                         "-c",
-                        "touch /tmp/capyiot-draining; sleep 5"
+                        "sleep 3; touch /tmp/capyiot-draining; sleep 2"
                       ]
                     }
                   }
@@ -1731,7 +1731,7 @@
                       "command": [
                         "/bin/sh",
                         "-c",
-                        "touch /tmp/capyiot-draining; sleep 5"
+                        "sleep 3; touch /tmp/capyiot-draining; sleep 2"
                       ]
                     }
                   }
@@ -1994,7 +1994,7 @@
                       "command": [
                         "/bin/sh",
                         "-c",
-                        "touch /tmp/capyiot-draining; sleep 5"
+                        "sleep 3; touch /tmp/capyiot-draining; sleep 2"
                       ]
                     }
                   }

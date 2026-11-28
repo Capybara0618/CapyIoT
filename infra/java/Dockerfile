@@ -9,6 +9,8 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -N dependency:copy \
     -DoutputDirectory=/agent -Dmdep.stripVersion=true
 
 FROM eclipse-temurin:21-jre-alpine
+ARG CAPYIOT_BUILD_ID=local
+LABEL io.capyiot.build-id=$CAPYIOT_BUILD_ID
 ARG SERVICE
 WORKDIR /app
 RUN apk add --no-cache curl && addgroup -S capyiot && adduser -S capyiot -G capyiot \

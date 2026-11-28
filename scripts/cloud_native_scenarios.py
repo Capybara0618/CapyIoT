@@ -6,6 +6,10 @@ import ssl
 import statistics
 import time
 import uuid
+import threading
+import socket
+import struct
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from urllib.request import Request, urlopen
 
@@ -29,6 +33,7 @@ class Api:
         self.base = "https://localhost:28443/api/v1"
         self.tls = ssl.create_default_context(cafile=target.bundle / "pki/edge/ca.pem")
         self.token = None
+        self.last_headers = {}
         self.call("/auth/login", {"loginName": "supervisor", "password": (target.bundle / "secrets/demo-admin-password").read_text()}, login=True)
 
     def call(self, path, body=None, *, login=False, key=None):
@@ -37,6 +42,7 @@ class Api:
         if body is not None: headers["Idempotency-Key"] = key or uuid.uuid4().hex
         request = Request(self.base + path, data=None if body is None else json.dumps(body).encode(), headers=headers)
         with urlopen(request, context=self.tls, timeout=15) as response:
+            self.last_headers = dict(response.headers)
             value = json.load(response)
             if value["code"] != "OK": raise ValueError("Business API returned a failed envelope")
             if login: self.token = value["data"]["accessToken"]
@@ -67,7 +73,7 @@ def metrics(target, folder):
     if any(x["errors"] for x in measured.values()): raise AssertionError("API measurement has failed samples")
 
 
-def resilience(target, folder):
+def resilience(target, folder, rollout_tag):
     verified_endpoints(target)
     api = Api(target)
     results = []
@@ -90,11 +96,153 @@ def resilience(target, folder):
             cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=180s"))
             pods = json.loads(cn.execute(target.kubectl("get", "pods", "-l", "app.kubernetes.io/name=" + service, "-o", "json")))["items"]
             if len(pods) != 2: raise AssertionError("Two replicas not observed")
-            for _ in range(20): api.call("/devices")
+            seen = set()
+            header = "X-Gateway-Instance" if service == "gateway" else "X-Service-Instance"
+            for _ in range(80):
+                api.call("/auth/me")
+                seen.add(next((v for k,v in api.last_headers.items() if k.lower() == header.lower()), "unknown"))
+                if len(seen - {"unknown"}) == 2: break
+            if len(seen - {"unknown"}) != 2: raise AssertionError("Both replicas must serve authenticated traffic")
         finally:
             cn.execute(target.kubectl("scale", "deployment/" + service, "--replicas=1"))
             cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=180s"))
     write_json(folder / "replica-recovery.json", {"services": ["gateway", "platform-service"], "replicas": [1, 2, 1]})
+    force_process_exit(target,folder)
+    rolling_updates(target,folder,rollout_tag)
+
+
+def force_process_exit(target, folder):
+    service = "device-service"
+    pod = json.loads(cn.execute(target.kubectl("get","pods","-l","app.kubernetes.io/name=" + service,"-o","json")))["items"][0]
+    before = pod["status"]["containerStatuses"][0]["restartCount"]
+    node = target.state()["nodeId"]
+    containers = json.loads(cn.execute(["docker","exec",node,"crictl","ps","--label","io.kubernetes.pod.name=" + pod["metadata"]["name"],"-o","json"]))["containers"]
+    container = next(x for x in containers if x["metadata"]["name"] == service)
+    orders_before = Api(target).call("/workorders")["total"]
+    started = time.monotonic()
+    cn.execute(["docker","exec",node,"ctr","-n","k8s.io","tasks","kill","--signal","SIGKILL",container["id"]])
+    def recovered():
+        current = json.loads(cn.execute(target.kubectl("get","pod",pod["metadata"]["name"],"-o","json")))
+        return any(x.get("ready") and x["restartCount"] > before for x in current.get("status",{}).get("containerStatuses",[]))
+    wait(recovered)
+    if Api(target).call("/workorders")["total"] != orders_before: raise AssertionError("Process restart changed work-order count")
+    write_json(folder / "sigkill-recovery.json",{"service":service,"podUid":pod["metadata"]["uid"],
+        "signal":"SIGKILL","containerId":container["id"],"seconds":time.monotonic()-started})
+
+
+def rolling_updates(target, folder, image_tag):
+    if not image_tag: raise ValueError("A separately built rollout image tag is required")
+    for service in ("gateway","platform-service"):
+        deployment = json.loads(cn.execute(target.kubectl("get","deployment",service,"-o","json")))
+        old_image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
+        new_image = "capyiot/" + service + ":" + image_tag
+        old_id=json.loads(cn.execute(["docker","image","inspect",old_image]))[0]["Id"]
+        new_id=json.loads(cn.execute(["docker","image","inspect",new_image]))[0]["Id"]
+        if old_id == new_id: raise ValueError("Rollout must use an actual different immutable image")
+        cn.execute([target.manifest["kindBinary"],"load","docker-image","--name",cn.CLUSTER,new_image])
+        samples, stopped = [], threading.Event()
+        api=Api(target)
+        def probe():
+            started=time.monotonic()
+            while not stopped.is_set() or len(samples)<180 or time.monotonic()-started<180:
+                at=time.monotonic()
+                try:
+                    api.call("/auth/me")
+                    result={"at":at,"ok":True,"instances":{k:v for k,v in api.last_headers.items() if k.lower() in {"x-service-instance","x-gateway-instance"}}}
+                except Exception as error: result={"at":at,"ok":False,"category":type(error).__name__}
+                samples.append(result)
+                stopped.wait(1) if not stopped.is_set() else time.sleep(1)
+        thread=threading.Thread(target=probe,daemon=True);thread.start()
+        try:
+            cn.execute(target.kubectl("set","image","deployment/"+service,service+"="+new_image))
+            cn.execute(target.kubectl("rollout","status","deployment/"+service,"--timeout=180s"))
+            bad_patch=json.dumps([{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"capyiot/"+service+":absent-cn-image"},
+                                  {"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}])
+            cn.execute(target.kubectl("patch","deployment",service,"--type=json","-p",bad_patch))
+            time.sleep(10)
+            bad=json.loads(cn.execute(target.kubectl("get","pods","-l","app.kubernetes.io/name="+service,"-o","json")))["items"]
+            if not any(x.get("state",{}).get("waiting",{}).get("reason") == "ErrImageNeverPull" for p in bad for x in p.get("status",{}).get("containerStatuses",[])):
+                raise AssertionError("Failed image was not observed blocked")
+        finally:
+            revert=json.dumps([{"op":"replace","path":"/spec/template/spec/containers/0/image","value":old_image},
+                               {"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}])
+            cn.execute(target.kubectl("patch","deployment",service,"--type=json","-p",revert))
+            cn.execute(target.kubectl("rollout","status","deployment/"+service,"--timeout=180s"))
+            stopped.set();thread.join(timeout=210)
+            write_json(folder / (service+"-rolling.json"),{"oldImageId":old_id,"newImageId":new_id,"samples":samples,"minimumWindowSeconds":180})
+        if thread.is_alive() or len(samples)<180 or any(not x["ok"] for x in samples):
+            raise AssertionError("Rolling/failed-image/rollback continuity did not meet the frozen gate")
+
+
+def pipeline_handover(target, folder):
+    from video_protocol_smoke import encoded, packet, receive
+    verified_endpoints(target)
+    mysql=target.state()["containers"]["mysql"]["containerId"]
+    results=[]
+    for fault in ("consumer","ingestion"):
+        device=next(x for x in json.loads((target.bundle/"video-devices.json").read_text()) if x["deviceType"] == "IPC")
+        session=str(uuid.uuid4()); api=Api(target)
+        identity=api.call("/device-sessions",{"deviceId":device["deviceId"],"secret":device["deviceSecret"],"sessionId":session})
+        connection=api.tls.wrap_socket(socket.create_connection(("localhost",28883),timeout=10),server_hostname="localhost")
+        connection.settimeout(10)
+        connection.sendall(packet(0x10,encoded("MQTT")+bytes([4,0xC2])+struct.pack("!H",30)+encoded(device["deviceId"])+encoded(device["deviceId"])+encoded(identity["sessionToken"])))
+        kind,body=receive(connection)
+        if kind != 0x20 or body[-1:] != b"\0": raise AssertionError("Publisher CONNECT failed")
+        service="device-service" if fault == "consumer" else "device-ingestion"
+        ids=[]; started=time.monotonic()
+        cn.execute(target.kubectl("scale","deployment/"+service,"--replicas=0"))
+        cn.execute(target.kubectl("wait","--for=delete","pod","-l","app.kubernetes.io/name="+service,"--timeout=90s"))
+        try:
+            for sequence in range(1,21):
+                event_id=str(uuid.uuid4());ids.append(event_id)
+                event={"eventId":event_id,"schemaVersion":1,"deviceId":device["deviceId"],"sessionId":session,
+                       "eventType":"HEARTBEAT","streamKey":"HEARTBEAT","sequence":sequence,
+                       "occurredAt":datetime.now(timezone.utc).isoformat().replace("+00:00","Z"),"payload":{"bootId":session}}
+                topic=f"capyiot/v1/devices/{device['deviceId']}/sessions/{session}/events"
+                connection.sendall(packet(0x32,encoded(topic)+struct.pack("!H",sequence)+json.dumps(event).encode()))
+                kind,body=receive(connection)
+                if kind != 0x40: raise AssertionError("Publisher PUBACK missing")
+        finally:
+            connection.close()
+            cn.execute(target.kubectl("scale","deployment/"+service,"--replicas=1"))
+            cn.execute(target.kubectl("rollout","status","deployment/"+service,"--timeout=180s"))
+        quoted=",".join("'"+x+"'" for x in ids)
+        def applied():
+            return db(mysql,"SELECT COUNT(*) FROM device_db.device_event_receipt WHERE event_id IN ("+quoted+") AND processing_status='APPLIED';").strip() == "20"
+        wait(applied,120)
+        results.append({"fault":fault,"eventIds":ids,"uniqueApplied":20,"seconds":time.monotonic()-started})
+        write_json(folder/"pipeline-handover.json",{"results":results,"brokerStayedOnline":True})
+
+
+def dependency_and_grants(target, folder):
+    verified_endpoints(target)
+    state=target.state();mysql=state["containers"]["mysql"]["containerId"]
+    grants=[]
+    for owner in ("device","alarm","workflow","platform","agent"):
+        for schema in ("device","alarm","workflow","platform","agent"):
+            # SHOW/TABLE access is tested directly; information_schema alone silently hides inaccessible rows.
+            table="alembic_version" if schema == "agent" else "flyway_schema_history"
+            statement=f"SELECT COUNT(*) FROM {schema}_db.{table}"
+            command=f'MYSQL_PWD="$(cat /run/secrets/{owner}-db-password)" exec mysql -u{owner}_app -N -e "{statement}"'
+            argv=["docker","exec",mysql,"sh","-c",command]
+            try: cn.execute(argv); allowed=True
+            except RuntimeError: allowed=False
+            if allowed != (owner == schema): raise AssertionError("Schema access boundary failed")
+            grants.append({"owner":owner,"schema":schema,"allowed":allowed})
+    api=Api(target)
+    cn.execute(target.kubectl("scale","deployment/platform-service","--replicas=0"))
+    cn.execute(target.kubectl("wait","--for=delete","pod","-l","app.kubernetes.io/name=platform-service","--timeout=90s"))
+    try:
+        from urllib.error import HTTPError
+        try: api.call("/devices"); raise AssertionError("Platform outage did not fail closed")
+        except HTTPError as error:
+            if error.code != 503: raise
+        cn.execute(target.kubectl("exec","deployment/device-service","--","curl","-fsS","--cacert","/run/secrets/internal-ca.pem","https://127.0.0.1:8082/actuator/health/readiness"))
+    finally:
+        cn.execute(target.kubectl("scale","deployment/platform-service","--replicas=1"))
+        cn.execute(target.kubectl("rollout","status","deployment/platform-service","--timeout=180s"))
+    api.call("/devices")
+    write_json(folder/"dependency-and-grants.json",{"grants":grants,"platformOutage":"FAIL_CLOSED","deviceLocalReadiness":"UP"})
 
 
 def snapshot(target, folder):

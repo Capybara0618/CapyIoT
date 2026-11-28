@@ -70,8 +70,10 @@ class VideoIngress implements SmartLifecycle, HealthIndicator {
 
           @Override
           public void messageArrived(String topic, MqttMessage message) throws Exception {
+            if (!running) throw new MqttException(MqttException.REASON_CODE_CLIENT_DISCONNECTING);
             long receivedGeneration = generation.get();
             slots.acquire();
+            if (!running) { slots.release(); throw new MqttException(MqttException.REASON_CODE_CLIENT_DISCONNECTING); }
             try {
               publish(topic, message)
                   .whenComplete(

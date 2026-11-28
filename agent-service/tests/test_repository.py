@@ -113,6 +113,24 @@ def test_real_mysql_schema_matches_models_and_account_is_restricted(database):
             connection.execute(text("SELECT * FROM device_db.private_marker"))
 
 
+def test_recovery_expires_only_dead_leases_and_preserves_saved_draft(database):
+    repo = Repository(database.sessions)
+    owner = uuid.uuid4().hex
+    conversation = repo.create_conversation(owner, "恢复检查")
+    dead, _ = repo.start_run(owner,conversation["conversationId"],"查询","dead-lease","trace")
+    draft = repo.save_draft(owner,dead,{"title":"已保存草稿"},[],"CAMPUS-A",now()+timedelta(minutes=10))
+    with database.sessions.begin() as session:
+        row = session.get(AgentRun,dead)
+        row.lease_until = now()-timedelta(seconds=1)
+    live_owner=uuid.uuid4().hex
+    live_conversation=repo.create_conversation(live_owner,"仍在运行")
+    live,_=repo.start_run(live_owner,live_conversation["conversationId"],"查询","live-lease","trace")
+    repo.expire_runs()
+    assert repo.run_view(owner,dead)["status"] == "TIMED_OUT"
+    assert repo.run_view(live_owner,live)["status"] == "CREATED"
+    assert repo.draft(owner,draft)["payload"]["title"] == "已保存草稿"
+
+
 def test_restart_restores_history_and_draft_but_another_owner_cannot_read(database):
     repo = Repository(database.sessions)
     owner = uuid.uuid4().hex

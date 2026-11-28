@@ -60,7 +60,7 @@ public class RuntimeAutoConfiguration {
                     exchange.getResponse().getHeaders().set("Retry-After", "5");
                     return exchange.getResponse().setComplete();
                 }
-                exchange.getResponse().getHeaders().set("X-Service-Instance", System.getenv().getOrDefault("HOSTNAME", "local"));
+                exchange.getResponse().getHeaders().set("X-Gateway-Instance", System.getenv().getOrDefault("HOSTNAME", "local"));
                 return chain.filter(exchange);
             };
         }

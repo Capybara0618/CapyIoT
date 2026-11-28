@@ -143,6 +143,9 @@ def rollback(target, release):
     previous_id = release.get("previousReleaseId")
     if not previous_id:
         raise ValueError("No previously active compatible release is recorded")
+    active=json.loads((target.bundle/"active-release.json").read_text())
+    if active["ownerId"] != target.manifest["ownerId"] or active["releaseId"] not in {release["releaseId"],previous_id}:
+        raise ValueError("A newer active release prevents this stale rollback")
     previous = read_release(target, previous_id)
     if previous["phase"] != "ACTIVE":
         raise ValueError("Rollback target is not a recorded active release")
@@ -165,9 +168,31 @@ def rollback(target, release):
     save_release(target, release, "ROLLED_BACK_APPLICATION_ONLY")
 
 
+def reconcile(target, release):
+    if release["phase"] == "MIGRATING":
+        for service in (*DATABASES,"agent-service"):
+            _,expected=migration_job(target,release,service)
+            job=json.loads(cn.execute(target.kubectl("get","job",expected["metadata"]["name"],"-o","json")))
+            if job["spec"]["template"]["spec"]["containers"][0]["image"] != release["images"][service] or job.get("status",{}).get("succeeded") != 1:
+                raise ValueError("Migration is failed, incomplete or owned by another image; no automatic retry")
+        save_release(target,release,"MIGRATED")
+    elif release["phase"] in {"DEPLOYING_PASSIVE","ACTIVATING"}:
+        active=release["phase"] == "ACTIVATING"
+        version=release["releaseId"] + ("-a" if active else "-p")
+        for service in (*APPS,"frontend"):
+            obj=json.loads(cn.execute(target.kubectl("get","deployment",service,"-o","json")))
+            pod=obj["spec"]["template"]
+            if pod["metadata"]["labels"]["io.capyiot.cn/release"] != version or pod["spec"]["containers"][0]["image"] != release["images"][service]:
+                raise ValueError("Deployment changed while this release was interrupted")
+            cn.execute(target.kubectl("rollout","status","deployment/"+service,"--timeout=180s"))
+        save_release(target,release,"ACTIVE" if active else "PASSIVE_READY")
+        if active: write_json(target.bundle/"active-release.json",{"ownerId":target.manifest["ownerId"],"releaseId":release["releaseId"]})
+    else: raise ValueError("Release is not an interrupted, reconcilable phase")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["plan", "prepare", "migrate", "passive", "activate", "rollback", "status"])
+    parser.add_argument("action", choices=["plan", "prepare", "migrate", "passive", "activate", "rollback", "status", "reconcile"])
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--release-id", required=True)
     parser.add_argument("--image-tag")
@@ -190,6 +215,7 @@ def main():
                 if args.action == "migrate": migrate(target, release)
                 elif args.action in {"passive", "activate"}: deploy(target, release, active=args.action == "activate")
                 elif args.action == "rollback": rollback(target, release)
+                elif args.action == "reconcile": reconcile(target,release)
                 else: print(json.dumps({"releaseId": release["releaseId"], "phase": release["phase"]}))
         print("CN release action completed; schema and Kafka contents were not rolled back")
     except (ValueError, RuntimeError, OSError, KeyError, TypeError):

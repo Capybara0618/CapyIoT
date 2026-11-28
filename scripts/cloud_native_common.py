@@ -198,6 +198,8 @@ class Target:
         ):
             raise ValueError("CN manifest and explicit target must match")
         verify_files(self.bundle, self.manifest["files"])
+        if self.manifest.get("resourceProfile","standard") not in {"standard","compact"}:
+            raise ValueError("Unsupported frozen resource profile")
         for relative, expected in self.manifest["sourceFiles"].items():
             if sha(safe_file(ROOT, relative)) != expected:
                 raise ValueError("Infrastructure source changed after preparation; review a new bundle")

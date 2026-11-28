@@ -51,6 +51,7 @@ def main():
     )
     parser.add_argument("--policy", required=True, type=Path)
     parser.add_argument("--report-dir", required=True, type=Path)
+    parser.add_argument("--kafka-pause-seconds",type=int,default=15,choices=range(5,31))
     args = parser.parse_args()
     if os.environ.get("CAPYIOT_CN_TARGET"):
         from cloud_native_measurement import MeasurementTarget
@@ -408,7 +409,7 @@ def main():
             for _ in range(20):
                 backlog.append(heartbeat())
                 time.sleep(0.1)
-            wait_until = started + 15
+            wait_until = started + args.kafka_pause_seconds
             while time.monotonic() < wait_until:
                 time.sleep(min(0.5, wait_until - time.monotonic()))
             assert not any(applied(event_id) for event_id in backlog)
