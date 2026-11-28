@@ -9,12 +9,12 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -N dependency:copy \
     -DoutputDirectory=/agent -Dmdep.stripVersion=true
 
 FROM eclipse-temurin:21-jre-alpine
-ARG CAPYIOT_BUILD_ID=local
-LABEL io.capyiot.build-id=$CAPYIOT_BUILD_ID
-ARG SERVICE
 WORKDIR /app
 RUN apk add --no-cache curl && addgroup -S capyiot && adduser -S capyiot -G capyiot \
     && mkdir /keys && chown capyiot:capyiot /keys && chmod 700 /keys
+ARG SERVICE
+ARG CAPYIOT_BUILD_ID=local
+LABEL io.capyiot.build-id=$CAPYIOT_BUILD_ID
 COPY --from=build --chown=capyiot:capyiot /workspace/${SERVICE}/target/${SERVICE}-0.1.0-SNAPSHOT.jar app.jar
 COPY --from=build /agent/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
 COPY infra/java/start.sh /app/start.sh
