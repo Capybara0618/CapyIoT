@@ -157,7 +157,9 @@ def verify(args):
                         with real_provider(target,args.real_key_file,args.real_model,args.real_base_url):
                             step("real-model-workflow",[sys.executable,ROOT / "scripts/video_workflow_smoke.py",*common,"--agent","--real-model"])
                 finally: cn.execute(["docker","stop",sim])
-            if "browser" in args.groups: step("browser",[npm,"run","test:e2e"],ROOT / "frontend")
+            if "browser" in args.groups:
+                env["CAPYIOT_SCREENSHOT_DIR"] = str(folder/"screenshots")
+                step("browser",[npm,"run","test:e2e","--","--output",folder/"playwright"],ROOT / "frontend")
             if "resilience" in args.groups:
                 dependency_and_grants(target,folder)
                 health_faults(target,folder)

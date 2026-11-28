@@ -146,7 +146,7 @@ test('rejection is a separate explicit decision and mobile review remains readab
   await expect(page.getByRole('heading', { name: 'A区摄像机维修' })).toBeVisible()
   await page.getByLabel('拒绝原因（可选）').fill('设备范围需要重新核对')
   await page.screenshot({
-    path: resolve('../var/verification/stage4-draft-390.png'),
+    path: resolve(process.env.CAPYIOT_SCREENSHOT_DIR ?? '../var/verification', 'stage4-draft-390.png'),
     fullPage: true,
   })
   expect(
