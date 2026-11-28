@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+rm -f /tmp/capyiot-draining
 
 # Each container receives only its own mounted files. Values never appear in Docker argv/inspect.
 load_secret() {

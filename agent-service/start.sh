@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+rm -f /tmp/capyiot-draining
 if [ -f /run/secrets/db-password ]; then
     AGENT_DB_PASSWORD="$(cat /run/secrets/db-password)"
     export AGENT_DB_PASSWORD

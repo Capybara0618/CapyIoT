@@ -1,0 +1,2063 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "capyiot-cn-verify",
+        "labels": {
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "platform-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "platform-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "platform-service-config-unreleased",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "platform-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "immutable": true,
+      "data": {
+        "SERVICE_TLS_CA_FILE": "/run/secrets/internal-ca.pem",
+        "SERVICE_TLS_ENABLED": "true",
+        "SERVICE_TLS_KEYSTORE": "/run/secrets/server.p12",
+        "SERVER_SSL_ENABLED": "true",
+        "SERVER_SSL_KEY_STORE": "/run/secrets/server.p12",
+        "SERVER_SSL_KEY_STORE_TYPE": "PKCS12",
+        "USER_KEYS_GENERATE": "false",
+        "KAFKA_BOOTSTRAP_SERVERS": "kafka:39092",
+        "USER_JWKS_URI": "https://gateway:8080/.well-known/jwks.json",
+        "AGENT_JWKS_URI": "https://agent-service:8086/.well-known/agent-jwks.json",
+        "SPRING_FLYWAY_ENABLED": "false",
+        "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE": "45s",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE": "livenessState",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE": "readinessState,runtime,localDatabase",
+        "CAPYIOT_DRAIN_FILE": "/tmp/capyiot-draining",
+        "PLATFORM_SERVICE_URL": "https://platform-service:8087",
+        "DEVICE_SERVICE_URL": "https://device-service:8082",
+        "ALARM_SERVICE_URL": "https://alarm-service:8083",
+        "WORKFLOW_SERVICE_URL": "https://workflow-service:8084",
+        "INGESTION_SERVICE_URL": "https://device-ingestion:8081",
+        "AGENT_SERVICE_URL": "https://agent-service:8086",
+        "PLATFORM_SERVICE_KEY_FILE": "/run/secrets/service-keys.json",
+        "PLATFORM_DB_URL": "jdbc:mysql://mysql:3306/platform_db?connectionTimeZone=UTC",
+        "PLATFORM_DB_USER": "platform_app",
+        "CAPYIOT_DB_PASSWORD_NAME": "PLATFORM_DB_PASSWORD",
+        "CAPYIOT_FINGERPRINT_NAME": "PLATFORM_COMMAND_FINGERPRINT_KEY",
+        "PLATFORM_DOMAIN_RUNTIME_ENABLED": "false",
+        "CAPYIOT_SCHEMA_VERSION": "4",
+        "PLATFORM_BOOTSTRAP_ENABLED": "false"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "platform-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "platform-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "RollingUpdate",
+          "rollingUpdate": {
+            "maxSurge": 1,
+            "maxUnavailable": 0
+          }
+        },
+        "minReadySeconds": 5,
+        "progressDeadlineSeconds": 240,
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "platform-service"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "platform-service",
+              "app.kubernetes.io/part-of": "capyiot",
+              "io.capyiot.cn/target": "capyiot-cn-verify",
+              "io.capyiot.cn/release": "unreleased"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "platform-service",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 60,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "fsGroup": 10001
+            },
+            "containers": [
+              {
+                "name": "platform-service",
+                "image": "capyiot/platform-service:unreleased",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "https",
+                    "containerPort": 8087
+                  }
+                ],
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "platform-service-config-unreleased"
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "512Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "credentials",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ],
+                "startupProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8087/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 36
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8087/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 3
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8087/actuator/health/readiness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 2
+                },
+                "lifecycle": {
+                  "preStop": {
+                    "exec": {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "touch /tmp/capyiot-draining; sleep 5"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "platform-service-credentials-unreleased",
+                  "defaultMode": 292
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "platform-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "platform-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "selector": {
+          "app.kubernetes.io/name": "platform-service"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8087,
+            "targetPort": 8087
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "device-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "device-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "device-service-config-unreleased",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "device-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "immutable": true,
+      "data": {
+        "SERVICE_TLS_CA_FILE": "/run/secrets/internal-ca.pem",
+        "SERVICE_TLS_ENABLED": "true",
+        "SERVICE_TLS_KEYSTORE": "/run/secrets/server.p12",
+        "SERVER_SSL_ENABLED": "true",
+        "SERVER_SSL_KEY_STORE": "/run/secrets/server.p12",
+        "SERVER_SSL_KEY_STORE_TYPE": "PKCS12",
+        "USER_KEYS_GENERATE": "false",
+        "KAFKA_BOOTSTRAP_SERVERS": "kafka:39092",
+        "USER_JWKS_URI": "https://gateway:8080/.well-known/jwks.json",
+        "AGENT_JWKS_URI": "https://agent-service:8086/.well-known/agent-jwks.json",
+        "SPRING_FLYWAY_ENABLED": "false",
+        "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE": "45s",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE": "livenessState",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE": "readinessState,runtime,localDatabase",
+        "CAPYIOT_DRAIN_FILE": "/tmp/capyiot-draining",
+        "PLATFORM_SERVICE_URL": "https://platform-service:8087",
+        "DEVICE_SERVICE_URL": "https://device-service:8082",
+        "ALARM_SERVICE_URL": "https://alarm-service:8083",
+        "WORKFLOW_SERVICE_URL": "https://workflow-service:8084",
+        "INGESTION_SERVICE_URL": "https://device-ingestion:8081",
+        "AGENT_SERVICE_URL": "https://agent-service:8086",
+        "DEVICE_SERVICE_KEY_FILE": "/run/secrets/service-keys.json",
+        "DEVICE_DB_URL": "jdbc:mysql://mysql:3306/device_db?connectionTimeZone=UTC",
+        "DEVICE_DB_USER": "device_app",
+        "CAPYIOT_DB_PASSWORD_NAME": "DEVICE_DB_PASSWORD",
+        "CAPYIOT_FINGERPRINT_NAME": "DEVICE_COMMAND_FINGERPRINT_KEY",
+        "DEVICE_DOMAIN_RUNTIME_ENABLED": "false",
+        "CAPYIOT_SCHEMA_VERSION": "16",
+        "DEVICE_RUNTIME_ENABLED": "false",
+        "DEVICE_KEY_FILE": "/run/secrets/device-keys.json",
+        "EMQX_MANAGEMENT_URL": "http://emqx:18083"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "device-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "device-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "minReadySeconds": 5,
+        "progressDeadlineSeconds": 240,
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "device-service"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "device-service",
+              "app.kubernetes.io/part-of": "capyiot",
+              "io.capyiot.cn/target": "capyiot-cn-verify",
+              "io.capyiot.cn/release": "unreleased"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "device-service",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 60,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "fsGroup": 10001
+            },
+            "containers": [
+              {
+                "name": "device-service",
+                "image": "capyiot/device-service:unreleased",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "https",
+                    "containerPort": 8082
+                  }
+                ],
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "device-service-config-unreleased"
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "512Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "credentials",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ],
+                "startupProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8082/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 36
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8082/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 3
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8082/actuator/health/readiness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 2
+                },
+                "lifecycle": {
+                  "preStop": {
+                    "exec": {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "touch /tmp/capyiot-draining; sleep 5"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "device-service-credentials-unreleased",
+                  "defaultMode": 292
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "device-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "device-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "type": "NodePort",
+        "selector": {
+          "app.kubernetes.io/name": "device-service"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8082,
+            "targetPort": 8082,
+            "nodePort": 30482
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "alarm-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "alarm-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "alarm-service-config-unreleased",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "alarm-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "immutable": true,
+      "data": {
+        "SERVICE_TLS_CA_FILE": "/run/secrets/internal-ca.pem",
+        "SERVICE_TLS_ENABLED": "true",
+        "SERVICE_TLS_KEYSTORE": "/run/secrets/server.p12",
+        "SERVER_SSL_ENABLED": "true",
+        "SERVER_SSL_KEY_STORE": "/run/secrets/server.p12",
+        "SERVER_SSL_KEY_STORE_TYPE": "PKCS12",
+        "USER_KEYS_GENERATE": "false",
+        "KAFKA_BOOTSTRAP_SERVERS": "kafka:39092",
+        "USER_JWKS_URI": "https://gateway:8080/.well-known/jwks.json",
+        "AGENT_JWKS_URI": "https://agent-service:8086/.well-known/agent-jwks.json",
+        "SPRING_FLYWAY_ENABLED": "false",
+        "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE": "45s",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE": "livenessState",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE": "readinessState,runtime,localDatabase",
+        "CAPYIOT_DRAIN_FILE": "/tmp/capyiot-draining",
+        "PLATFORM_SERVICE_URL": "https://platform-service:8087",
+        "DEVICE_SERVICE_URL": "https://device-service:8082",
+        "ALARM_SERVICE_URL": "https://alarm-service:8083",
+        "WORKFLOW_SERVICE_URL": "https://workflow-service:8084",
+        "INGESTION_SERVICE_URL": "https://device-ingestion:8081",
+        "AGENT_SERVICE_URL": "https://agent-service:8086",
+        "FAULT_SERVICE_KEY_FILE": "/run/secrets/service-keys.json",
+        "ALARM_DB_URL": "jdbc:mysql://mysql:3306/alarm_db?connectionTimeZone=UTC",
+        "ALARM_DB_USER": "alarm_app",
+        "CAPYIOT_DB_PASSWORD_NAME": "ALARM_DB_PASSWORD",
+        "CAPYIOT_FINGERPRINT_NAME": "FAULT_COMMAND_FINGERPRINT_KEY",
+        "FAULT_DOMAIN_RUNTIME_ENABLED": "false",
+        "CAPYIOT_SCHEMA_VERSION": "7",
+        "FAULT_RUNTIME_ENABLED": "false"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "alarm-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "alarm-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "minReadySeconds": 5,
+        "progressDeadlineSeconds": 240,
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "alarm-service"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "alarm-service",
+              "app.kubernetes.io/part-of": "capyiot",
+              "io.capyiot.cn/target": "capyiot-cn-verify",
+              "io.capyiot.cn/release": "unreleased"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "alarm-service",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 60,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "fsGroup": 10001
+            },
+            "containers": [
+              {
+                "name": "alarm-service",
+                "image": "capyiot/alarm-service:unreleased",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "https",
+                    "containerPort": 8083
+                  }
+                ],
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "alarm-service-config-unreleased"
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "512Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "credentials",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ],
+                "startupProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8083/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 36
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8083/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 3
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8083/actuator/health/readiness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 2
+                },
+                "lifecycle": {
+                  "preStop": {
+                    "exec": {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "touch /tmp/capyiot-draining; sleep 5"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "alarm-service-credentials-unreleased",
+                  "defaultMode": 292
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "alarm-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "alarm-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "selector": {
+          "app.kubernetes.io/name": "alarm-service"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8083,
+            "targetPort": 8083
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "workflow-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "workflow-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "workflow-service-config-unreleased",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "workflow-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "immutable": true,
+      "data": {
+        "SERVICE_TLS_CA_FILE": "/run/secrets/internal-ca.pem",
+        "SERVICE_TLS_ENABLED": "true",
+        "SERVICE_TLS_KEYSTORE": "/run/secrets/server.p12",
+        "SERVER_SSL_ENABLED": "true",
+        "SERVER_SSL_KEY_STORE": "/run/secrets/server.p12",
+        "SERVER_SSL_KEY_STORE_TYPE": "PKCS12",
+        "USER_KEYS_GENERATE": "false",
+        "KAFKA_BOOTSTRAP_SERVERS": "kafka:39092",
+        "USER_JWKS_URI": "https://gateway:8080/.well-known/jwks.json",
+        "AGENT_JWKS_URI": "https://agent-service:8086/.well-known/agent-jwks.json",
+        "SPRING_FLYWAY_ENABLED": "false",
+        "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE": "45s",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE": "livenessState",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE": "readinessState,runtime,localDatabase",
+        "CAPYIOT_DRAIN_FILE": "/tmp/capyiot-draining",
+        "PLATFORM_SERVICE_URL": "https://platform-service:8087",
+        "DEVICE_SERVICE_URL": "https://device-service:8082",
+        "ALARM_SERVICE_URL": "https://alarm-service:8083",
+        "WORKFLOW_SERVICE_URL": "https://workflow-service:8084",
+        "INGESTION_SERVICE_URL": "https://device-ingestion:8081",
+        "AGENT_SERVICE_URL": "https://agent-service:8086",
+        "WORKFLOW_SERVICE_KEY_FILE": "/run/secrets/service-keys.json",
+        "WORKFLOW_DB_URL": "jdbc:mysql://mysql:3306/workflow_db?connectionTimeZone=UTC",
+        "WORKFLOW_DB_USER": "workflow_app",
+        "CAPYIOT_DB_PASSWORD_NAME": "WORKFLOW_DB_PASSWORD",
+        "CAPYIOT_FINGERPRINT_NAME": "WORKFLOW_COMMAND_FINGERPRINT_KEY",
+        "WORKFLOW_DOMAIN_RUNTIME_ENABLED": "false",
+        "CAPYIOT_SCHEMA_VERSION": "6",
+        "WORKFLOW_RUNTIME_ENABLED": "false"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "workflow-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "workflow-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "minReadySeconds": 5,
+        "progressDeadlineSeconds": 240,
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "workflow-service"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "workflow-service",
+              "app.kubernetes.io/part-of": "capyiot",
+              "io.capyiot.cn/target": "capyiot-cn-verify",
+              "io.capyiot.cn/release": "unreleased"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "workflow-service",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 60,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "fsGroup": 10001
+            },
+            "containers": [
+              {
+                "name": "workflow-service",
+                "image": "capyiot/workflow-service:unreleased",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "https",
+                    "containerPort": 8084
+                  }
+                ],
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "workflow-service-config-unreleased"
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "512Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "credentials",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ],
+                "startupProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8084/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 36
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8084/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 3
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8084/actuator/health/readiness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 2
+                },
+                "lifecycle": {
+                  "preStop": {
+                    "exec": {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "touch /tmp/capyiot-draining; sleep 5"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "workflow-service-credentials-unreleased",
+                  "defaultMode": 292
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "workflow-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "workflow-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "selector": {
+          "app.kubernetes.io/name": "workflow-service"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8084,
+            "targetPort": 8084
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "gateway",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "gateway",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "gateway-config-unreleased",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "gateway",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "immutable": true,
+      "data": {
+        "SERVICE_TLS_CA_FILE": "/run/secrets/internal-ca.pem",
+        "SERVICE_TLS_ENABLED": "true",
+        "SERVICE_TLS_KEYSTORE": "/run/secrets/server.p12",
+        "SERVER_SSL_ENABLED": "true",
+        "SERVER_SSL_KEY_STORE": "/run/secrets/server.p12",
+        "SERVER_SSL_KEY_STORE_TYPE": "PKCS12",
+        "USER_KEYS_GENERATE": "false",
+        "KAFKA_BOOTSTRAP_SERVERS": "kafka:39092",
+        "USER_JWKS_URI": "https://gateway:8080/.well-known/jwks.json",
+        "AGENT_JWKS_URI": "https://agent-service:8086/.well-known/agent-jwks.json",
+        "SPRING_FLYWAY_ENABLED": "false",
+        "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE": "45s",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE": "livenessState",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE": "readinessState,runtime",
+        "CAPYIOT_DRAIN_FILE": "/tmp/capyiot-draining",
+        "PLATFORM_SERVICE_URL": "https://platform-service:8087",
+        "DEVICE_SERVICE_URL": "https://device-service:8082",
+        "ALARM_SERVICE_URL": "https://alarm-service:8083",
+        "WORKFLOW_SERVICE_URL": "https://workflow-service:8084",
+        "INGESTION_SERVICE_URL": "https://device-ingestion:8081",
+        "AGENT_SERVICE_URL": "https://agent-service:8086",
+        "GATEWAY_SERVICE_KEY_FILE": "/run/secrets/service-keys.json",
+        "USER_KEY_FILE": "/run/secrets/user-keys.json",
+        "MANAGEMENT_SERVER_SSL_ENABLED": "false"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "gateway",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "gateway",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "RollingUpdate",
+          "rollingUpdate": {
+            "maxSurge": 1,
+            "maxUnavailable": 0
+          }
+        },
+        "minReadySeconds": 5,
+        "progressDeadlineSeconds": 240,
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "gateway"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "gateway",
+              "app.kubernetes.io/part-of": "capyiot",
+              "io.capyiot.cn/target": "capyiot-cn-verify",
+              "io.capyiot.cn/release": "unreleased"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "gateway",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 60,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "fsGroup": 10001
+            },
+            "containers": [
+              {
+                "name": "gateway",
+                "image": "capyiot/gateway:unreleased",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "https",
+                    "containerPort": 8080
+                  }
+                ],
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "gateway-config-unreleased"
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "512Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "credentials",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ],
+                "startupProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "http://127.0.0.1:9090/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 36
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "http://127.0.0.1:9090/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 3
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "http://127.0.0.1:9090/actuator/health/readiness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 2
+                },
+                "lifecycle": {
+                  "preStop": {
+                    "exec": {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "touch /tmp/capyiot-draining; sleep 5"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "gateway-credentials-unreleased",
+                  "defaultMode": 292
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "gateway",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "gateway",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "selector": {
+          "app.kubernetes.io/name": "gateway"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8080,
+            "targetPort": 8080
+          },
+          {
+            "name": "management",
+            "port": 9090,
+            "targetPort": 9090
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "device-ingestion",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "device-ingestion",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "device-ingestion-config-unreleased",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "device-ingestion",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "immutable": true,
+      "data": {
+        "SERVICE_TLS_CA_FILE": "/run/secrets/internal-ca.pem",
+        "SERVICE_TLS_ENABLED": "true",
+        "SERVICE_TLS_KEYSTORE": "/run/secrets/server.p12",
+        "SERVER_SSL_ENABLED": "true",
+        "SERVER_SSL_KEY_STORE": "/run/secrets/server.p12",
+        "SERVER_SSL_KEY_STORE_TYPE": "PKCS12",
+        "USER_KEYS_GENERATE": "false",
+        "KAFKA_BOOTSTRAP_SERVERS": "kafka:39092",
+        "USER_JWKS_URI": "https://gateway:8080/.well-known/jwks.json",
+        "AGENT_JWKS_URI": "https://agent-service:8086/.well-known/agent-jwks.json",
+        "SPRING_FLYWAY_ENABLED": "false",
+        "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE": "45s",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE": "livenessState",
+        "MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE": "readinessState,runtime",
+        "CAPYIOT_DRAIN_FILE": "/tmp/capyiot-draining",
+        "PLATFORM_SERVICE_URL": "https://platform-service:8087",
+        "DEVICE_SERVICE_URL": "https://device-service:8082",
+        "ALARM_SERVICE_URL": "https://alarm-service:8083",
+        "WORKFLOW_SERVICE_URL": "https://workflow-service:8084",
+        "INGESTION_SERVICE_URL": "https://device-ingestion:8081",
+        "AGENT_SERVICE_URL": "https://agent-service:8086",
+        "INGESTION_SERVICE_KEY_FILE": "/run/secrets/service-keys.json",
+        "MQTT_CONSUMPTION_ENABLED": "false",
+        "MQTT_URL": "ssl://emqx:8883",
+        "MQTT_CLIENT_ID": "capyiot-ingestion-cn-verify-1",
+        "MQTT_CA_FILE": "/run/secrets/mqtt-ca.pem"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "device-ingestion",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "device-ingestion",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "minReadySeconds": 5,
+        "progressDeadlineSeconds": 240,
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "device-ingestion"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "device-ingestion",
+              "app.kubernetes.io/part-of": "capyiot",
+              "io.capyiot.cn/target": "capyiot-cn-verify",
+              "io.capyiot.cn/release": "unreleased"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "device-ingestion",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 60,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "fsGroup": 10001
+            },
+            "containers": [
+              {
+                "name": "device-ingestion",
+                "image": "capyiot/device-ingestion:unreleased",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "https",
+                    "containerPort": 8081
+                  }
+                ],
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "device-ingestion-config-unreleased"
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "512Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "credentials",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ],
+                "startupProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8081/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 36
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8081/actuator/health/liveness"
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 3
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "curl",
+                      "-fsS",
+                      "--max-time",
+                      "3",
+                      "--cacert",
+                      "/run/secrets/internal-ca.pem",
+                      "https://127.0.0.1:8081/actuator/health/readiness"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 2
+                },
+                "lifecycle": {
+                  "preStop": {
+                    "exec": {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "touch /tmp/capyiot-draining; sleep 5"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "device-ingestion-credentials-unreleased",
+                  "defaultMode": 292
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "device-ingestion",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "device-ingestion",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "selector": {
+          "app.kubernetes.io/name": "device-ingestion"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8081,
+            "targetPort": 8081
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "agent-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "agent-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "agent-service-config-unreleased",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "agent-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "immutable": true,
+      "data": {
+        "AGENT_DB_HOST": "mysql",
+        "AGENT_SERVICE_CA_FILE": "/run/secrets/internal-ca.pem",
+        "AGENT_SERVICE_KEY_FILE": "/run/secrets/service-keys.json",
+        "AGENT_JWKS_URL": "https://gateway:8080/.well-known/jwks.json",
+        "AGENT_DELEGATION_KEY_FILE": "/run/secrets/agent-keys.json",
+        "AGENT_DELEGATION_KEYS_GENERATE": "false",
+        "AGENT_DISPATCH_ENABLED": "false",
+        "AGENT_MODEL_TIMEOUT_SECONDS": "30",
+        "AGENT_RUN_TIMEOUT_SECONDS": "90",
+        "AGENT_MAX_MODEL_REQUESTS": "3",
+        "AGENT_MAX_TOOL_CALLS": "5",
+        "DEEPSEEK_MODEL": "offline-fixture",
+        "DEEPSEEK_BASE_URL": "http://model-fixture:8099",
+        "AGENT_PLATFORM_BASE_URL": "https://platform-service:8087",
+        "AGENT_DEVICE_BASE_URL": "https://device-service:8082",
+        "AGENT_FAULT_BASE_URL": "https://alarm-service:8083",
+        "AGENT_WORKFLOW_BASE_URL": "https://workflow-service:8084",
+        "AGENT_ALLOW_INSECURE_MODEL_ENDPOINT": "true"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "agent-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "agent-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "minReadySeconds": 5,
+        "progressDeadlineSeconds": 240,
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "agent-service"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "agent-service",
+              "app.kubernetes.io/part-of": "capyiot",
+              "io.capyiot.cn/target": "capyiot-cn-verify",
+              "io.capyiot.cn/release": "unreleased"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "agent-service",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 60,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "fsGroup": 10001
+            },
+            "containers": [
+              {
+                "name": "agent-service",
+                "image": "capyiot/agent-service:unreleased",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "https",
+                    "containerPort": 8086
+                  }
+                ],
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "agent-service-config-unreleased"
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "512Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "credentials",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ],
+                "startupProbe": {
+                  "exec": {
+                    "command": [
+                      "/app/.venv/bin/python",
+                      "-c",
+                      "import ssl,urllib.request;urllib.request.urlopen('https://127.0.0.1:8086/health/live',context=ssl.create_default_context(cafile='/run/secrets/internal-ca.pem'),timeout=3)"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 36
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "/app/.venv/bin/python",
+                      "-c",
+                      "import ssl,urllib.request;urllib.request.urlopen('https://127.0.0.1:8086/health/live',context=ssl.create_default_context(cafile='/run/secrets/internal-ca.pem'),timeout=3)"
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 3
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/app/.venv/bin/python",
+                      "-c",
+                      "import ssl,urllib.request;urllib.request.urlopen('https://127.0.0.1:8086/health/ready',context=ssl.create_default_context(cafile='/run/secrets/internal-ca.pem'),timeout=3)"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 2
+                },
+                "lifecycle": {
+                  "preStop": {
+                    "exec": {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "touch /tmp/capyiot-draining; sleep 5"
+                      ]
+                    }
+                  }
+                },
+                "args": [
+                  "uvicorn",
+                  "app.main:app",
+                  "--host",
+                  "0.0.0.0",
+                  "--port",
+                  "8086",
+                  "--ssl-keyfile",
+                  "/run/secrets/server.key",
+                  "--ssl-certfile",
+                  "/run/secrets/server.pem",
+                  "--workers",
+                  "1",
+                  "--timeout-graceful-shutdown",
+                  "45",
+                  "--no-access-log"
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "agent-service-credentials-unreleased",
+                  "defaultMode": 292
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "agent-service",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "agent-service",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "selector": {
+          "app.kubernetes.io/name": "agent-service"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8086,
+            "targetPort": 8086
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "frontend",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "frontend",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "frontend-config-unreleased",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "frontend",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "immutable": true,
+      "data": {
+        "NGINX_RESOLVER": "10.249.0.10"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "frontend",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "frontend",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "RollingUpdate",
+          "rollingUpdate": {
+            "maxSurge": 1,
+            "maxUnavailable": 0
+          }
+        },
+        "minReadySeconds": 5,
+        "progressDeadlineSeconds": 240,
+        "revisionHistoryLimit": 3,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "frontend"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "frontend",
+              "app.kubernetes.io/part-of": "capyiot",
+              "io.capyiot.cn/target": "capyiot-cn-verify",
+              "io.capyiot.cn/release": "unreleased"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "frontend",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 60,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 101,
+              "fsGroup": 101
+            },
+            "containers": [
+              {
+                "name": "frontend",
+                "image": "capyiot/frontend:unreleased",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "https",
+                    "containerPort": 8080
+                  },
+                  {
+                    "name": "tls",
+                    "containerPort": 8443
+                  }
+                ],
+                "envFrom": [
+                  {
+                    "configMapRef": {
+                      "name": "frontend-config-unreleased"
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "32Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "128Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "credentials",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  },
+                  {
+                    "name": "credentials",
+                    "mountPath": "/etc/nginx/local-tls/server.pem",
+                    "subPath": "server.pem",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "credentials",
+                    "mountPath": "/etc/nginx/local-tls/server.key",
+                    "subPath": "server.key",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "credentials",
+                    "mountPath": "/etc/nginx/internal-tls/ca.pem",
+                    "subPath": "internal-ca.pem",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "nginx-config",
+                    "mountPath": "/etc/nginx/conf.d"
+                  }
+                ],
+                "startupProbe": {
+                  "exec": {
+                    "command": [
+                      "/bin/sh",
+                      "-c",
+                      "wget -qO- http://127.0.0.1:8080/ >/dev/null"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 36
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "/bin/sh",
+                      "-c",
+                      "wget -qO- http://127.0.0.1:8080/ >/dev/null"
+                    ]
+                  },
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 3
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/bin/sh",
+                      "-c",
+                      "wget -qO- http://127.0.0.1:8080/ >/dev/null"
+                    ]
+                  },
+                  "periodSeconds": 5,
+                  "timeoutSeconds": 5,
+                  "failureThreshold": 2
+                },
+                "lifecycle": {
+                  "preStop": {
+                    "exec": {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "touch /tmp/capyiot-draining; sleep 5"
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "frontend-credentials-unreleased",
+                  "defaultMode": 292
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              },
+              {
+                "name": "nginx-config",
+                "emptyDir": {
+                  "sizeLimit": "1Mi"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "frontend",
+        "namespace": "capyiot-cn-verify",
+        "labels": {
+          "app.kubernetes.io/name": "frontend",
+          "app.kubernetes.io/part-of": "capyiot",
+          "io.capyiot.cn/target": "capyiot-cn-verify"
+        }
+      },
+      "spec": {
+        "type": "NodePort",
+        "selector": {
+          "app.kubernetes.io/name": "frontend"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8080,
+            "targetPort": 8080,
+            "nodePort": 30080
+          },
+          {
+            "name": "tls",
+            "port": 8443,
+            "targetPort": 8443,
+            "nodePort": 30443
+          }
+        ]
+      }
+    }
+  ]
+}
