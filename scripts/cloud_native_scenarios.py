@@ -118,6 +118,7 @@ def resilience(target, folder, rollout_tag):
 
 def replica_checks(target,folder):
     observations=[]
+    api=Api(target)
     for service in ("gateway", "platform-service"):
         cn.execute(target.kubectl("scale", "deployment/" + service, "--replicas=2"))
         try:
@@ -126,20 +127,26 @@ def replica_checks(target,folder):
             if len(pods) != 2: raise AssertionError("Two replicas not observed")
             seen = set()
             header = "X-Gateway-Instance" if service == "gateway" else "X-Service-Instance"
-            # Concurrent connections exercise Service balancing; a single pooled connection can stay pinned.
+            # A synchronized read burst opens real upstream connections. Serial
+            # bcrypt logins can leave a warmed pool pinned to the first backend.
+            barrier=threading.Barrier(24)
             def probe_replica(_):
-                client=Api(target)
+                client=Api.__new__(Api)
+                client.base,client.tls,client.token,client.last_headers=api.base,api.tls,api.token,{}
+                barrier.wait(timeout=15)
                 client.call("/auth/me")
                 return next((v for k,v in client.last_headers.items() if k.lower() == header.lower()),"unknown")
-            with ThreadPoolExecutor(max_workers=8) as pool:
+            with ThreadPoolExecutor(max_workers=24) as pool:
                 seen.update(pool.map(probe_replica,range(24)))
-            observations.append({"service":service,"instances":sorted(seen),"podNames":[p["metadata"]["name"] for p in pods]})
+            observations.append({"service":service,"instances":sorted(seen),"podNames":[p["metadata"]["name"] for p in pods],
+                                 "probeRequests":24,"probeConcurrency":24,"path":"/auth/me"})
             write_json(folder/"replica-observations.json",{"observations":observations})
             if len(seen - {"unknown"}) != 2: raise AssertionError("Both replicas must serve authenticated traffic")
         finally:
             cn.execute(target.kubectl("scale", "deployment/" + service, "--replicas=1"))
             cn.execute(target.kubectl("rollout", "status", "deployment/" + service, "--timeout=180s"))
     write_json(folder / "replica-recovery.json", {"services": ["gateway", "platform-service"], "replicas": [1, 2, 1]})
+    api.call("/auth/logout",{})
 
 
 def force_process_exit(target, folder):
@@ -210,6 +217,7 @@ def re_uuid(value):
 
 def rolling_updates(target, folder, image_tag):
     if not image_tag: raise ValueError("A separately built rollout image tag is required")
+    if not (folder/"replica-recovery.json").exists(): replica_checks(target,folder)
     for service in ("gateway","platform-service"):
         deployment = json.loads(cn.execute(target.kubectl("get","deployment",service,"-o","json")))
         old_image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
