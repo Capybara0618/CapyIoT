@@ -97,6 +97,7 @@ def verify(args):
     report = {"status": "RUNNING", "groups": args.groups, "steps": [],
               "commit": subprocess.check_output(["git", "rev-parse", "HEAD"],cwd=ROOT).decode().strip(),
               "startedAt": datetime.now(timezone.utc).isoformat()}
+    write_json(folder/"report.json",report)
     env = dict(os.environ)
     for key in list(env):
         if key.startswith(("CAPYIOT_MS_", "COMPOSE_")): env.pop(key)
@@ -185,12 +186,13 @@ def verify(args):
                 env["CAPYIOT_SCREENSHOT_DIR"] = str(folder/"screenshots")
                 step("browser",[npm,"run","test:e2e","--","--output",folder/"playwright"],ROOT / "frontend")
             if "resilience" in args.groups:
-                dependency_and_grants(target,folder)
-                health_faults(target,folder)
-                migration_failure(target,folder)
-                pipeline_handover(target,folder)
-                resilience(target,folder,args.rollout_tag)
-                kafka_recovery(target,folder)
+                for name,check in (("dependency-and-grants",dependency_and_grants),("health-faults",health_faults),
+                                   ("migration-failure",migration_failure),("pipeline-handover",pipeline_handover),
+                                   ("pod-and-rollout",lambda t,f:resilience(t,f,args.rollout_tag)),("kafka-recovery",kafka_recovery)):
+                    print("CN scenario: "+name,flush=True)
+                    check(target,folder)
+                    report["steps"].append({"name":name,"exitCode":0})
+                    write_json(folder/"report.json",report)
             if "metrics" in args.groups:
                 if not args.policy: raise ValueError("Frozen local measurement policy is required")
                 step("measurements",[sys.executable,ROOT / "scripts/measure_microservices.py",
@@ -215,6 +217,9 @@ def verify(args):
                 from cloud_native_upgrade import upgrade_copy
                 upgrade_copy(target,args.upgrade_backup,folder/"upgrade")
         report["status"]="PASSED_SELECTED_GROUPS"
+    except KeyboardInterrupt:
+        report["status"]="INTERRUPTED"
+        raise
     except Exception as error:
         report["status"]="FAILED"; report["errorCategory"]=type(error).__name__
         raise
